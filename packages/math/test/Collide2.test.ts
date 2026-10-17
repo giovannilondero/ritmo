@@ -28,6 +28,26 @@ describe("Collide2", () => {
     expect(Box2.overlapsCircle(box, position, 10 - 1e-6)).toBe(false)
   })
 
+  it("stops a circle that starts exactly touching a wall and moves into it", () => {
+    // Centre at 90 with radius 10 touches the face at 100: a snapped spawn point.
+    const into = Collide2.moveCircle({ x: 90, y: 0 }, { x: 50, y: 0 }, 10, [thin])
+    expect(into.blocked).toBe(true)
+    expect(into.position.x).toBeLessThanOrEqual(90)
+    // From the right face, moving left.
+    const back = Collide2.moveCircle({ x: 112, y: 0 }, { x: -50, y: 0 }, 10, [thin])
+    expect(back.blocked).toBe(true)
+    expect(back.position.x).toBeGreaterThanOrEqual(112)
+    expect(Collide2.sweepCircleBox({ x: 90, y: 0 }, { x: 50, y: 0 }, 10, thin)).toEqual({ time: 0, nx: -1, ny: 0 })
+  })
+
+  it("lets a circle touching a wall move away from it or slide along it", () => {
+    expect(Collide2.moveCircle({ x: 90, y: 0 }, { x: -50, y: 0 }, 10, [thin])).toEqual({ position: { x: 40, y: 0 }, blocked: false })
+    expect(Collide2.moveCircle({ x: 90, y: 0 }, { x: 0, y: 50 }, 10, [thin])).toEqual({ position: { x: 90, y: 50 }, blocked: false })
+    const sliding = Collide2.moveCircle({ x: 90, y: 0 }, { x: 30, y: 40 }, 10, [thin])
+    expect(sliding.position.x).toBeLessThanOrEqual(90)
+    expect(sliding.position.y).toBeCloseTo(40, 5)
+  })
+
   it("moves freely when nothing is in the way", () => {
     expect(Collide2.moveCircle({ x: 0, y: 0 }, { x: 50, y: 20 }, 10, [thin])).toEqual({ position: { x: 50, y: 20 }, blocked: false })
   })

@@ -5,7 +5,8 @@
  * trace events, and answers questions about it as text and data:
  *
  * - `run(name, { frames, until })` ticks a schedule frame by frame and stops
- *   at the first system failure, thrown defect, or violated invariant.
+ *   at the first system failure, thrown defect, or violated invariant (an
+ *   invariant that throws stops it as `invariant-threw`).
  * - `journal(filter)` lists what happened, one fact per line, filtered by
  *   frames, entity, component, resource, event, machine, system, or kind.
  * - `why(entity, component)` lists the latest changes to one component, and
@@ -146,6 +147,8 @@ export type Stop =
   | { readonly reason: "tickOrder"; readonly frame: number; readonly issues: ReadonlyArray<string> }
   | { readonly reason: "defect"; readonly frame: number; readonly error: unknown }
   | { readonly reason: "invariant"; readonly frame: number; readonly invariant: string; readonly message: string }
+  /** The invariant itself threw: a bug in the check, not a violation. Fix the check, then run again. */
+  | { readonly reason: "invariant-threw"; readonly frame: number; readonly invariant: string; readonly error: unknown }
   /**
    * A failed tick result nobody read (for example a setup tick the game ran
    * before this run): `frame` is the failed tick's, `skipped` the systems
@@ -543,16 +546,22 @@ export const make = <
             : { reason: "failure", frame, system: typeof error.system === "string" ? error.system : "(unknown)", error: error.error }
         break
       }
-      const violation = (options.invariants ?? []).reduce<{ readonly invariant: string; readonly message: string } | undefined>(
-        (found, invariant) => {
-          if (found) return found
-          const message = inspect(invariant.inspector)
-          return message === undefined ? undefined : { invariant: invariant.name, message }
-        },
-        undefined
-      )
-      if (violation) {
-        stop = { reason: "invariant", frame, ...violation }
+      let checked: Stop | undefined
+      for (const invariant of options.invariants ?? []) {
+        let message: string | undefined
+        try {
+          message = inspect(invariant.inspector)
+        } catch (error) {
+          checked = { reason: "invariant-threw", frame, invariant: invariant.name, error }
+          break
+        }
+        if (message !== undefined) {
+          checked = { reason: "invariant", frame, invariant: invariant.name, message }
+          break
+        }
+      }
+      if (checked) {
+        stop = checked
         break
       }
       if (runOptions.until?.(frame)) {
@@ -791,6 +800,8 @@ const renderRun = (result: RunResult, format: Format.ValueOptions): string => {
       return `${head}, DEFECT at f${stop.frame}: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
     case "invariant":
       return `${head}, INVARIANT "${stop.invariant}" violated at f${stop.frame}: ${stop.message}`
+    case "invariant-threw":
+      return `${head}, INVARIANT "${stop.invariant}" threw at f${stop.frame}: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
     case "tickOrder":
       return `${head}, NOT RUN after f${stop.frame}: ${stop.issues.join("; ")}`
     case "ignored-failure":

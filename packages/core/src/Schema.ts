@@ -694,6 +694,12 @@ export namespace Schema {
        * returns a `SubStateInactive` failure. So `inState(Sub, x)` alone
        * implies the parent's state.
        *
+       * The sub-state enters together with the parent's commit, before any
+       * `onEnter` schedule runs: the parent's `onEnter` systems already see its
+       * value, its `despawnOnEnter` scopes are cleared before they spawn, and
+       * a failing `onEnter` leaves it entered. Its own `onEnter` schedules
+       * run after the parent's.
+       *
        * Use a second top-level machine instead when the two modes are
        * independent (each keeps its value whatever the other does).
        *

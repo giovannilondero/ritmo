@@ -293,19 +293,38 @@ export const describe = (input: DescribeInput): Debug.Description => {
   const relations = Object.values(input.schema.relations) as ReadonlyArray<Relation.Relation.Any>
 
   const schedules = collectSchedules(input.schedules)
+  // A system gated by Schedule.when / pauseWhen is a copy pointing at its
+  // base: both are one system, described once with every placement.
+  const baseOf = (system: AnySystem): AnySystem => (system as { readonly base?: AnySystem }).base ?? system
   const placements = new Map<AnySystem, Array<string>>()
+  const steps = new Set<AnySystem>()
   for (const [name, schedule] of schedules) {
     schedule.steps.forEach((step, index) => {
       if (!Schedule.isSystemStep(step)) return
-      const system = step as AnySystem
+      const system = baseOf(step as AnySystem)
+      steps.add(step as AnySystem)
       const list = placements.get(system)
       const placement = `${name}#${index}`
       if (list) list.push(placement)
       else placements.set(system, [placement])
     })
   }
-  const described = new Map([...placements].map(([system, where]) => [system, describeSystem(system, where)] as const))
-  const systems = [...described.values()]
+  // Gates differ per placement: the description lists the conditions of all of them.
+  const gatesOf = new Map<AnySystem, { when: Set<unknown>; pauseWhen: Set<unknown> }>()
+  for (const step of steps) {
+    const base = baseOf(step)
+    const gates = gatesOf.get(base) ?? { when: new Set(), pauseWhen: new Set() }
+    for (const condition of step.spec.when as ReadonlyArray<unknown>) gates.when.add(condition)
+    for (const condition of step.spec.pauseWhen as ReadonlyArray<unknown>) gates.pauseWhen.add(condition)
+    gatesOf.set(base, gates)
+  }
+  const byBase = new Map([...placements].map(([system, where]) => {
+    const gates = gatesOf.get(system)!
+    const merged = { ...system, spec: { ...system.spec, when: [...gates.when], pauseWhen: [...gates.pauseWhen] } } as AnySystem
+    return [system, describeSystem(merged, where)] as const
+  }))
+  const described = new Map<AnySystem, Debug.SystemDescription>([...steps].map((step) => [step, byBase.get(baseOf(step))!] as const))
+  const systems = [...byBase.values()]
 
   const components = new Index(componentDescriptors.map((descriptor) => descriptor.name))
   const resources = new Index(resourceDescriptors.map((descriptor) => descriptor.name))
@@ -314,7 +333,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
   for (const name of input.externallyWrittenEvents) events.write(name, "runtime.send")
   for (const system of systems) {
     for (const query of system.queries) {
-      for (const name of [...query.reads, ...query.optional, ...query.with, ...query.added, ...query.changed]) {
+      for (const name of [...query.reads, ...query.optional, ...query.with, ...query.added, ...query.changed, ...anyOfNames(query)]) {
         components.read(name, system.name)
       }
       for (const name of query.writes) {
@@ -558,9 +577,13 @@ const fixFor = (code: Debug.Lint["code"], subject: string): string => {
 type Accesses = { readonly reads: ReadonlyArray<string>; readonly writes: ReadonlyArray<string> }
 
 /** What a system reads and writes, per kind. `with`/`without` filters test presence and are not reads. */
+/** The components named by a query's `anyOf` filters. */
+const anyOfNames = (query: Debug.QueryDescription): ReadonlyArray<string> =>
+  query.anyOf.flatMap((filter) => [...filter.added, ...filter.changed])
+
 const accessesOf = (system: Debug.SystemDescription): Record<"component" | "resource" | "event", Accesses> => ({
   component: {
-    reads: system.queries.flatMap((query) => [...query.reads, ...query.optional, ...query.added, ...query.changed]),
+    reads: system.queries.flatMap((query) => [...query.reads, ...query.optional, ...query.added, ...query.changed, ...anyOfNames(query)]),
     writes: system.queries.flatMap((query) => query.writes)
   },
   resource: { reads: system.resources.reads, writes: system.resources.writes },

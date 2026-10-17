@@ -87,7 +87,8 @@ export const rayCircle = (ox: number, oy: number, dx: number, dy: number, cx: nu
  * First contact of a circle of `radius` at `origin` moving by `delta` with
  * `box`, or `undefined`. Contact is computed against the box expanded by the
  * radius with rounded corners (the exact Minkowski sum), so sliding around
- * corners is smooth. A circle that starts overlapping the box is not
+ * corners is smooth. A circle that starts exactly touching a face and moves
+ * into it hits at time 0. A circle that starts overlapping the box is not
  * reported; resolve it with `pushOut` first.
  *
  * @category Queries
@@ -115,8 +116,10 @@ export const sweepCircleBox = (origin: Vec2, delta: Vec2, radius: number, box: B
       t2 = swap
       normal = 1
     }
-    if (t1 > enter) {
-      enter = t1
+    // Entering at exactly 0 is a contact: a circle touching the face and
+    // moving into it (a negative entry time means it is moving away).
+    if (t1 > enter || (t1 === 0 && enter === 0)) {
+      enter = 0 + t1
       nx = normal
       ny = 0
     }
@@ -136,8 +139,8 @@ export const sweepCircleBox = (origin: Vec2, delta: Vec2, radius: number, box: B
       t2 = swap
       normal = 1
     }
-    if (t1 > enter) {
-      enter = t1
+    if (t1 > enter || (t1 === 0 && enter === 0)) {
+      enter = 0 + t1
       nx = 0
       ny = normal
     }

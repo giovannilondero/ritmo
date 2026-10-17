@@ -98,6 +98,13 @@ describe("Replay", () => {
     const file = recorder.save("window")
     expect(file.start.tick).toBe(16)
     expect(file.ticks.map((record) => record.tick)).toEqual([17, 18, 19, 20])
+    // The input never changed after tick 1, yet the window carries it.
+    expect(file.ticks[0]!.services).toEqual({ "Replay/Input": [{ dx: 1 }] })
+    const opened = Replay.session(make, file)
+    if (!opened.ok) throw new Error(JSON.stringify(opened.error))
+    const played = opened.value.play()
+    expect(played.data.run.stop).toEqual({ reason: "completed" })
+    expect(played.data.diverged).toEqual([])
   })
 
   it("is a session: why and journal explain the replayed ticks", () => {
