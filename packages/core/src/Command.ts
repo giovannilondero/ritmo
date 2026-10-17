@@ -523,16 +523,24 @@ type EntriesAllowed<Entries extends ReadonlyArray<readonly [ComponentDescriptor,
 type RemoveAllowed<D, Removes> =
   [D] extends [Removes] ? unknown : Fix<`${Names<D>} is not declared in this system's commands: add it to Game.System.removes(...)`>
 
-type DespawnAllowed<E, Despawns> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __proves?: (_: never) => infer Proves }
+/**
+ * Why each possible target of a despawn is not allowed (`never` when it is).
+ * Computed per member, so a target chosen from several queries
+ * (`cond ? a.entity : b.entity`) must pass for every one of them.
+ */
+type DespawnRejections<E, Despawns> =
+  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __proves?: (_: infer Proves) => void }
     ? [Extract<Proves, Despawns>] extends [never]
-      ? Fix<`despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns)`>
-      : unknown
+      ? `despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns)`
+      : never
     : E extends { readonly [spawnedTypeId]: (_: never) => infer Spawned }
       ? [Extract<Spawned, Names<Despawns>>] extends [never]
-        ? Fix<`despawn needs an entity spawned with ${Names<Despawns>} (declared in despawns)`>
-        : unknown
-      : Fix<`despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns), not a raw id: pass match.entity`>
+        ? `despawn needs an entity spawned with ${Names<Despawns>} (declared in despawns)`
+        : never
+      : `despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns), not a raw id: pass match.entity`
+
+type DespawnAllowed<E, Despawns> =
+  [DespawnRejections<E, Despawns>] extends [never] ? unknown : Fix<DespawnRejections<E, Despawns>>
 
 declare const spawnedTypeId: unique symbol
 
@@ -566,19 +574,33 @@ type DraftRequirementsMet<S extends Schema.Any, Held extends string> =
     ? unknown
     : Fix<`${MissingMessages<MissingPairs<S, Held>>}: add the missing entries to the draft`>
 
-/** What an insert or remove target is known to hold: a query match's proof, or a `SpawnedId`'s draft. A raw id proves nothing. */
-type TargetHolds<E> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __proves?: (_: never) => infer Proves }
+/** What one possible target holds: a query match's proof, or a `SpawnedId`'s draft. A raw id proves nothing. */
+type HeldBy<E> =
+  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __proves?: (_: infer Proves) => void }
     ? Names<Proves>
     : E extends { readonly [spawnedTypeId]: (_: never) => infer Spawned extends string }
       ? Spawned
       : never
 
-/** What a remove target is known to lack: its query's `without`. */
-type TargetLacks<E> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __lacks?: (_: never) => infer Lacks }
+/** What one possible target's query proves absent: its `without`. */
+type LackedBy<E> =
+  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __lacks?: (_: infer Lacks) => void }
     ? Names<Lacks>
     : never
+
+/** The names in `All` that some member of `E` does not hold (or lack). */
+type MissingFromHeld<E, All> = E extends unknown ? Exclude<All, HeldBy<E>> : never
+type MissingFromLacked<E, All> = E extends unknown ? Exclude<All, LackedBy<E>> : never
+
+/**
+ * What an insert or remove target is known to hold. For a target chosen
+ * from several queries (`cond ? a.entity : b.entity`), only what every one
+ * of them proves.
+ */
+type TargetHolds<E> = Exclude<HeldBy<E>, MissingFromHeld<E, HeldBy<E>>>
+
+/** What a remove target is known to lack: its query's `without` (for several queries, what all of them exclude). */
+type TargetLacks<E> = Exclude<LackedBy<E>, MissingFromLacked<E, LackedBy<E>>>
 
 type EntryNames<Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> = Names<Entries[number][0]>
 
@@ -606,13 +628,16 @@ type RemoveViolations<S extends Schema.Any, E, Removed extends string> =
 type RemoveRequirementsMet<S extends Schema.Any, E, Removed extends string> =
   [RemoveViolations<S, E, Removed>] extends [never] ? unknown : Fix<RemoveViolations<S, E, Removed>>
 
-/** A remove target: `match.entity`, or the id `spawn` returned in this run; never a raw id. */
-type RemoveTargetAllowed<S extends Schema.Any, Root, E> =
+/** A remove target: `match.entity`, or the id `spawn` returned in this run; never a raw id, not even as one of several. */
+type RemoveTargetRejections<S extends Schema.Any, Root, E> =
   E extends { readonly kind: "EntityRef" | "EntityMut"; readonly id: Entity.EntityId<S, Root> }
-    ? unknown
+    ? never
     : E extends SpawnedId<S, Root, string>
-      ? unknown
-      : Fix<"remove needs an entity from a query (pass match.entity) or the id spawn returned in this run, not a raw id">
+      ? never
+      : "remove needs an entity from a query (pass match.entity) or the id spawn returned in this run, not a raw id"
+
+type RemoveTargetAllowed<S extends Schema.Any, Root, E> =
+  [RemoveTargetRejections<S, Root, E>] extends [never] ? unknown : Fix<RemoveTargetRejections<S, Root, E>>
 
 /** The transitive closure of the names `N` require (cycles stop). */
 type RequiredClosure<Pairs extends RequirementPair, N extends string, Seen extends string = never> =
