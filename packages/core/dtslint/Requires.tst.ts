@@ -96,6 +96,24 @@ describe("commands.spawn with requirements", () => {
     })
   })
 
+  it("checks a component the draft may hold, conditional or spread, against what it surely holds", () => {
+    Game.System("Req/SpawnMaybeRequirer", { commands: Game.System.commands(Game.System.spawns(Player, Noise, A)) }, ({ commands }) => {
+      const maybe = Math.random() > 0.5
+      // A conditional requirer whose requirements are all there.
+      commands.spawn(Game.Command.spawn([Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }], maybe ? [Player, {}] : [Noise, 1]))
+      // A conditional requirer whose requirement is not.
+      // @ts-expect-error Req/A requires Req/B
+      commands.spawn(Game.Command.spawn([Noise, 1], maybe ? [A, {}] : [Noise, 2]))
+      // Spread entries: each one may be there.
+      const players: Array<readonly [typeof Player, {}]> = [[Player, {}]]
+      // @ts-expect-error Req/Player requires Req/Body
+      commands.spawn(Game.Command.spawn(...players))
+      commands.spawn(Game.Command.spawn([Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }], ...players))
+      const noises: Array<readonly [typeof Noise, number]> = [[Noise, 1]]
+      commands.spawn(Game.Command.spawn(...noises))
+    })
+  })
+
   it("returns the id with what the draft holds", () => {
     Game.System("Req/SpawnId", { commands: Game.System.commands(Game.System.spawns(Player)) }, ({ commands }) => {
       const id = commands.spawn(Game.Command.spawn([Player, {}], [Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }]))
@@ -128,6 +146,23 @@ describe("commands.insert with requirements", () => {
         // optional(Body) does not prove Body
         // @ts-expect-error Req/Player requires Req/Body
         commands.insert(match.entity, [Player, {}], [Velocity, { x: 0 }])
+      }
+    })
+  })
+
+  it("counts spread entries as maybe inserted", () => {
+    Game.System("Req/InsertSpread", {
+      queries: { bodies: Bodies },
+      commands: Game.System.commands(Game.System.inserts(Player, Velocity, Noise))
+    }, ({ queries, commands }) => {
+      const parts: Array<readonly [typeof Player, {}] | readonly [typeof Velocity, { readonly x: number }]> = [[Player, {}]]
+      const noises: Array<readonly [typeof Noise, number]> = [[Noise, 1]]
+      for (const match of queries.bodies.each()) {
+        // Velocity may be among the parts, or not.
+        // @ts-expect-error Req/Player requires Req/Velocity
+        commands.insert(match.entity, ...parts)
+        commands.insert(match.entity, [Velocity, { x: 0 }], ...parts)
+        commands.insert(match.entity.id, ...noises)
       }
     })
   })

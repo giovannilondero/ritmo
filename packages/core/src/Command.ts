@@ -142,15 +142,21 @@ type EntryValue<T> =
 export type FoldEntries<
   Entries extends ReadonlyArray<SpawnEntry<any>>,
   P extends Entity.ComponentProof = {}
-> = number extends Entries["length"]
-  // A widened array (a spread of entries built at runtime): each entry may or may not be there.
-  ? P & MaybeEntries<EntryValue<Entries[number]>>
+> = Entries extends readonly [
+    infer Head extends SpawnEntry<any>,
+    ...infer Tail extends ReadonlyArray<SpawnEntry<any>>
+  ]
+  ? FoldEntries<Tail, Draft.InsertEntry<P, EntryValue<Head>>>
+  // Fixed entries after a spread are there too.
   : Entries extends readonly [
-      infer Head extends SpawnEntry<any>,
-      ...infer Tail extends Array<SpawnEntry<any>>
+      ...infer Init extends ReadonlyArray<SpawnEntry<any>>,
+      infer Last extends SpawnEntry<any>
     ]
-    ? FoldEntries<Tail, Draft.InsertEntry<P, EntryValue<Head>>>
-    : P
+    ? FoldEntries<Init, Draft.InsertEntry<P, EntryValue<Last>>>
+    : number extends Entries["length"]
+      // A widened array (a spread of entries built at runtime): each entry may or may not be there.
+      ? P & MaybeEntries<EntryValue<Entries[number]>>
+      : P
 
 /** The proof of entries that may each be present: every component they can hold, optional. */
 type MaybeEntries<Entry> = {
@@ -553,26 +559,31 @@ declare const spawnedTypeId: unique symbol
 export type SpawnedId<S extends Schema.Any, Root, Components extends string> =
   Entity.EntityId<S, Root> & { readonly [spawnedTypeId]: (_: never) => Components }
 
-/** The requirements (`[requirer, required]`) of the components in `Held` that `Held` lacks. */
-type MissingPairs<S extends Schema.Any, Held extends string> =
-  Extract<Schema.Requires<S>, readonly [Held, string]> extends infer Pair
+/** One message per missing requirement: `"Player requires Velocity"`. */
+type MissingMessages<Pairs> = Pairs extends readonly [infer From extends string, infer To extends string] ? `${From} requires ${To}` : never
+
+/** The requirements (`[requirer, required]`) of the components in `From` that `Held` lacks. */
+type MissingPairsFrom<S extends Schema.Any, From extends string, Held extends string> =
+  Extract<Schema.Requires<S>, readonly [From, string]> extends infer Pair
     ? Pair extends readonly [string, infer To extends string]
       ? To extends Held ? never : Pair
       : never
     : never
 
-/** One message per missing requirement: `"Player requires Velocity"`. */
-type MissingMessages<Pairs> = Pairs extends readonly [infer From extends string, infer To extends string] ? `${From} requires ${To}` : never
-
 /**
- * Accepts a draft holding every requirement of every component it holds.
- * Direct requirements are enough: each required component must be held
- * too, with its own requirements.
+ * The requirements a draft may break. A draft's proof is a union of
+ * alternatives when an entry is conditional, and has optional keys for
+ * spread entries: in each alternative, every component it may hold needs
+ * every component it requires surely held. Direct requirements are enough:
+ * each required component must be held too, with its own requirements.
  */
-type DraftRequirementsMet<S extends Schema.Any, Held extends string> =
-  [MissingPairs<S, Held>] extends [never]
+type DraftViolations<S extends Schema.Any, P> =
+  P extends unknown ? MissingPairsFrom<S, keyof P & string, RequiredKeys<P>> : never
+
+type DraftRequirementsMet<S extends Schema.Any, P> =
+  [DraftViolations<S, P>] extends [never]
     ? unknown
-    : Fix<`${MissingMessages<MissingPairs<S, Held>>}: add the missing entries to the draft`>
+    : Fix<`${MissingMessages<DraftViolations<S, P>>}: add the missing entries to the draft`>
 
 /** What one possible target holds: a query match's proof, or a `SpawnedId`'s draft. A raw id proves nothing. */
 type HeldBy<E> =
@@ -604,11 +615,30 @@ type TargetLacks<E> = Exclude<LackedBy<E>, MissingFromLacked<E, LackedBy<E>>>
 
 type EntryNames<Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> = Names<Entries[number][0]>
 
-/** Inserted components with requirements neither inserted alongside nor proven held by the target. */
+/** The names one entry surely holds: none when it is conditional between descriptors. */
+type SureEntryNames<Entry, All extends string = EntryNamesOf<Entry>> =
+  Exclude<All, Entry extends unknown ? Exclude<All, EntryNamesOf<Entry>> : never>
+type EntryNamesOf<Entry> = Entry extends readonly [infer D, unknown] ? Names<D> : never
+
+/** The names surely inserted: fixed entries, not spread or conditional ones. */
+type SurelyInserted<Entries> =
+  Entries extends readonly [infer Head, ...infer Tail]
+    ? SureEntryNames<Head> | SurelyInserted<Tail>
+    : Entries extends readonly [...infer Init, infer Last]
+      ? SureEntryNames<Last> | SurelyInserted<Init>
+      : never
+
+/**
+ * Inserted components (any entry may be one) with requirements neither
+ * surely inserted alongside nor proven held by the target.
+ */
+type InsertViolations<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> =
+  MissingPairsFrom<S, EntryNames<Entries>, SurelyInserted<Entries> | TargetHolds<E>>
+
 type InsertRequirementsMet<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> =
-  [MissingPairs<S, EntryNames<Entries> | TargetHolds<E>> & readonly [EntryNames<Entries>, string]] extends [never]
+  [InsertViolations<S, E, Entries>] extends [never]
     ? unknown
-    : Fix<`${MissingMessages<MissingPairs<S, EntryNames<Entries> | TargetHolds<E>> & readonly [EntryNames<Entries>, string]>}: insert it in the same call, or pass match.entity from a query that proves it`>
+    : Fix<`${MissingMessages<InsertViolations<S, E, Entries>>}: insert it in the same call, or pass match.entity from a query that proves it`>
 
 /**
  * Removing `Removed` is sound when every component that requires one of
@@ -703,10 +733,12 @@ export interface CommandsApi<
    * The draft must hold every component its components require
    * (`Schema.requires`); drafts are checked here, so a partial draft built
    * with `Game.Command.spawn(...)` and completed with `extend(...)` is fine.
+   * A component the draft may hold (a conditional or spread entry) needs
+   * what it requires surely held.
    */
   readonly spawn: [Spawns] extends [never]
     ? MethodNotDeclared<"spawn", "spawns">
-    : <P extends Entity.ComponentProof>(draft: Entity.EntityDraft<S, P, Root> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, HeldNames<P>>) => SpawnedId<S, Root, HeldNames<P>>
+    : <P extends Entity.ComponentProof>(draft: Entity.EntityDraft<S, P, Root> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, P>) => SpawnedId<S, Root, HeldNames<P>>
   /**
    * Queues an entity spawn owned by one lifetime scope (removed together
    * with `despawnScope(...)`). The draft is checked like `spawn(...)`.
@@ -715,7 +747,7 @@ export interface CommandsApi<
     ? MethodNotDeclared<"spawnIn", "spawns">
     : <P extends Entity.ComponentProof>(
         scope: EntityScope.EntityScope<string, Root>,
-        draft: Entity.EntityDraft<S, P, Root> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, HeldNames<P>>
+        draft: Entity.EntityDraft<S, P, Root> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, P>
       ) => SpawnedId<S, Root, HeldNames<P>>
   /**
    * Queues component inserts (or replacements) on an existing entity, applied
