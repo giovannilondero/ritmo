@@ -147,6 +147,43 @@ describe("sub-states", () => {
     expect(log).toEqual(["phase=undefined turn=undefined events=[{\"from\":\"Setup\"}]"])
   })
 
+  it("enters a sub-state even when an onEnter of its parent fails", () => {
+    let fail = true
+    const FailingEnter = Game.System("SubStates/FailingEnter", {}, () => fail ? Result.failure("not yet" as const) : Result.success(undefined))
+    const failing = Game.Schedule.transitions(Game.Schedule.onEnter(Session, "Playing", [FailingEnter]))
+    const runtime = makeRuntime("Menu")
+    sets.length = 0
+    log.length = 0
+    expect(runtime.tryTick(Game.Schedule(setSession("Playing"), Game.Schedule.applyStateTransitions(failing))).ok).toBe(false)
+    fail = false
+    // The parent is committed, so its sub-state exists with its entry value.
+    runtime.tick(Game.Schedule(Read, setPhase("Battle"), Game.Schedule.applyStateTransitions(transitions)))
+    runtime.tick(Game.Schedule(Read, InBattle))
+    expect(sets).toEqual([{ ok: true, value: undefined }])
+    expect(log).toEqual([
+      "phase=Setup turn=undefined events=[{\"to\":\"Setup\"}]",
+      "enter Phase=Battle",
+      "enter Turn=Mine",
+      "phase=Battle turn=Mine events=[{\"from\":\"Setup\",\"to\":\"Battle\"}]",
+      "inBattle"
+    ])
+  })
+
+  it("lets a parent's onEnter spawn into a scope its sub-state despawns on enter", () => {
+    const Lobby = Game.EntityScope("SubStates/Lobby", { despawnOnEnter: [Phase, "Setup"] })
+    const SpawnLobby = Game.System("SubStates/SpawnLobby", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
+      commands.spawnIn(Lobby, Game.Command.spawn([Name, "seat"]))
+    })
+    const bundle = Game.Schedule.transitions(Game.Schedule.onEnter(Session, "Playing", [SpawnLobby, Game.Schedule.applyDeferred()]))
+    const runtime = Game.Runtime.make({
+      services: Game.Runtime.services(),
+      machines: Game.Runtime.machines(Game.Runtime.machine(Session, "Menu"), Game.Runtime.machine(Phase, "Setup"), Game.Runtime.machine(Turn, "Mine"))
+    })
+    runtime.tick(Game.Schedule(setSession("Playing"), Game.Schedule.applyStateTransitions(bundle)))
+    // The sub-state enters together with its parent, before the parent's onEnter, so the spawn survives.
+    expect(runtime.inspect(Names)).toBe(1)
+  })
+
   it("saves no value for an inactive sub-state and restores into either side", () => {
     const playing = makeRuntime("Playing")
     playing.tick(Game.Schedule(setPhase("Battle"), Game.Schedule.applyStateTransitions(transitions)))

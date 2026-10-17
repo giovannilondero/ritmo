@@ -1897,6 +1897,11 @@ const makeValidatedRuntime = <
 
       for (const sub of leaving) commitMachine(sub.key, currentMachines.get(sub.key), undefined)
       commitMachine(machineKey, current, pending.value)
+      // Sub-states that exist in the entered state enter their value together
+      // with the parent, parents first, before any onEnter schedule runs: a
+      // failing onEnter cannot leave them without a value, and their scope
+      // triggers fire before what the onEnter schedules spawn.
+      const entered = commitSubStates(machineKey, snapshot.to)
 
       for (const schedule of schedules) {
         const transition = schedule.transition
@@ -1908,9 +1913,8 @@ const makeValidatedRuntime = <
           }
         }
       }
-      // Sub-states that exist in the entered state enter their value, parents first.
-      const entered = enterSubStates(machineKey, snapshot.to, schedules)
-      if (!entered.ok) return entered
+      const enteredSchedules = runSubStateEnters(entered, schedules)
+      if (!enteredSchedules.ok) return enteredSchedules
     }
     return succeeded
   }
@@ -1968,22 +1972,28 @@ const makeValidatedRuntime = <
 
   /**
    * Gives the sub-states of `parentKey` that exist in `state` their entry
-   * value, then runs their `onEnter` schedules and enters their own
-   * sub-states.
+   * value, and theirs, parents first. Returns what it entered, in that order.
    */
-  const enterSubStates = (parentKey: symbol, state: unknown, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
+  const commitSubStates = (parentKey: symbol, state: unknown): Array<readonly [symbol, unknown]> => {
+    const entered: Array<readonly [symbol, unknown]> = []
     for (const sub of subStates.get(parentKey) ?? []) {
       if (sub.within!.state !== state || currentMachines.has(sub.key) || !subStateEntry.has(sub.key)) continue
       const value = subStateEntry.get(sub.key)
       commitMachine(sub.key, undefined, value)
+      entered.push([sub.key, value], ...commitSubStates(sub.key, value))
+    }
+    return entered
+  }
+
+  /** Runs the onEnter schedules of sub-states entered by {@link commitSubStates}, in that order. */
+  const runSubStateEnters = (entered: ReadonlyArray<readonly [symbol, unknown]>, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
+    for (const [key, value] of entered) {
       const snapshot = { from: undefined, to: value } as unknown as Machine.TransitionSnapshot
-      const result = runPhase(sub.key, "enter", value, snapshot, schedules)
+      const result = runPhase(key, "enter", value, snapshot, schedules)
       if (!result.ok) {
-        if (tracing) traceTransition(sub.key, snapshot, "enterFailed")
+        if (tracing) traceTransition(key, snapshot, "enterFailed")
         return result
       }
-      const nested = enterSubStates(sub.key, value, schedules)
-      if (!nested.ok) return nested
     }
     return succeeded
   }
