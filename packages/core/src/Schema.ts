@@ -428,7 +428,8 @@ type BoundTransitionScheduleResult<
 > = Machine.TransitionScheduleDefinition<
   S,
   M,
-  Schedule.CompositionExactRequirements<Entries>,
+  // The machine itself: a transition schedule on a machine the runtime does not provide could never run.
+  Schedule.CompositionExactRequirements<Entries> | M,
   Root,
   Schedule.CompositionFailure<Entries>,
   Schedule.CompositionOrder<Entries>

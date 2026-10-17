@@ -336,6 +336,23 @@ describe("StateMachine", () => {
     ])
   })
 
+  it("requires the machine of every transition schedule in an applied bundle", () => {
+    const bundle = Game.Schedule.transitions(Game.Schedule.onEnter(RoundState, "Live", []))
+    const withMachine = Game.Runtime.make({
+      services: Runtime.services(),
+      resources: { Counter: 0 },
+      machines: Runtime.machines(Runtime.machine(RoundState, "Warmup"))
+    })
+    withMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
+    const withoutMachine = Game.Runtime.make({
+      services: Runtime.services(),
+      resources: { Counter: 0 },
+      machines: Runtime.machines(Runtime.machine(AppState, "Menu"))
+    })
+    // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "RoundState"
+    withoutMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
+  })
+
   it("gates a group of systems with Schedule.when, requiring the machines its conditions read", () => {
     const Increment = Game.System("StateMachine/WhenIncrement", { resources: { counter: System.writeResource(Counter) } }, ({ resources }) => {
       resources.counter.update((value) => value + 1)

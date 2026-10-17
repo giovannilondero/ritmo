@@ -15,6 +15,7 @@ import * as Machine from "../Machine.ts"
 import * as QueryModule from "../Query.ts"
 import * as Relation from "../Relation.ts"
 import * as Runtime from "../Runtime.ts"
+import * as Requirement from "../Requirement.ts"
 import * as Schedule from "../Schedule.ts"
 import type { Schema } from "../Schema.ts"
 import * as System from "../System.ts"
@@ -77,7 +78,11 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
   const transitionSchedule = (
     transition: Machine.TransitionScheduleDefinition["transition"],
     plan: ReadonlyArray<Schedule.ScheduleEntry>
-  ) => ({ ...Schedule.make(schema, plan), transition })
+  ) => {
+    const schedule = Schedule.make(schema, plan)
+    // The machine is a requirement: a runtime without it could never run the schedule.
+    return { ...schedule, requirements: Requirement.collect([...schedule.requirements, transition.machine]), transition }
+  }
 
   const game = {
     schema,

@@ -647,6 +647,18 @@ describe("Runtime state machine", () => {
     ])
   })
 
+  it("reports a transition schedule's machine as a missing requirement in tryTick", () => {
+    const LocalGame = Schema.bind(schema)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateMissing", ["Menu", "Playing"] as const)
+    const bundle = LocalGame.Schedule.transitions(LocalGame.Schedule.onEnter(LocalAppState, "Playing", []))
+    const runtime = LocalGame.Runtime.make({ services: Runtime.services(), resources: { Counter: 0, Log: [] } })
+    const erasedTryTick = runtime.tryTick as (schedule: unknown) => unknown
+    expect(erasedTryTick(LocalGame.Schedule(LocalGame.Schedule.applyStateTransitions(bundle)))).toEqual({
+      ok: false,
+      error: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "LocalAppStateMissing" }] }
+    })
+  })
+
   it("does not run transition handlers unless the bundle is attached to the marker", () => {
     const queuePlaying = Game.System(
       "StateMachineRuntime/QueueWithoutBundle",
