@@ -168,6 +168,28 @@ describe("declared commands", () => {
     })
   })
 
+  it("needs relates for the relations a spawned draft stages", () => {
+    Game.System("Perms/SpawnChildUndeclared", {
+      commands: Game.System.commands(Game.System.spawns(Position))
+    }, ({ commands }) => {
+      const child = Game.Command.relate(Game.Command.spawn([Position, { x: 0 }]), ChildOf, id)
+      expect(child).type.toBe<Entity.EntityDraft<typeof Game.schema, { readonly "Perms/Position": { readonly x: number } }, typeof Game.schema, typeof ChildOf>>()
+      // @ts-expect-error Perms/ChildOf is related by this draft but not declared in this system's commands: add it to Game.System.relates(...)
+      commands.spawn(child)
+      // @ts-expect-error Perms/ChildOf is related by this draft
+      commands.spawnIn(Level, child)
+      // A draft that stages no relation needs no relates.
+      commands.spawn(Game.Command.spawn([Position, { x: 0 }]))
+    })
+    Game.System("Perms/SpawnChild", {
+      commands: Game.System.commands(Game.System.spawns(Position, Noise), Game.System.relates(ChildOf))
+    }, ({ commands }) => {
+      const child = Game.Command.relate(Game.Command.spawn([Position, { x: 0 }]), ChildOf, id)
+      commands.spawn(child)
+      commands.spawnIn(Level, Game.Command.extend(child, [Noise, 1]))
+    })
+  })
+
   it("accepts only the game's own components in permissions", () => {
     const Foreign = Descriptor.Component<number>()("Perms/Foreign")
     expect(Game.System.spawns).type.not.toBeCallableWith(Foreign)

@@ -131,7 +131,7 @@ export namespace Handle {
  * Drafts exist before the command queue is flushed. This is the place where the
  * API can safely carry exact structural information.
  */
-export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof, Root = unknown> {
+export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof, Root = unknown, out Relates = never> {
   /**
    * Runtime tag for debugging and pattern matching.
    */
@@ -156,6 +156,11 @@ export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof,
    * Staged relationship edges attached to the entity before spawn.
    */
   readonly relations: ReadonlyArray<StagedRelation<S, Root>>
+  /**
+   * The relations `Game.Command.relate(...)` staged on this draft: spawning
+   * it needs them in the system's `Game.System.relates(...)`. Type-level only.
+   */
+  readonly __relates?: (_: never) => Relates
 }
 
 /**

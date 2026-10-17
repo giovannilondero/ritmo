@@ -30,7 +30,7 @@ const makeRuntime = () => Game.Runtime.make({
 const Moving = Game.Query({ selection: { position: Game.Query.write(Position) } })
 
 const Spawn = Game.System("Debug/Spawn", {
-  commands: Game.System.commands(Game.System.spawns(Position, Sprite, Tagged))
+  commands: Game.System.commands(Game.System.spawns(Position, Sprite, Tagged), Game.System.relates(ChildOf))
 }, ({ commands }) => {
   const parent = commands.spawn(Game.Command.spawn([Position, { x: 1 }], [Sprite, { frame: 0 }]))
   commands.spawn(Game.Command.relate(Game.Command.spawn([Tagged, {}]), ChildOf, parent))
@@ -127,8 +127,8 @@ describe("Runtime debug handle", () => {
     const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
     runtime.debug.nameSchedules({ setup })
     const relationLints = () => runtime.debug.describe().lints.filter((lint) => lint.code === "relation-failure-never-read")
-    // Nothing has been related yet: the lint is based on applied commands.
-    expect(relationLints()).toEqual([])
+    // Spawn relates in its drafts, so it declares relates(ChildOf): the lint holds before any command ran, and after.
+    expect(relationLints().map((lint) => lint.subject)).toEqual(["Debug/ChildOf"])
 
     runtime.tick(setup)
     expect(relationLints()).toEqual([{

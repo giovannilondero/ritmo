@@ -677,20 +677,25 @@ export namespace Schema {
        * Adds entries to a draft (a value not yet spawned). Use
        * `commands.insert` for an entity that already exists.
        */
-      extend: <P extends Entity.ComponentProof, const Entries extends ReadonlyArray<Command.SpawnEntry<S>>>(
-        draft: Entity.EntityDraft<S, P, Root>,
+      extend: <P extends Entity.ComponentProof, const Entries extends ReadonlyArray<Command.SpawnEntry<S>>, Relates = never>(
+        draft: Entity.EntityDraft<S, P, Root, Relates>,
         ...entries: Entries
-      ) => Command.DraftFor<S, Entries, P, Root>
+      ) => Command.DraftFor<S, Entries, P, Root, Relates>
       entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: Descriptor.Value<D>) => Command.Entry<D>
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>
       ) => Result.Result<Command.Entry<D>, Descriptor.ConstructionError<D>>
-      relate: <P extends Entity.ComponentProof, R extends RelationDescriptor<S>>(
-        draft: Entity.EntityDraft<S, P, Root>,
+      /**
+       * Stages a relation on a draft, created with the spawn. Spawning the
+       * draft needs the relation in `Game.System.relates(...)`, like
+       * `commands.relate`.
+       */
+      relate: <P extends Entity.ComponentProof, R extends RelationDescriptor<S>, Relates = never>(
+        draft: Entity.EntityDraft<S, P, Root, Relates>,
         relation: R,
         target: Entity.EntityId<S, Root>
-      ) => Entity.EntityDraft<S, P, Root>
+      ) => Entity.EntityDraft<S, P, Root, Relates | R>
     }
     /**
      * Declares one game-wide mode (menu, playing, paused): queued with
@@ -809,7 +814,10 @@ export namespace Schema {
       despawns: <const Components extends ReadonlyArray<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"despawns", Components[number]>
       /** Allows `despawnScope` of this scope. */
       despawnsScope: <const Scope extends EntityScope.EntityScope<string, Root>>(scope: Scope) => Command.Permission<"despawnsScope", Scope>
-      /** Allows `relate`, `unrelate`, and `reorderChildren` of these relations. */
+      /**
+       * Allows `relate`, `unrelate`, and `reorderChildren` of these relations,
+       * and spawning drafts that stage them with `Game.Command.relate(...)`.
+       */
       relates: <const Relations extends ReadonlyArray<RelationDescriptor<S>>>(...relations: Relations) => Command.Permission<"relates", Relations[number]>
     }
     readonly Schedule: {

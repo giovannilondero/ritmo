@@ -181,10 +181,11 @@ export type DraftFor<
   S extends Schema.Any,
   Entries extends ReadonlyArray<SpawnEntry<S>>,
   P extends Entity.ComponentProof,
-  Root
+  Root,
+  Relates = never
 > = [Extract<Entries[number], { readonly ok: boolean }>] extends [never]
-  ? Entity.EntityDraft<S, FoldEntries<Entries, P>, Root>
-  : Result.Result<Entity.EntityDraft<S, FoldEntries<Entries, P>, Root>, EntryErrors<Entries>>
+  ? Entity.EntityDraft<S, FoldEntries<Entries, P>, Root, Relates>
+  : Result.Result<Entity.EntityDraft<S, FoldEntries<Entries, P>, Root, Relates>, EntryErrors<Entries>>
 
 /**
  * A deferred world mutation.
@@ -322,12 +323,13 @@ export const extend = <
   S extends Schema.Any,
   P extends Entity.ComponentProof,
   Root,
-  const Entries extends ReadonlyArray<SpawnEntry<S>>
+  const Entries extends ReadonlyArray<SpawnEntry<S>>,
+  Relates = never
 >(
-  draft: Entity.EntityDraft<S, P, Root>,
+  draft: Entity.EntityDraft<S, P, Root, Relates>,
   ...entries: Entries
-): DraftFor<S, Entries, P, Root> =>
-  build(draft.id, { ...draft.proof }, [...draft.components], draft.relations, entries) as DraftFor<S, Entries, P, Root>
+): DraftFor<S, Entries, P, Root, Relates> =>
+  build(draft.id, { ...draft.proof }, [...draft.components], draft.relations, entries) as DraftFor<S, Entries, P, Root, Relates>
 
 /**
  * Shared draft builder. Plain entries take a fast path; the first `Result`
@@ -405,12 +407,13 @@ export const relate = <
   S extends Schema.Any,
   P extends Entity.ComponentProof,
   R extends Relation.Relation.Any,
-  Root = unknown
+  Root = unknown,
+  Relates = never
 >(
-  draft: Entity.EntityDraft<S, P, Root>,
+  draft: Entity.EntityDraft<S, P, Root, Relates>,
   relation: R,
   target: Entity.EntityId<S, Root>
-): Entity.EntityDraft<S, P, Root> =>
+): Entity.EntityDraft<S, P, Root, Relates | R> =>
   Entity.draft(draft.id, draft.proof, draft.components, [
     ...draft.relations,
     {
@@ -515,6 +518,12 @@ type Names<D> = D extends { readonly name: infer Name extends string } ? Name : 
 
 /** Every key of every member of a union of proofs (a draft with a conditional entry is a union). */
 type AllKeys<P> = P extends unknown ? keyof P & string : never
+
+/** Relations staged on a draft need `relates`, like `commands.relate`. */
+type DraftRelationsAllowed<Relates, Declared> =
+  [Exclude<Relates, Declared>] extends [never]
+    ? unknown
+    : Fix<`${Names<Exclude<Relates, Declared>>} is related by this draft but not declared in this system's commands: add it to Game.System.relates(...)`>
 
 type DraftAllowed<P, Spawns> =
   [Exclude<AllKeys<P>, Names<Spawns>>] extends [never]
@@ -712,7 +721,8 @@ type HeldNames<P> = Exclude<AllKeys<P>, MissingSomewhere<P, AllKeys<P>>>
  * `spawn` needs `Game.System.spawns(...)` listing every component of the
  * draft, `insert` needs `inserts`, `remove` needs `removes`, `despawn` needs
  * `despawns` and an entity from a query proving one of them, `despawnScope`
- * needs `despawnsScope`, and relation edits need `relates`.
+ * needs `despawnsScope`, and relation edits need `relates`, including
+ * relations a spawned draft stages with `Game.Command.relate(...)`.
  *
  * Resource and event writes are not commands: they go through the
  * `writeResource(...)` / `writeEvent(...)` access a system declares.
@@ -738,16 +748,18 @@ export interface CommandsApi<
    */
   readonly spawn: [Spawns] extends [never]
     ? MethodNotDeclared<"spawn", "spawns">
-    : <P extends Entity.ComponentProof>(draft: Entity.EntityDraft<S, P, Root> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, P>) => SpawnedId<S, Root, HeldNames<P>>
+    : <P extends Entity.ComponentProof, R = never>(
+        draft: Entity.EntityDraft<S, P, Root, R> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, P> & DraftRelationsAllowed<R, Relates>
+      ) => SpawnedId<S, Root, HeldNames<P>>
   /**
    * Queues an entity spawn owned by one lifetime scope (removed together
    * with `despawnScope(...)`). The draft is checked like `spawn(...)`.
    */
   readonly spawnIn: [Spawns] extends [never]
     ? MethodNotDeclared<"spawnIn", "spawns">
-    : <P extends Entity.ComponentProof>(
+    : <P extends Entity.ComponentProof, R = never>(
         scope: EntityScope.EntityScope<string, Root>,
-        draft: Entity.EntityDraft<S, P, Root> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, P>
+        draft: Entity.EntityDraft<S, P, Root, R> & DraftAllowed<P, Spawns> & DraftRequirementsMet<S, P> & DraftRelationsAllowed<R, Relates>
       ) => SpawnedId<S, Root, HeldNames<P>>
   /**
    * Queues component inserts (or replacements) on an existing entity, applied
@@ -839,8 +851,8 @@ export interface CommandsApi<
 
 /** The command queue the runtime gives each system: every command, unchecked, and `flush`. */
 export interface CommandQueue<S extends Schema.Any, Root = unknown> {
-  readonly spawn: (draft: Entity.EntityDraft<S, any, Root>) => Entity.EntityId<S, Root>
-  readonly spawnIn: (scope: EntityScope.EntityScope<string, Root>, draft: Entity.EntityDraft<S, any, Root>) => Entity.EntityId<S, Root>
+  readonly spawn: (draft: Entity.EntityDraft<S, any, Root, any>) => Entity.EntityId<S, Root>
+  readonly spawnIn: (scope: EntityScope.EntityScope<string, Root>, draft: Entity.EntityDraft<S, any, Root, any>) => Entity.EntityId<S, Root>
   readonly insert: (entity: Entity.EntityId<S, Root> | { readonly id: Entity.EntityId<S, Root> }, ...entries: ReadonlyArray<SchemaEntry<S>>) => Entity.EntityId<S, Root>
   readonly despawn: (entity: Entity.EntityId<S, Root> | { readonly id: Entity.EntityId<S, Root> }) => void
   readonly despawnScope: (scope: EntityScope.EntityScope<string, Root>) => void

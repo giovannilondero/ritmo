@@ -420,7 +420,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
       }
     }
     const failureReaders = new Set(systems.flatMap((system) => system.relationFailures))
-    // Declared `relates` permissions, and relations that commands were seen to relate (drafts relate without one).
+    // Declared `relates` permissions, and relations that commands were seen to relate (erased types can relate without one).
     const relaters = new Map<string, Set<string>>()
     for (const system of systems) {
       for (const name of system.commands.relates) relaters.set(name, new Set([...(relaters.get(name) ?? []), system.name]))

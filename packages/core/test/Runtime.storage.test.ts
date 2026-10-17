@@ -146,7 +146,7 @@ describe("Runtime storage", () => {
       parent = commands.spawn(Game.Command.spawn([Position, { x: 0 }]))
     })
     const SpawnChild = Game.System("Storage/SpawnChild", {
-      commands: Game.System.commands(Game.System.spawns(Tag))
+      commands: Game.System.commands(Game.System.spawns(Tag), Game.System.relates(ChildOf))
     }, ({ commands }) => {
       const draft = Game.Command.extend(Game.Command.relate(Game.Command.spawn(), ChildOf, parent!), [Tag, {}])
       commands.spawn(draft)

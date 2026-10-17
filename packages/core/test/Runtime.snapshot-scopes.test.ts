@@ -42,7 +42,7 @@ describe("snapshots keep entity scopes", () => {
 
   it("keeps several scopes apart, and unscoped entities and scoped children as they were", () => {
     const runtime = makeRuntime()
-    runtime.tick(Game.Schedule(Game.System("SnapshotScopes/SpawnMany", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
+    runtime.tick(Game.Schedule(Game.System("SnapshotScopes/SpawnMany", { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf)) }, ({ commands }) => {
       const level = commands.spawnIn(Level, Game.Command.spawn([Name, "level"]))
       // A child of a scoped entity, in another scope: despawned with its parent (hierarchy) or its own scope.
       commands.spawnIn(Menu, Game.Command.relate(Game.Command.spawn([Name, "level child in menu"]), ChildOf, level))

@@ -37,7 +37,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnRelations",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf, Targeting)) },
       ({ commands }) =>
         {
           rootId = commands.spawn(Game.Command.spawn([Name, { value: "root" }] as const))
@@ -125,7 +125,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnHierarchyForDespawn",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf, Targeting)) },
       ({ commands }) =>
         {
           rootId = commands.spawn(Game.Command.spawn([Name, { value: "root" }] as const))
@@ -206,7 +206,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnGeneralCycle",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(Targeting)) },
       ({ commands }) =>
         {
           alphaId = commands.spawn(Game.Command.spawn([Name, { value: "alpha" }] as const))
@@ -359,7 +359,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnHierarchyForReorder",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf)) },
       ({ commands }) =>
         {
           rootId = commands.spawn(Game.Command.spawn([Name, { value: "root" }] as const))
@@ -454,7 +454,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnHierarchyMatchTraversal",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf)) },
       ({ commands }) =>
         {
           rootId = commands.spawn(Game.Command.spawn([Name, { value: "root" }] as const))
@@ -620,7 +620,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnForRepeatedUnrelate",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(Targeting)) },
       ({ commands }) =>
         {
           betaId = commands.spawn(Game.Command.spawn([Name, { value: "beta" }] as const))
@@ -783,7 +783,7 @@ describe("Runtime relationships", () => {
 
     const spawn = Game.System(
       "SpawnHierarchyForReorderFailure",
-      { commands: Game.System.commands(Game.System.spawns(Name)) },
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf)) },
       ({ commands }) =>
         {
           rootId = commands.spawn(Game.Command.spawn([Name, { value: "root" }] as const))
