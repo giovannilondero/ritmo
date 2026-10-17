@@ -157,6 +157,29 @@ describe("Runtime", () => {
     })
   })
 
+  it("rejects an unknown resource key next to known ones, naming it", () => {
+    Runtime.make({
+      schema,
+      services: Runtime.services(),
+      resources: {
+        DeltaTime: 1 / 60,
+        // @ts-expect-error Countr is not a resource key of this schema
+        Countr: 0
+      }
+    })
+    Game.Runtime.make({
+      services: Game.Runtime.services(),
+      resources: {
+        Counter: 0,
+        // @ts-expect-error DeltaTim is not a resource key of this schema
+        DeltaTim: 1 / 60
+      }
+    })
+    // A value typed as the resources record is accepted as it is.
+    const resources: Runtime.RuntimeResources<typeof schema> = { DeltaTime: 1 / 60 }
+    expect(Game.Runtime.make({ services: Game.Runtime.services(), resources })).type.not.toRaiseError()
+  })
+
   it("rejects descriptor-name state keys that are not schema keys", () => {
     Runtime.make({
       schema,

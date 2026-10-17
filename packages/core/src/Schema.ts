@@ -864,7 +864,7 @@ export namespace Schema {
         const Enabled extends Debug.Option | undefined = undefined
       >(options: {
         readonly services: ProvidedServices
-        readonly resources?: Resources
+        readonly resources?: Resources & Runtime.ExactResources<S, Resources>
         readonly machines?: ProvidedMachines
         /** Attaches a `debug` handle to the runtime; see the `Debug` module. */
         readonly debug?: Enabled
