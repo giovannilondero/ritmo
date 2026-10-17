@@ -433,6 +433,32 @@ describe("Runtime debug handle: population and ordering lints", () => {
     })
   })
 
+  it("counts components read only inside Query.anyOf as reads", () => {
+    const runtime = makeRuntime()
+    const Place = Game.System("Debug/PlaceTaggedAny", { commands: Game.System.commands(Game.System.spawns(Tagged)) }, () => {})
+    const Redraw = Game.System("Debug/RedrawAny", { queries: { q: Game.Query({
+      selection: { sprite: Game.Query.read(Sprite) },
+      filters: [Game.Query.anyOf(Game.Query.added(Tagged), Game.Query.changed(Position))]
+    }) } }, () => {})
+    runtime.debug.nameSchedules({ update: Game.Schedule(Redraw, Place, Move) })
+    const described = runtime.debug.describe()
+    expect(described.access.components.find((entry) => entry.name === "Debug/Tagged")?.readers).toEqual(["Debug/RedrawAny"])
+    expect(described.lints.filter((lint) => lint.code === "component-never-read").map((lint) => lint.subject)).not.toContain("Debug/Tagged")
+    // Redraw reads Position only through anyOf, before Move writes it.
+    expect(described.lints.filter((lint) => lint.code === "read-before-write").map((lint) => lint.subject)).toContain("Debug/Position")
+  })
+
+  it("describes a system placed directly and under Schedule.when once, with both placements", () => {
+    const runtime = makeRuntime()
+    const Noop = Game.System("Debug/NoopTwice", {}, () => {})
+    runtime.debug.nameSchedules({
+      plain: Game.Schedule(Noop),
+      gated: Game.Schedule(Game.Schedule.when([Game.Condition.inState(Flow, "Playing")], Noop))
+    })
+    const entries = runtime.debug.describe().systems.filter((system) => system.name === "Debug/NoopTwice")
+    expect(entries.map((system) => system.placements)).toEqual([["plain#0", "gated#0"]])
+  })
+
   it("notes systems that read something before the schedule's first writer of it", () => {
     const runtime = makeRuntime()
     const ReadAll = Game.System("Debug/ReadAll", {

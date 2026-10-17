@@ -206,7 +206,11 @@ export interface SystemDescription {
    * names for despawnsScope, relation names for relates.
    */
   readonly commands: CommandPermissions
-  /** Run conditions, rendered, for example `stateChanged(Game/Flow)`. */
+  /**
+   * Run conditions, rendered, for example `stateChanged(Game/Flow)`. A system
+   * placed under several `Schedule.when` / `pauseWhen` groups is described
+   * once, with the conditions of every placement.
+   */
   readonly when: ReadonlyArray<string>
   /** Pause conditions, rendered: while one fails the system waits and holds its stream entries. */
   readonly pauseWhen: ReadonlyArray<string>
