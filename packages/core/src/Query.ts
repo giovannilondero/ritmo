@@ -427,6 +427,8 @@ export namespace Query {
    */
   export type Root<T extends Any> = T extends QuerySpec<any, any, any, any, any, any, any, any, infer R> ? R : never
 
+  type FilteredDescriptors<F> = F extends { readonly kind: "added" | "changed"; readonly descriptor: infer D } ? D : never
+
   type RequiredSelectionDescriptors<T extends Any> = {
     readonly [K in keyof T["selection"]]:
       T["selection"][K] extends ReadAccess<infer D> | WriteAccess<infer D> ? D : never
@@ -441,12 +443,16 @@ export namespace Query {
   export type ProvesComponent<
     T extends Any,
     D extends ComponentDescriptor
-  > = [Extract<RequiredSelectionDescriptors<T> | T["with"][number], D>] extends [never]
+  > = [Extract<Proven<T>, D>] extends [never]
     ? false
     : true
 
-  /** The component descriptors a query proves its matches have: required selection slots and `with`. */
-  export type Proven<T extends Any> = RequiredSelectionDescriptors<T> | T["with"][number]
+  /**
+   * The component descriptors a query proves its matches have: required
+   * selection slots, `with`, and the component of each `added` / `changed`
+   * filter (a match has it). A `Query.anyOf` member proves nothing alone.
+   */
+  export type Proven<T extends Any> = RequiredSelectionDescriptors<T> | T["with"][number] | FilteredDescriptors<T["filters"][number]>
 
   /** The component descriptors a query proves its matches lack: its `without`. */
   export type Excluded<T extends Any> = T["without"][number]
@@ -756,6 +762,25 @@ export const multipleEntitiesError = (count: number): Query.MultipleEntitiesErro
 // `T` appears only as the check type, which inference never reads.
 export type Uninferred<T, Bound> = [T] extends [infer U extends Bound] ? U : never
 
+type DescriptorName<D> = D extends { readonly name: infer Name extends string } ? Name : never
+
+/** The names a query requires: its read and write slots, `with`, and plain `added` / `changed` filters. */
+type RequiredNames<Selection, With extends ReadonlyArray<unknown>, Filters extends ReadonlyArray<unknown>> =
+  | DescriptorName<{ readonly [K in keyof Selection]: Selection[K] extends { readonly mode: "read" | "write"; readonly descriptor: infer D } ? D : never }[keyof Selection]>
+  | DescriptorName<With[number]>
+  | DescriptorName<Filters[number] extends infer F ? F extends { readonly kind: "added" | "changed"; readonly descriptor: infer D } ? D : never : never>
+
+/**
+ * Rejects a `without` naming a component the query also requires: such a
+ * query can never match. Use it on the `without` list of a query spec.
+ */
+export type ExclusionsPossible<Selection, With extends ReadonlyArray<unknown>, Without extends ReadonlyArray<unknown>, Filters extends ReadonlyArray<unknown>> =
+  [Extract<DescriptorName<Without[number]>, RequiredNames<Selection, With, Filters>>] extends [never]
+    ? unknown
+    : {
+      readonly __fixQuery__: `${Extract<DescriptorName<Without[number]>, RequiredNames<Selection, With, Filters>>} is both required and excluded (without): this query can never match; remove it from one side`
+    }
+
 export const Query = <
   const Selection extends Record<string, SelectionAccess<any, Root>>,
   const With extends ReadonlyArray<ComponentDescriptor> = [],
@@ -769,7 +794,7 @@ export const Query = <
 >(spec: {
   readonly selection: Selection
   readonly with?: With
-  readonly without?: Without
+  readonly without?: Without & ExclusionsPossible<Selection, With, Without, Filters>
   readonly filters?: Filters
   readonly withRelations?: WithRelations
   readonly withoutRelations?: WithoutRelations

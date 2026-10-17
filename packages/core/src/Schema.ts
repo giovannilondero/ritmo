@@ -624,7 +624,7 @@ export namespace Schema {
       >(spec: {
         readonly selection: Selection
         readonly with?: With
-        readonly without?: Without
+        readonly without?: Without & QueryModule.ExclusionsPossible<Selection, With, Without, Filters>
         readonly filters?: Filters
         readonly withRelations?: WithRelations
         readonly withoutRelations?: WithoutRelations
