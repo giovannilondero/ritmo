@@ -6,7 +6,11 @@
  */
 import type { Schema, SchemaDefinition } from "../Schema.ts"
 
-type NamedRegistry = Record<string, { readonly name: string }>
+type NamedRegistry = Record<string, { readonly name: string; readonly kind?: string }>
+
+/** The descriptor kind each registry holds (relations carry their own shape). */
+const expectedKind: Partial<Record<(typeof kinds)[number], string>> = { components: "component", resources: "resource", events: "event" }
+const article = (kind: string) => kind === "event" ? "an" : "a"
 
 const kinds = ["components", "resources", "events", "relations"] as const
 
@@ -21,9 +25,15 @@ export const emptySchema = (): SchemaDefinition => ({
 /**
  * Merges two registries after checking for duplicate keys and descriptor names.
  */
-const mergeRegistry = (left: NamedRegistry, right: NamedRegistry): NamedRegistry => {
+const mergeRegistry = (left: NamedRegistry, right: NamedRegistry, expected: string | undefined): NamedRegistry => {
   const names = new Set(Object.values(left).map((entry) => entry.name))
   for (const [key, entry] of Object.entries(right)) {
+    if (expected !== undefined && entry.kind !== expected) {
+      const actual = String(entry.kind)
+      throw new Error(actual === "service"
+        ? `${key} is a service, not ${article(expected)} ${expected}: provide services to Game.Runtime.make({ services }) instead of registering them`
+        : `${key} is ${article(actual)} ${actual}, not ${article(expected)} ${expected}: move it to ${actual}s: { ... }`)
+    }
     if (key in left) {
       throw new Error(`Duplicate schema key: ${key}`)
     }
@@ -38,7 +48,7 @@ const mergeRegistry = (left: NamedRegistry, right: NamedRegistry): NamedRegistry
 export const mergeSchemas = (left: Schema.Any, right: Schema.Any): Schema.Any => {
   const merged: Record<string, unknown> = {}
   for (const kind of kinds) {
-    merged[kind] = mergeRegistry(left[kind], right[kind])
+    merged[kind] = mergeRegistry(left[kind], right[kind], expectedKind[kind])
   }
   merged["requires"] = [...left.requires, ...right.requires]
   return merged as unknown as Schema.Any

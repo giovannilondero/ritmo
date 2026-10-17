@@ -73,6 +73,24 @@ import type * as System from "./System.ts"
  */
 export type Registry = Record<string, Descriptor.Any>
 
+type Article<Kind extends string> = Kind extends "event" ? "an" : "a"
+
+/**
+ * Rejects descriptors of another kind in a fragment's `components`,
+ * `resources`, or `events`, naming where each belongs.
+ */
+type RegistryOfKind<R, Expected extends string> = {
+  readonly [K in keyof R]: R[K] extends { readonly kind: Expected }
+    ? unknown
+    : R[K] extends { readonly kind: infer Actual extends string }
+      ? {
+        readonly __fixSchema__: Actual extends "service"
+          ? `${K & string} is a service, not ${Article<Expected>} ${Expected}: provide services to Game.Runtime.make({ services }) instead of registering them`
+          : `${K & string} is ${Article<Actual>} ${Actual}, not ${Article<Expected>} ${Expected}: move it to ${Actual}s: { ... }`
+      }
+      : unknown
+}
+
 /**
  * A closed schema: the components, resources, events, and relations a world
  * may contain, and the component requirements (`Schema.requires`) every
@@ -316,9 +334,9 @@ export const fragment = <
   const Relations extends Record<string, Relation.Relation.Any> = {},
   const Requires extends ReadonlyArray<ComponentRequirement> = readonly []
 >(definition: {
-  readonly components?: Components
-  readonly resources?: Resources
-  readonly events?: Events
+  readonly components?: Components & RegistryOfKind<Components, "component">
+  readonly resources?: Resources & RegistryOfKind<Resources, "resource">
+  readonly events?: Events & RegistryOfKind<Events, "event">
   readonly relations?: Relations
   readonly requires?: Requires
 } & ValidateFragments<[SchemaDefinition<Components, Resources, Events, Relations>]>): SchemaDefinition<Components, Resources, Events, Relations, PairsOf<Requires[number]>> =>
