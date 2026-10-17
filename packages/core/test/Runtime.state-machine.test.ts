@@ -603,6 +603,50 @@ describe("Runtime state machine", () => {
     ])
   })
 
+  it("commits a request queued before the marker even when a transition schedule queues the same machine", () => {
+    const LocalGame = Schema.bind(schema)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateReplaced", ["Menu", "Playing", "Paused"] as const)
+    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateReplaced", ["Warmup", "Live", "SuddenDeath"] as const)
+
+    const queueBoth = LocalGame.System("StateMachineRuntime/QueueBoth", {
+      nextMachines: { app: System.nextState(LocalAppState), round: System.nextState(LocalRoundState) }
+    }, ({ nextMachines }) => {
+      nextMachines.app.set("Playing")
+      nextMachines.round.set("Live")
+    })
+    const queueRoundDuringEnter = LocalGame.System("StateMachineRuntime/QueueRoundDuringEnterReplaced", {
+      nextMachines: { round: System.nextState(LocalRoundState) }
+    }, ({ nextMachines }) => {
+      nextMachines.round.set("SuddenDeath")
+    })
+    const observe = LocalGame.System("StateMachineRuntime/ObserveReplacedRound", {
+      machines: { round: System.machine(LocalRoundState) },
+      transitionEvents: { round: System.readTransitionEvent(LocalRoundState) },
+      resources: { log: System.writeResource(Log) }
+    }, ({ machines, transitionEvents, resources }) => {
+      resources.log.update((entries) => [...entries, `round:${machines.round.get()} ${JSON.stringify(transitionEvents.round.all())}`])
+    })
+
+    const transitions = LocalGame.Schedule.transitions(
+      LocalGame.Schedule.onEnter(LocalAppState, "Playing", [queueRoundDuringEnter])
+    )
+    const runtime = LocalGame.Runtime.make({
+      services: Runtime.services(),
+      resources: { Counter: 0, Log: [] },
+      machines: Runtime.machines(Runtime.machine(LocalAppState, "Menu"), Runtime.machine(LocalRoundState, "Warmup"))
+    })
+
+    // Live was queued before the marker: it commits there. SuddenDeath was
+    // queued by a transition schedule during the marker: it waits for the next.
+    runtime.tick(LocalGame.Schedule(queueBoth, LocalGame.Schedule.applyStateTransitions(transitions), observe))
+    runtime.tick(LocalGame.Schedule(LocalGame.Schedule.applyStateTransitions(), observe))
+
+    expect(readResourceValue(runtime, schema, Log)).toEqual([
+      "round:Live [{\"from\":\"Warmup\",\"to\":\"Live\"}]",
+      "round:SuddenDeath [{\"from\":\"Live\",\"to\":\"SuddenDeath\"}]"
+    ])
+  })
+
   it("does not run transition handlers unless the bundle is attached to the marker", () => {
     const queuePlaying = Game.System(
       "StateMachineRuntime/QueueWithoutBundle",

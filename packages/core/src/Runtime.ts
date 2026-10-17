@@ -725,6 +725,8 @@ const makeValidatedRuntime = <
    */
   const currentMachines = new Map<symbol, unknown>()
   const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean }>()
+  /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
+  const discardedPending = new WeakSet<object>()
   const previousMachines = new Map<symbol, unknown>()
   /**
    * Machine keys changed by transitions applied during the current schedule run.
@@ -1833,11 +1835,17 @@ const makeValidatedRuntime = <
 
     const schedules = bundle?.entries ?? []
     for (const [machineKey, pending] of scheduledTransitions) {
-      if (pendingMachines.get(machineKey) !== pending) {
+      if (discardedPending.has(pending)) {
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
-      pendingMachines.delete(machineKey)
+      // A transition schedule earlier in this marker may have queued a newer
+      // value for this machine: that one waits for the next marker.
+      if (pendingMachines.get(machineKey) === pending) pendingMachines.delete(machineKey)
+      /** Keeps this request queued after a failure, unless a newer one replaced it. */
+      const requeue = () => {
+        if (!pendingMachines.has(machineKey)) pendingMachines.set(machineKey, pending)
+      }
       const current = currentMachines.get(machineKey)
       if (current === undefined) {
         continue
@@ -1860,7 +1868,7 @@ const makeValidatedRuntime = <
         const value = currentMachines.get(sub.key)
         const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
         if (!result.ok) {
-          pendingMachines.set(machineKey, pending)
+          requeue()
           if (tracing) traceTransition(machineKey, snapshot, "failed")
           return result
         }
@@ -1872,7 +1880,7 @@ const makeValidatedRuntime = <
           const result = runTransitionSchedule(schedule, snapshot)
           if (!result.ok) {
             // The transition did not happen; keep it queued for a later attempt.
-            pendingMachines.set(machineKey, pending)
+            requeue()
             if (tracing) traceTransition(machineKey, snapshot, "failed")
             return result
           }
@@ -1888,7 +1896,7 @@ const makeValidatedRuntime = <
         ) {
           const result = runTransitionSchedule(schedule, snapshot)
           if (!result.ok) {
-            pendingMachines.set(machineKey, pending)
+            requeue()
             if (tracing) traceTransition(machineKey, snapshot, "failed")
             return result
           }
@@ -1929,6 +1937,8 @@ const makeValidatedRuntime = <
     if (from !== undefined) previousMachines.set(machineKey, from)
     if (to === undefined) {
       currentMachines.delete(machineKey)
+      const discarded = pendingMachines.get(machineKey)
+      if (discarded !== undefined) discardedPending.add(discarded)
       pendingMachines.delete(machineKey)
     } else {
       currentMachines.set(machineKey, to)

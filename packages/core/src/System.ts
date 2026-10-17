@@ -482,6 +482,11 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * Queues `value`, committed at the next `applyStateTransitions(...)`. For a
    * sub-state it returns a `Result` that fails with `SubStateInactive` (and
    * queues nothing) while the parent is in another state.
+   *
+   * One value is queued per machine: a later `set` before the marker
+   * replaces an earlier one. A `set` from a transition schedule (`onEnter`,
+   * `onExit`, `onTransition`) is committed at the following marker, while a
+   * value queued before the current marker still commits at it.
    */
   set(value: Machine.StateMachine.Value<M>): Machine.SetResult<M>
   /** Like `set`, but committing the current value again is skipped (no exit or enter schedules). */
