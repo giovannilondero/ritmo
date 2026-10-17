@@ -111,7 +111,7 @@ export type ValidateRecordable<Schedule> =
 export interface TickRecord {
   /** The recorder's tick number, counting the recorded schedule's ticks from 1. */
   readonly tick: number
-  /** Per source service: what `snapshot()` returned this tick, in call order. Absent when it repeats the previous tick. */
+  /** Per source service: what `snapshot()` returned this tick, in call order. Absent when it repeats the previous tick; the first tick of a saved window carries every value. */
   readonly services?: Readonly<Record<string, ReadonlyArray<unknown>>>
   /** Events the host sent since the previous recorded tick, in order. */
   readonly sent?: ReadonlyArray<{ readonly event: string; readonly value: unknown }>
@@ -282,8 +282,18 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
     for (let index = 0; index < points.length; index++) if (points[index]!.tick <= windowStart) firstNeeded = index
     if (firstNeeded > 0) {
       points = points.slice(firstNeeded)
-      ticks = ticks.filter((record) => record.tick > points[0]!.tick)
-      checkpoints = checkpoints.filter((checkpoint) => checkpoint.tick >= points[0]!.tick)
+      const start = points[0]!.tick
+      // Service values are stored only when they change, so the first kept
+      // tick takes the latest values of the dropped ones it does not repeat:
+      // the window must replay on its own.
+      const carried: Record<string, ReadonlyArray<unknown>> = {}
+      for (const record of ticks) if (record.tick <= start && record.services !== undefined) Object.assign(carried, record.services)
+      ticks = ticks.filter((record) => record.tick > start)
+      const first = ticks[0]
+      if (first !== undefined && Object.keys(carried).length > 0) {
+        ticks[0] = { ...first, services: { ...carried, ...first.services } }
+      }
+      checkpoints = checkpoints.filter((checkpoint) => checkpoint.tick >= start)
     }
   }
   takePoint()
