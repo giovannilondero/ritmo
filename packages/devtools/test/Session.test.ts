@@ -138,6 +138,22 @@ describe("Session", () => {
     expect(run.text).toContain(`INVARIANT "near origin" violated at f4: x=3`)
   })
 
+  it("stops with invariant-threw, keeping the run's text, when an invariant throws", () => {
+    const FirstMover = Invariant.fromInspector(Game.Inspector("first mover", {
+      queries: { movers: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
+    }, ({ queries }): string | undefined => {
+      const first = queries.movers.each()[0]
+      if (first === undefined) throw new Error("no mover")
+      return undefined
+    }))
+    const session = Session.make(makeRuntime(), { hostClock, schedules: { setup, update }, invariants: [FirstMover] })
+    const run = session.run("update", { frames: 5 })
+    expect(run.data).toMatchObject({ ok: false, frames: 1, stop: { reason: "invariant-threw", frame: 1, invariant: "first mover" } })
+    expect(run.text).toContain(`INVARIANT "first mover" threw at f1: Error: no mover`)
+    // The session stays usable.
+    expect(session.run("setup").data.stop).toEqual({ reason: "completed" })
+  })
+
   it("reports expected failures and thrown defects as stops", () => {
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } })
     const Fail = Game.System("Dev/Fail", {}, () => Result.failure("Broken" as const))
