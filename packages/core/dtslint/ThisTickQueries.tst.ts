@@ -112,6 +112,20 @@ describe("Game.System.thisTick on queries", () => {
     runtime.tick(Game.Schedule(Thaw, deferred, AimUnfrozen))
   })
 
+  it("counts inserts of a component named only inside Query.anyOf", () => {
+    const Redraw = Game.System("Tick/RedrawAnyOf", {
+      queries: { changed: Game.System.thisTick(Game.Query({
+        selection: { health: Game.Query.read(Health) },
+        filters: [Game.Query.anyOf(Game.Query.added(Stunned), Game.Query.changed(Position))]
+      })) }
+    }, () => {})
+    // @ts-expect-error Tick/RedrawAnyOf needs this tick's commands for queries.changed, but Tick/Stun queues them with no applyDeferred() in between
+    runtime.tick(Game.Schedule(Stun, Redraw))
+    // @ts-expect-error Tick/Stun queues commands that Tick/RedrawAnyOf needs this tick (queries.changed), but it runs after Tick/RedrawAnyOf
+    runtime.tick(Game.Schedule(Redraw, Stun))
+    runtime.tick(Game.Schedule(Stun, deferred, Redraw))
+  })
+
   it("flattens nested schedules, and finds the marker at any level", () => {
     const spawning = Game.Schedule(SpawnWave)
     const flushed = Game.Schedule(SpawnWave, deferred)
