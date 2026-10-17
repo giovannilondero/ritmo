@@ -24,7 +24,9 @@
  *
  * Restoring despawns every current entity and spawns the saved ones with their
  * original ids, so change detection and renderer sync see a restore as normal
- * despawns and spawns. Pending commands and events are dropped. Transient
+ * despawns and spawns. Pending commands and events emitted by systems are
+ * dropped; events the host sent with `runtime.send` and no system has read
+ * yet are kept, since they are input that has not been handled. Transient
  * components are absent from restored entities; transient resources keep their
  * current value.
  *
@@ -126,6 +128,8 @@ export type RestoreError =
   /** A saved sub-state value while its parent machine is not in the state the sub-state exists in. */
   | { readonly _tag: "InactiveSubState"; readonly name: string; readonly parent: string; readonly requires: unknown }
   | { readonly _tag: "DuplicateEntity"; readonly entityId: number }
+  /** A scope name that no `Game.EntityScope(...)` of this game defines. */
+  | { readonly _tag: "UnknownScope"; readonly name: string }
   /** A scope member that is not a saved entity, or is already in another scope. */
   | { readonly _tag: "InvalidScope"; readonly name: string; readonly entityId: number }
   | { readonly _tag: "UnvalidatedDescriptor"; readonly name: string }

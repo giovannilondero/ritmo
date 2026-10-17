@@ -76,6 +76,23 @@ describe("snapshots keep entity scopes", () => {
     })
   })
 
+  it("rejects a scope name this game does not define", () => {
+    const runtime = makeRuntime()
+    runtime.tick(Game.Schedule(Game.System("SnapshotScopes/SpawnUnknown", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
+      commands.spawnIn(Level, Game.Command.spawn([Name, "wall"]))
+    }), Game.Schedule.applyDeferred()))
+    const saved = runtime.snapshot()
+    const id = saved.entities[0]!.id
+    const target = makeRuntime()
+    expect(target.restore({ ...saved, scopes: { "SnapshotScopes/Levl": [id] } })).toEqual({
+      ok: false,
+      error: { _tag: "UnknownScope", name: "SnapshotScopes/Levl" }
+    })
+    // Nothing changed: the target still restores the real save.
+    expect(target.restore(saved)).toEqual({ ok: true, value: undefined })
+    expect(target.inspect(Names)).toEqual(["wall"])
+  })
+
   it("rejects version 1 snapshots, which have no scopes, instead of restoring them without", () => {
     const runtime = makeRuntime()
     const { scopes: _scopes, ...rest } = runtime.snapshot()

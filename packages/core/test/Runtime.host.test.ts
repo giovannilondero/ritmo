@@ -111,6 +111,22 @@ describe("host events and pause gates", () => {
     expect(() => runtime.send(Ping, 3)).not.toThrow()
   })
 
+  it("rejects snapshot and restore from inside a tick, including trace callbacks", () => {
+    const runtime = make()
+    const saved = runtime.snapshot()
+    const snapshotInside = Game.System("Host/SnapshotInside", {}, () => { runtime.snapshot() })
+    const restoreInside = Game.System("Host/RestoreInside", {}, () => { runtime.restore(saved) })
+    expect(() => runtime.tick(Game.Schedule(snapshotInside))).toThrow("runtime.snapshot was called while a schedule is running")
+    expect(() => runtime.tick(Game.Schedule(restoreInside))).toThrow("runtime.restore was called while a schedule is running")
+    expect(() => runtime.tryTick(Game.Schedule(restoreInside))).toThrow("runtime.restore was called while a schedule is running")
+    const sendInside = Game.System("Host/SendInsideTry", {}, () => runtime.send(Ping, 1))
+    expect(() => runtime.tryTick(Game.Schedule(sendInside))).toThrow("while a schedule is running")
+    const stop = runtime.debug.observe((event) => { if (event.type === "frame") runtime.restore(saved) })
+    expect(() => runtime.tick(Game.Schedule())).toThrow("while a schedule is running")
+    stop()
+    expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
+  })
+
   it("preserves unread host sends through restore without replaying already consumed sends or simulation events", () => {
     const runtime = make()
     const fastLog: Array<ReadonlyArray<number>> = []

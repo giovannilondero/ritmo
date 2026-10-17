@@ -637,12 +637,15 @@ export interface Runtime<
    * resources are skipped.
    *
    * Callable only when every component and resource is constructed or
-   * transient; see the `Snapshot` module.
+   * transient; see the `Snapshot` module. Take it between ticks: calling it
+   * while a schedule is running (from a system, a service, or a trace
+   * callback) throws.
    */
   readonly snapshot: Snapshot.Gate<S, () => Snapshot.WorldSnapshot>
   /**
    * Replaces the world with a snapshot after validating it against the
-   * schema. On failure nothing changes. See the `Snapshot` module.
+   * schema. On failure nothing changes. See the `Snapshot` module. Restore
+   * between ticks: calling it while a schedule is running throws.
    */
   readonly restore: Snapshot.Gate<S, (data: unknown) => Result.Result<void, Snapshot.RestoreError>>
   /**
@@ -2040,8 +2043,14 @@ const makeValidatedRuntime = <
     return succeeded
   }
 
-  /** Whether a schedule is running now: `send` is not allowed meanwhile. */
+  /** Whether `runtime.tick` is on the stack: a nested `tick` is a defect. */
   let ticking = false
+  /**
+   * Whether a tick is advancing its frame or running its schedules (in
+   * `tick` and `tryTick`): `send`, `snapshot`, and `restore` are defects
+   * meanwhile. It is cleared before `tick.end` is announced to host listeners.
+   */
+  let inTick = false
 
   /**
    * Runs one schedule. A failing system stops the schedule; systems that
@@ -2065,7 +2074,7 @@ const makeValidatedRuntime = <
   let hostEvents = new Set<string>()
 
   const send = (descriptor: Descriptor<"event", string, any>, value: unknown): void => {
-    if (ticking) throw new Error(`runtime.send(${descriptor.name}) was called while a schedule is running: emit from a system instead`)
+    if (inTick) throw new Error(`runtime.send(${descriptor.name}) was called while a schedule is running: emit from a system instead`)
     if (!eventsByKey.has(descriptor.key)) throw new Error(`runtime.send: ${descriptor.name} is not an event of this runtime's schema`)
     const published = world.advanceTick()
     events.append(descriptor.key, published, [value], true)
@@ -2136,6 +2145,7 @@ const makeValidatedRuntime = <
     if (ticking) throw new Error("runtime.tick cannot run inside another tick")
     if (debugEnabled) reportUnread("next-tick")
     ticking = true
+    inTick = true
     try {
       advanceFrame()
       return watchResult(observedTick(schedules, () => {
@@ -2147,6 +2157,7 @@ const makeValidatedRuntime = <
       }), schedules)
     } finally {
       ticking = false
+      inTick = false
     }
   }
 
@@ -2161,9 +2172,11 @@ const makeValidatedRuntime = <
     try {
       result = run()
     } catch (defect) {
+      inTick = false
       emitHost({ type: "tick.end", schedules, frame: frameCount, outcome: "defect", error: defect })
       throw defect
     }
+    inTick = false
     emitHost(result.ok
       ? { type: "tick.end", schedules, frame: frameCount, outcome: "ok" }
       : { type: "tick.end", schedules, frame: frameCount, outcome: "failed", error: result.error })
@@ -2202,8 +2215,14 @@ const makeValidatedRuntime = <
       return watchResult(Result.failure({ kind: "TickOrderViolation" as const, issues }), [schedule])
     }
 
-    advanceFrame()
-    return watchResult(observedTick([schedule], () => runScheduleUnsafe(schedule)), [schedule]) as Result.Result<void, Schedule.FailureOf<Selected>>
+    if (inTick) throw new Error("runtime.tryTick cannot run inside another tick")
+    inTick = true
+    try {
+      advanceFrame()
+      return watchResult(observedTick([schedule], () => runScheduleUnsafe(schedule)), [schedule]) as Result.Result<void, Schedule.FailureOf<Selected>>
+    } finally {
+      inTick = false
+    }
   }
 
   /**
@@ -2240,6 +2259,7 @@ const makeValidatedRuntime = <
   for (const provision of machineEntries) machinesByName.set(provision.machine.name, provision.machine)
 
   const snapshot = (): Snapshot.WorldSnapshot => {
+    if (inTick) throw new Error("runtime.snapshot was called while a schedule is running: it would capture writes a failing system rolls back; take it between ticks")
     const savedResources: Record<string, unknown> = {}
     for (const [name, descriptor] of resourcesByName) {
       if (!DescriptorModule.isTransient(descriptor) && resources.has(descriptor.key)) {
@@ -2363,6 +2383,7 @@ const makeValidatedRuntime = <
     const scoped = new Set<number>()
     const memberships: Array<readonly [number, symbol]> = []
     for (const [name, members] of Object.entries(saved.scopes)) {
+      if (!options.scopeDefinitions.some((scope) => scope.name === name)) return Result.failure({ _tag: "UnknownScope", name })
       for (const id of members) {
         if (!ids.has(id) || scoped.has(id)) return Result.failure({ _tag: "InvalidScope", name, entityId: id })
         scoped.add(id)
@@ -2402,6 +2423,7 @@ const makeValidatedRuntime = <
   }
 
   const tracedRestore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
+    if (inTick) throw new Error("runtime.restore was called while a schedule is running: the running systems' queued commands would land on the restored world; restore between ticks")
     const result = restore(data)
     if (tracing) emit({ type: "restore", frame: frameCount, tick: world.currentTick(), ok: result.ok })
     return result
