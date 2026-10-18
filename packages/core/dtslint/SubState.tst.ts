@@ -41,7 +41,7 @@ describe("sub-states", () => {
   })
 
   it("rejects a parent state that does not exist", () => {
-    // @ts-expect-error Type '"Paused"' is not assignable to type '"Menu" | "Playing"'
+    // @ts-expect-error Type '"Paused"' is not assignable
     Game.StateMachine("SubStateTypes/Typo", ["A"] as const, { within: [Session, "Paused"] })
   })
 
