@@ -84,7 +84,7 @@ describe("System", () => {
             height: viewport.height
           }))).type.toBe<Result.Result<void, Size2.Error>>()
           expect(services.logger).type.toBe<{ log: (message: string) => void }>()
-          expect(events.tick.emit).type.toBe<(value: { dt: number }) => void>()
+          expect(events.tick.emit).type.toBe<(value: { readonly dt: number }) => void>()
           // Plain write cells take valid values only; validation belongs to constructed descriptors.
           expect(resources.phase).type.not.toHaveProperty("setResult")
           expect(resources.phase).type.not.toHaveProperty("updateResult")

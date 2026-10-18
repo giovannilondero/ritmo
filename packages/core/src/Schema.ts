@@ -709,7 +709,7 @@ export namespace Schema {
         draft: Entity.EntityDraft<S, P, Root, Relates>,
         ...entries: Entries
       ) => Command.DraftFor<S, Entries, P, Root, Relates>
-      entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: Descriptor.Value<D>) => Command.Entry<D>
+      entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: QueryModule.ReadonlyValue<Descriptor.Value<D>>) => Command.Entry<D>
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>

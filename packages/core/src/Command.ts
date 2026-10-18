@@ -65,6 +65,7 @@ import * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import type * as Relation from "./Relation.ts"
 import * as Result from "./Result.ts"
+import type { ReadonlyValue } from "./Query.ts"
 import type { RequirementPair, Schema } from "./Schema.ts"
 
 /**
@@ -102,7 +103,7 @@ export namespace Draft {
 /**
  * A typed descriptor/value pair used by the flat command authoring APIs.
  */
-export type Entry<D extends Descriptor<"component", string, any>> = readonly [D, Descriptor.Value<D>]
+export type Entry<D extends Descriptor<"component", string, any>> = readonly [D, ReadonlyValue<Descriptor.Value<D>>]
 
 /**
  * Extracts the component-descriptor union from a schema.
@@ -283,7 +284,7 @@ const unspawnedId = Entity.makeEntityId<any, any>(-1)
  */
 export const entry = <D extends Descriptor<"component", string, any>>(
   descriptor: D,
-  value: Descriptor.Value<D>
+  value: ReadonlyValue<Descriptor.Value<D>>
 ): Entry<D> => [descriptor, value]
 
 /**

@@ -568,13 +568,14 @@ export interface ReadCell<T> {
  */
 export interface WriteCell<T> extends ReadCell<T> {
   /**
-   * Replaces the current value.
+   * Replaces the current value. Takes the readonly shape reads return, so a
+   * value read from any cell can be written back as it is.
    */
-  set(value: T): void
+  set(value: ReadonlyValue<T>): void
   /**
    * Updates the current value based on the previous one.
    */
-  update(f: (current: ReadonlyValue<T>) => T): void
+  update(f: (current: ReadonlyValue<T>) => ReadonlyValue<T>): void
 }
 
 /**

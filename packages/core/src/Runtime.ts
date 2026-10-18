@@ -678,7 +678,7 @@ export interface Runtime<
    * The event must belong to the schema. Calling it while a schedule is
    * running is a defect and throws: inside a tick, emit from a system.
    */
-  readonly send: <D extends Schema.EventDescriptor<S>>(descriptor: D, value: Descriptor.Value<D>) => void
+  readonly send: <D extends Schema.EventDescriptor<S>>(descriptor: D, value: ReadonlyValue<Descriptor.Value<D>>) => void
 }
 
 /**

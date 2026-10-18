@@ -461,7 +461,8 @@ export interface EventReadView<T> {
  * A writable event stream view.
  */
 export interface EventWriteView<T> {
-  emit(value: T): void
+  /** Publishes one event. Takes the readonly shape reads return, so a read event can be emitted again. */
+  emit(value: import("./Query.ts").ReadonlyValue<T>): void
 }
 
 /**
