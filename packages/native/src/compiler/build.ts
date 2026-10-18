@@ -44,7 +44,8 @@ export const buildGame = async (config: Config, target: Target, root: string): P
   try { await access(bytecode) } catch { await writeFile(bytecode, "#include <stdint.h>\nconst uint8_t rn_bundle[]={0};\nconst uint32_t rn_bundle_size=0;\n") }
   const cmake = process.env.CMAKE ?? "cmake"
   const options = ["-S", packageRoot, "-B", build, "-DCMAKE_BUILD_TYPE=Release", `-DRN_BUNDLE=${bytecode}`, `-DRN_KERNELS=${join(generated, "kernels.c")}`, `-DRN_APP_NAME=${config.app.name}`, `-DRN_WIDTH=${config.window.width}`, `-DRN_HEIGHT=${config.window.height}`]
-  if (process.env.RITMO_NATIVE_SANITIZE === "1") options.push("-DRN_SANITIZE=ON")
+  // Reset the cached CMake option when leaving a sanitizer run.
+  options.push(`-DRN_SANITIZE=${process.env.RITMO_NATIVE_SANITIZE === "1" ? "ON" : "OFF"}`)
   if (process.env.RITMO_NATIVE_HEADLESS === "1") options.push("-DRN_HEADLESS_DRIVERS=ON")
   if (process.env.FETCHCONTENT_SOURCE_DIR_SDL3) options.push(`-DFETCHCONTENT_SOURCE_DIR_SDL3=${process.env.FETCHCONTENT_SOURCE_DIR_SDL3}`)
   console.log(`Configuring ${target} host…`); run(cmake, options)

@@ -2,6 +2,9 @@
 
 Implementation status (single PR, per the user's instruction; do not merge):
 
+Paused at the user's request while GitHub write access is unavailable. The local
+handoff and exact resume commands are in [NATIVE_CHECKPOINT.md](NATIVE_CHECKPOINT.md).
+
 - Linux top-down and inkline-town run natively and pass 600-frame Node oracles.
 - Private numeric columns/query views/transaction hooks and a conservative C
   compiler are implemented. 10k numeric fuzz cases pass; at 5k entities native
@@ -217,9 +220,10 @@ the game's schema, systems and schedules untouched.
 3. **Core seams must not slow the browser path.** The seams in section 6 are
    off unless the native bundle turns them on. Same-machine bench compare
    against `main` must show no regression over 20% on any case.
-4. **Each phase ends green and usable.** Commit per step with a message that
-   says what it adds and how it was verified. One PR per phase, merged before
-   the next phase starts, so `main` never holds half a phase.
+4. **Each checkpoint ends green and usable.** Commit with a message that says
+   what it adds and how it was verified. The user's instruction overrides the
+   original per-phase PR workflow: keep all work in one owned PR and never
+   merge it or #47 into `main`.
 5. **C code**: C11, warnings as errors (`-Wall -Wextra -Werror`, `/W4 /WX`),
    no global mutable state outside `rn_main.c`, every allocation freed on
    shutdown, AddressSanitizer and UBSan builds in CI on Linux. Never compile

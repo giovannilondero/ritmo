@@ -79,10 +79,41 @@ separate native rendering backend.
 | `snapshots(read)` | World's state after each frame for the exact oracle |
 | `fail(message)` | Stop with a diagnostic and nonzero exit status |
 
+Rotation and frame rectangles apply to sprites. Rectangles are axis-aligned;
+debug text uses SDL's fixed-size font. Layers currently provide ordering,
+translation and visibility. Scaling, anchors and opacity are node properties;
+negative scale and sprite flipping are not implemented.
+
 Static `new URL("./asset", import.meta.url).href` expressions are resolved by the
 bundler, since QuickJS has no DOM URL global. Use `gfx.texture` with asset-relative
 paths for packaged native assets. All runtime-facing types use ES2022 without
 DOM or Node globals; CLI/compiler types are built separately.
+
+The host supplies a data-only `structuredClone` adapter when the engine lacks
+one. It covers plain objects, arrays, cycles, collections, dates, regular
+expressions and numeric buffers/views. Transfer lists, host objects and full
+Web API clone semantics are outside this adapter's scope.
+
+## Mobile projects
+
+Android and iOS project generation is available, with build and oracle launchers:
+
+```sh
+pnpm native build --config examples/top-down/ritmo-native.config.ts --target android --generate-only
+pnpm native build --config examples/top-down/ritmo-native.config.ts --target ios --generate-only
+```
+
+Generated projects live in the game's `native/android` and `native/ios` folders.
+Remove `--generate-only` to build with the platform toolchain; use `check` to
+install and compare snapshots on an already running emulator or simulator.
+Android requires Java, SDK 35, NDK 27.2.12479018 and CMake 3.31.6, with
+`ANDROID_HOME` set. iOS requires Xcode on macOS. Add the target to the config's
+`targets` before building. `doctor --target android` checks the Android tools.
+
+These projects have been generated locally. APK builds, simulator builds and
+device execution remain unverified; the CI jobs are provided for that validation.
+macOS and Windows desktop execution also await their CI runs. Linux desktop is
+the locally verified MVP.
 
 ## Compiled subset
 
@@ -131,3 +162,8 @@ Set `CMAKE` to a CMake executable when it is not on PATH. For a display-free Lin
 build without desktop development libraries, set `RITMO_NATIVE_HEADLESS=1`.
 `FETCHCONTENT_SOURCE_DIR_SDL3` points to an already extracted SDL3 3.2.28 tree for
 offline builds. SDL is fetched from a pinned archive otherwise.
+
+Set `RITMO_NATIVE_SANITIZE=1` for an AddressSanitizer/UBSan build. A subsequent
+build without it turns sanitizers off. When switching from a headless-only SDL
+build to a desktop SDL build, remove `.ritmo-native/<target>/build` first to
+clear SDL's cached video-driver options.
