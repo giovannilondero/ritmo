@@ -66,6 +66,7 @@ import type * as Result from "./Result.ts"
 import type * as Debug from "./Debug.ts"
 import type * as Runtime from "./Runtime.ts"
 import type * as Schedule from "./Schedule.ts"
+import type * as Snapshot from "./Snapshot.ts"
 import type * as System from "./System.ts"
 
 /**
@@ -942,6 +943,8 @@ export namespace Schema {
         readonly machines?: ProvidedMachines
         /** Attaches a `debug` handle to the runtime; see the `Debug` module. */
         readonly debug?: Enabled
+        /** The game's save migrations (`Snapshot.migrations`): `restore` upgrades older saves with them. */
+        readonly saves?: Snapshot.Migrations
       }) => Runtime.MakeRuntimeResult<S, RuntimeServicesOf<ProvidedServices>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled>
       service: typeof Runtime.service
       services: typeof Runtime.services

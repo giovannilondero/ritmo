@@ -6,6 +6,7 @@
  */
 import * as Command from "../Command.ts"
 import type * as Debug from "../Debug.ts"
+import type * as Snapshot from "../Snapshot.ts"
 import type { Descriptor } from "../Descriptor.ts"
 import * as Condition from "../Condition.ts"
 import * as Entity from "../Entity.ts"
@@ -186,6 +187,7 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         readonly resources?: object
         readonly machines?: Runtime.RuntimeMachines<any>
         readonly debug?: Debug.Option
+        readonly saves?: Snapshot.Migrations
       }) => Runtime.make({ schema, ...options, machineDefinitions: definedMachines, scopeDefinitions: definedScopes } as never),
       service: Runtime.service,
       services: Runtime.services,

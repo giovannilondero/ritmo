@@ -92,6 +92,12 @@ export const version = 2
 
 export interface WorldSnapshot {
   readonly version: typeof version
+  /**
+   * The game's own save version: the last `Snapshot.migration` the runtime
+   * that wrote it was given (0 without migrations, and for saves written
+   * before game versions existed).
+   */
+  readonly gameVersion: number
   /** The next id the runtime will allocate. */
   readonly nextEntity: number
   readonly entities: ReadonlyArray<EntitySnapshot>
@@ -115,6 +121,8 @@ export interface WorldSnapshot {
 export type RestoreError =
   | { readonly _tag: "InvalidSnapshot"; readonly path: string }
   | { readonly _tag: "UnsupportedVersion"; readonly version: unknown }
+  /** A save written by a newer game than this runtime's migrations reach. */
+  | { readonly _tag: "NewerGameVersion"; readonly gameVersion: number; readonly latest: number }
   | { readonly _tag: "UnknownComponent"; readonly entityId: number; readonly name: string }
   | { readonly _tag: "InvalidComponent"; readonly entityId: number; readonly name: string; readonly error: unknown }
   /** A saved entity holds `requiredBy` but lacks `name`, which `Schema.requires` says it needs. */
@@ -149,6 +157,8 @@ const invalid = (path: string) => Result.failure<RestoreError>({ _tag: "InvalidS
 export const parse = (data: unknown): Result.Result<WorldSnapshot, RestoreError> => {
   if (!isRecord(data)) return invalid("$")
   if (data["version"] !== version) return Result.failure({ _tag: "UnsupportedVersion", version: data["version"] })
+  const gameVersion = data["gameVersion"] ?? 0
+  if (typeof gameVersion !== "number" || !Number.isSafeInteger(gameVersion) || gameVersion < 0) return invalid("$.gameVersion")
   if (!isEntityId(data["nextEntity"])) return invalid("$.nextEntity")
   const entities = data["entities"]
   if (!Array.isArray(entities)) return invalid("$.entities")
@@ -180,5 +190,74 @@ export const parse = (data: unknown): Result.Result<WorldSnapshot, RestoreError>
   for (const [name, members] of Object.entries(scopes)) {
     if (!Array.isArray(members) || !members.every(isEntityId)) return invalid(`$.scopes.${name}`)
   }
-  return Result.success(data as unknown as WorldSnapshot)
+  return Result.success({ ...data, gameVersion } as unknown as WorldSnapshot)
+}
+
+/**
+ * One step of a game's save format: turns a save of version `to - 1` into
+ * version `to`. A pure function on the save's plain data, tested like one.
+ */
+export interface Migration<To extends number = number> {
+  readonly to: To
+  readonly migrate: (save: WorldSnapshot) => WorldSnapshot
+}
+
+/** A game's save migrations, given to `Game.Runtime.make({ saves })`. Built with {@link migrations}. */
+export interface Migrations<Latest extends number = number> {
+  readonly kind: "SnapshotMigrations"
+  /** The game version `snapshot()` writes. */
+  readonly latest: Latest
+  readonly steps: ReadonlyArray<Migration>
+}
+
+/**
+ * Declares the step that upgrades saves to game version `to` (from `to - 1`).
+ *
+ * @example
+ * ```ts
+ * Snapshot.migration(2, (save) => ({ ...save, resources: { ...save.resources, "Town/Gold": 0 } }))
+ * ```
+ */
+export const migration = <const To extends number>(to: To, migrate: (save: WorldSnapshot) => WorldSnapshot): Migration<To> => ({ to, migrate })
+
+type Last<Steps> = Steps extends readonly [...Array<unknown>, infer L extends Migration] ? L["to"] : number
+
+/** `unknown` when the steps are numbered 1, 2, 3, ... in order; otherwise the message naming the misplaced one. */
+type Consecutive<Steps, Count extends Array<0> = []> =
+  Steps extends readonly [infer Head extends Migration, ...infer Tail]
+    ? number extends Head["to"] ? unknown
+    : Head["to"] extends [...Count, 0]["length"] ? Consecutive<Tail, [...Count, 0]>
+    : { readonly __fixMigrations__: `migration ${Head["to"]} is listed where migration ${[...Count, 0]["length"]} belongs: number migrations 1, 2, 3, ... in order` }
+    : unknown
+
+/**
+ * A game's save migrations, numbered 1, 2, 3, ... in order (checked at
+ * compile time for literal numbers, and at runtime). Pass them to
+ * `Game.Runtime.make({ saves })`: `snapshot()` then writes the last number as
+ * the save's `gameVersion`, and `restore(data)` runs every step after the
+ * save's version, in order, before validating it as usual. A save newer than
+ * the last step fails with `NewerGameVersion`. Use it instead of editing raw
+ * save data before `restore`.
+ *
+ * @example
+ * ```ts
+ * const runtime = Game.Runtime.make({
+ *   services,
+ *   saves: Snapshot.migrations(
+ *     Snapshot.migration(1, (save) => ({ ...save, scopes: {} })),
+ *     Snapshot.migration(2, renameGold)
+ *   )
+ * }).value
+ * runtime.restore(raw)
+ * ```
+ */
+export const migrations = <const Steps extends readonly [Migration, ...Array<Migration>]>(
+  ...steps: Steps & Consecutive<Steps>
+): Migrations<Last<Steps>> => {
+  steps.forEach((step, index) => {
+    if (step.to !== index + 1) {
+      throw new Error(`migration ${step.to} is listed where migration ${index + 1} belongs: number migrations 1, 2, 3, ... in order`)
+    }
+  })
+  return { kind: "SnapshotMigrations", latest: steps.length as Last<Steps>, steps }
 }

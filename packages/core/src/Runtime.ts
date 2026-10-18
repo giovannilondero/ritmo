@@ -713,6 +713,23 @@ export interface Runtime<
  */
 export const streamCapacity = 65_536
 
+/**
+ * Brings a parsed save to `migrations.latest`: runs every step after its
+ * game version, checking the structure after each.
+ */
+const migrateSave = (save: Snapshot.WorldSnapshot, saves: Snapshot.Migrations | undefined): Result.Result<Snapshot.WorldSnapshot, Snapshot.RestoreError> => {
+  const latest = saves?.latest ?? 0
+  if (save.gameVersion > latest) return Result.failure({ _tag: "NewerGameVersion", gameVersion: save.gameVersion, latest })
+  let current = save
+  for (const step of saves?.steps ?? []) {
+    if (step.to <= current.gameVersion) continue
+    const next = Snapshot.parse({ ...step.migrate(current), gameVersion: step.to })
+    if (!next.ok) return next
+    current = next.value
+  }
+  return Result.success(current)
+}
+
 const makeValidatedRuntime = <
   S extends Schema.Any,
   Services extends Record<string, unknown>,
@@ -727,6 +744,7 @@ const makeValidatedRuntime = <
   readonly machineDefinitions: ReadonlyArray<Machine.StateMachine.Any>
   readonly scopeDefinitions: ReadonlyArray<EntityScopeModule.EntityScope.Any>
   readonly debug: Debug.Option | undefined
+  readonly saves: Snapshot.Migrations | undefined
 }): Runtime<S, Services, Resources, Root, Machines> => {
   const world = makeWorld(options.schema, streamCapacity)
   const queries = makeQueryEngine(world)
@@ -2433,6 +2451,7 @@ const makeValidatedRuntime = <
     }
     return {
       version: Snapshot.version,
+      gameVersion: options.saves?.latest ?? 0,
       nextEntity: world.nextEntityValue(),
       entities: world.exportEntities(DescriptorModule.isTransient),
       relations: world.exportRelations(),
@@ -2450,7 +2469,9 @@ const makeValidatedRuntime = <
   const restore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
     const parsed = Snapshot.parse(data)
     if (!parsed.ok) return parsed
-    const saved = parsed.value
+    const migrated = migrateSave(parsed.value, options.saves)
+    if (!migrated.ok) return migrated
+    const saved = migrated.value
 
     // Validate everything before touching the world.
     const ids = new Set<number>()
@@ -2808,6 +2829,8 @@ export const make = <
   readonly scopeDefinitions?: ReadonlyArray<EntityScopeModule.EntityScope.Any>
   /** Attaches a `debug` handle to the runtime, timed by `hostClock`; see the `Debug` module. */
   readonly debug?: Enabled
+  /** The game's save migrations (`Snapshot.migrations`), applied by `restore`. */
+  readonly saves?: Snapshot.Migrations
 }): MakeRuntimeResult<S, Simplify<RuntimeServicesOf<ProvidedServices>>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled> => {
   const validated = collectConstructedRegistryValues(options.schema.resources, options.resources)
   if (!validated.ok) {
@@ -2820,7 +2843,8 @@ export const make = <
     machines: options.machines,
     machineDefinitions: options.machineDefinitions ?? [],
     scopeDefinitions: options.scopeDefinitions ?? [],
-    debug: options.debug
+    debug: options.debug,
+    saves: options.saves
   })
   return Result.success(runtime) as never
 }
