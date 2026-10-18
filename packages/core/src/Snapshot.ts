@@ -30,6 +30,11 @@
  * components are absent from restored entities; transient resources keep their
  * current value.
  *
+ * When the game's save format changes, give the runtime its migrations
+ * (`Game.Runtime.make({ saves: Snapshot.migrations(...) })`): saves carry a
+ * `gameVersion`, and `restore` upgrades older ones step by step before
+ * validating them.
+ *
  * @module Snapshot
  * @docGroup runtime
  *
