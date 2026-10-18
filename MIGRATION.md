@@ -61,6 +61,13 @@ Fix each error where it is reported; the messages name the fix.
   are contravariant and default to `never`; `EntityDraft` has a fourth
   parameter (`Relates`). Code that names these types with explicit
   arguments updates them; inferred code is unchanged.
+- **Removed duplicates.** Use `Descriptor.Hierarchy` / `Descriptor.Relation`
+  instead of `Relation.Hierarchy` / `Relation.Relation`, and
+  `Schema.fragment({})` instead of `Schema.empty()`.
+- **Permissions name at least one entry**, and a system declares one slot
+  per resource (a write or changed view reads too).
+- **Optional slots read with `value()`**: `cell.value()` replaces
+  `cell.present ? cell.get() : undefined`.
 - **Behaviour:** `Collide2` now stops a circle that starts exactly touching
   a wall and moves into it. A game that fingerprints its simulation
   re-records the fingerprints with the upgrade.

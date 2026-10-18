@@ -625,7 +625,10 @@ export function constructorOf<D extends Descriptor.Any>(
  * `Game.EntityScope(...)` instead when entities only share a lifetime (a
  * level, a menu) and need no tree, order, or traversal.
  */
-export const Hierarchy = RelationModule.Hierarchy
+export const Hierarchy = <const Name extends string, const RelatedName extends string>(
+  name: Name,
+  relatedName: RelatedName
+) => makePair("hierarchy", name, relatedName)
 
 /**
  * Defines a general relationship pair with direct edges and reverse lookups.
@@ -634,7 +637,10 @@ export const Hierarchy = RelationModule.Hierarchy
  * reverse lookup, but not hierarchy-only behavior such as tree traversal or
  * child reordering.
  */
-export const Relation = RelationModule.Relation
+export const Relation = <const Name extends string, const RelatedName extends string>(
+  name: Name,
+  relatedName: RelatedName
+) => makePair("relation", name, relatedName)
 import * as DecodeModule from "./Decode.ts"
-import * as RelationModule from "./Relation.ts"
+import { makePair } from "./internal/relations.ts"
 import * as ResultModule from "./Result.ts"

@@ -134,7 +134,8 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         commands: Command.commands,
         // `spawns(Player)` also allows what `Player` requires (`Schema.requires`), matching its type.
         spawns: (...components: ReadonlyArray<Descriptor<"component", string, any>>) =>
-          Command.spawns(...withRequired(requirements, components)),
+          // Internally erased: the bound signature already requires at least one component.
+          Command.spawns(...(withRequired(requirements, components) as unknown as readonly [Descriptor<"component", string, any>])),
         inserts: Command.inserts,
         removes: Command.removes,
         despawns: Command.despawns,

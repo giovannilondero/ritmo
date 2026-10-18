@@ -282,7 +282,8 @@ export const entry = <D extends Descriptor<"component", string, any>>(
 
 /**
  * Validates raw input through a constructed descriptor's own validator and
- * returns an entry result for `spawn(...)` / `insert(...)`.
+ * returns an entry result for `Game.Command.spawn(...)` / `extend(...)`.
+ * `commands.insert` takes valid entries only: check the result first.
  *
  * This is the one way to put unvalidated data on an entity: the descriptor
  * owns its validator (`Descriptor.ConstructedComponent(...)`, built with
@@ -375,7 +376,7 @@ const build = (
  *
  * Drafts are plain values: build them anywhere (including small factories),
  * then queue them with `commands.spawn(...)`. Entries may be `[Descriptor,
- * value]` pairs or results from `entryRaw(...)`; see `insert(...)` for how
+ * value]` pairs or results from `entryRaw(...)`; see `extend(...)` for how
  * failures are reported.
  *
  * @example
@@ -436,7 +437,7 @@ type ComponentDescriptor = Descriptor<"component", string, any>
  * Allows `spawn` / `spawnIn` of drafts whose components are all among `components`.
  * Use it for entities the system creates; use `extend` on a draft to build one.
  */
-export const spawns = <const Components extends ReadonlyArray<ComponentDescriptor>>(...components: Components): Permission<"spawns", Components[number]> =>
+export const spawns = <const Components extends readonly [ComponentDescriptor, ...ReadonlyArray<ComponentDescriptor>]>(...components: Components): Permission<"spawns", Components[number]> =>
   ({ permission: "spawns", values: components })
 
 /**
@@ -444,11 +445,11 @@ export const spawns = <const Components extends ReadonlyArray<ComponentDescripto
  * replace at the next `applyDeferred()`. To change a value now, on an entity
  * you matched, write through a query (`Game.Query.write`) instead.
  */
-export const inserts = <const Components extends ReadonlyArray<ComponentDescriptor>>(...components: Components): Permission<"inserts", Components[number]> =>
+export const inserts = <const Components extends readonly [ComponentDescriptor, ...ReadonlyArray<ComponentDescriptor>]>(...components: Components): Permission<"inserts", Components[number]> =>
   ({ permission: "inserts", values: components })
 
 /** Allows `remove(entity, X)` with `X` among `components`. */
-export const removes = <const Components extends ReadonlyArray<ComponentDescriptor>>(...components: Components): Permission<"removes", Components[number]> =>
+export const removes = <const Components extends readonly [ComponentDescriptor, ...ReadonlyArray<ComponentDescriptor>]>(...components: Components): Permission<"removes", Components[number]> =>
   ({ permission: "removes", values: components })
 
 /**
@@ -456,7 +457,7 @@ export const removes = <const Components extends ReadonlyArray<ComponentDescript
  * of `components` (`match.entity`), never a raw id: the system can only
  * despawn what it has proven is, for example, an `Enemy`.
  */
-export const despawns = <const Components extends ReadonlyArray<ComponentDescriptor>>(...components: Components): Permission<"despawns", Components[number]> =>
+export const despawns = <const Components extends readonly [ComponentDescriptor, ...ReadonlyArray<ComponentDescriptor>]>(...components: Components): Permission<"despawns", Components[number]> =>
   ({ permission: "despawns", values: components })
 
 /** Allows `despawnScope(scope)` for this scope. */
@@ -464,7 +465,7 @@ export const despawnsScope = <const Scope extends EntityScope.EntityScope.Any>(s
   ({ permission: "despawnsScope", values: [scope] })
 
 /** Allows `relate`, `unrelate`, and `reorderChildren` for these relations. */
-export const relates = <const Relations extends ReadonlyArray<Relation.Relation.Any>>(...relations: Relations): Permission<"relates", Relations[number]> =>
+export const relates = <const Relations extends readonly [Relation.Relation.Any, ...ReadonlyArray<Relation.Relation.Any>]>(...relations: Relations): Permission<"relates", Relations[number]> =>
   ({ permission: "relates", values: relations })
 
 type PermissionValue<Permissions, Kind extends PermissionKind> =

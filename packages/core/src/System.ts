@@ -864,10 +864,36 @@ export interface SystemAccessInput {
  */
 export type SystemAccessSpec = SystemAccessInput
 
-/** Rejects unknown system access categories at a bound constructor. */
+/** Rejects unknown system access categories, and redundant resource and event slots, at a bound constructor. */
 export type ExactAccess<Access extends SystemAccessInput> = Access & {
   readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: never
-}
+} & RedundantSlotsFix<Access, "resources", "read"> & RedundantSlotsFix<Access, "events", never>
+
+type SlotOf<A> = A extends { readonly mode: infer Mode extends string; readonly descriptor: { readonly name: infer Name extends string } } ? readonly [Mode, Name] : never
+
+/**
+ * Slots of `Record` that repeat another slot: the same descriptor in the same
+ * mode, or in `ReadMode` next to any other slot of it (a write or changed
+ * view already reads).
+ */
+type RedundantSlots<Record, ReadMode extends string> = {
+  readonly [K in keyof Record]: SlotOf<Record[K]> extends readonly [infer Mode, infer Name]
+    ? [Extract<SlotOf<Omit<Record, K>[keyof Omit<Record, K>]>, readonly [Mode extends ReadMode ? string : Mode, Name]>] extends [never] ? never : K
+    : never
+}[keyof Record]
+
+type RedundantSlotsFix<Access, Category extends "resources" | "events", ReadMode extends string> =
+  Access extends { readonly [C in Category]?: infer Record }
+    ? [RedundantSlots<Record, ReadMode>] extends [never]
+      ? unknown
+      : {
+        readonly [C in Category]: {
+          readonly [K in RedundantSlots<Record, ReadMode>]: {
+            readonly __fixSystem__: `${K & string} repeats ${Category extends "resources" ? "a resource" : "an event"} another slot of this system declares: keep one slot (a write or changed view reads too)`
+          }
+        }
+      }
+    : unknown
 
 type AccessField<
   Access,

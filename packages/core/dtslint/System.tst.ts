@@ -186,3 +186,37 @@ describe("System", () => {
     }, () => {})
   })
 })
+
+describe("redundant resource and event slots", () => {
+  const Score = Descriptor.Resource<number>()("Slots/Score")
+  const Ping = Descriptor.Event<number>()("Slots/Ping")
+  const Slots = Schema.bind(Schema.fragment({ resources: { Score }, events: { Ping } }))
+
+  it("rejects a read next to another slot of the same resource, and a repeated slot", () => {
+    Slots.System("Slots/ReadAndWrite", {
+      resources: {
+        // @ts-expect-error read repeats a resource another slot of this system declares
+        read: Slots.System.readResource(Score),
+        write: Slots.System.writeResource(Score)
+      }
+    }, () => {})
+    Slots.System("Slots/EmitTwice", {
+      events: {
+        // @ts-expect-error first repeats an event another slot of this system declares
+        first: Slots.System.writeEvent(Ping),
+        // @ts-expect-error second repeats an event another slot of this system declares
+        second: Slots.System.writeEvent(Ping)
+      }
+    }, () => {})
+  })
+
+  it("accepts a changed view next to a write, and reading the events a system emits", () => {
+    expect(Slots.System("Slots/WriteAndChanged", {
+      resources: { write: Slots.System.writeResource(Score), changed: Slots.System.changedResource(Score) }
+    }, () => {}).name).type.toBe<"Slots/WriteAndChanged">()
+    expect(Slots.System("Slots/Chain", {
+      events: { read: Slots.System.readEvent(Ping), write: Slots.System.writeEvent(Ping) }
+    }, () => {}).name).type.toBe<"Slots/Chain">()
+  })
+})
+
