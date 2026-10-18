@@ -129,9 +129,19 @@ includes it. For a new `packages/<dir>` (named `@typeonce/<name>`):
 
 3. Configure its trusted publisher with the same values as step 5 (`typeonce-dev`
    / `ritmo` / `release.yml` / environment `npm`), close to the next release:
-   an unvalidated configuration expires after two days.
+   an unvalidated configuration expires after two days. Tick **Allow npm
+   publish**: publishers created since September 2026 allow only
+   `npm stage publish` by default, and the release workflow runs
+   `npm publish`, which is then rejected with
+   `403 OIDC permission denied for this action`. The connection then lists
+   both `npm publish` and `npm stage publish`, like the existing packages.
 4. Release as usual: merge the Version Packages PR, and CI publishes the new
-   package with the others, with provenance. After that publish succeeds,
+   package with the others, with provenance. If only the new package failed,
+   start a fresh run (`gh workflow run release.yml --ref main`) rather than
+   re-running the failed job: the failed attempt already wrote its provenance
+   to the transparency log, so a re-run fails with
+   `TLOG_CREATE_ENTRY_ERROR (409)`, while a new run signs new provenance and
+   skips the versions already published. After that publish succeeds,
    require 2FA and disallow token publishing in the package's npm settings.
 
 ## References
