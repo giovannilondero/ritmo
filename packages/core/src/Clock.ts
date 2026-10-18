@@ -287,7 +287,7 @@ const stepsOf = (hz: number, seconds: number): Result.Result<number, InvalidDura
  * rounded to the nearest whole step (half up), so `Clock.duration(Clock.hz(60), 0.025)`
  * is 2 steps (1.5 rounds up). Shorter than one step is a compile error
  * ("0.001s is shorter than one step (1/60s)"). For seconds read from data,
- * use `durationRaw`.
+ * use `durationRaw`; for a count of steps, `durationOfSteps`.
  */
 export const duration = <Hz extends number, const Seconds extends number>(step: Step<Hz>, seconds: ValidDuration<Hz, Seconds>): Duration<Hz> => {
   const steps = stepsOf(step.hz, seconds as number)
@@ -299,6 +299,28 @@ export const duration = <Hz extends number, const Seconds extends number>(step: 
 export const durationRaw = <Hz extends number>(step: Step<Hz>, seconds: number): Result.Result<Duration<Hz>, InvalidDuration> => {
   const steps = stepsOf(step.hz, seconds)
   return steps.ok ? Result.success({ kind: "ClockDuration", steps: steps.value, hz: step.hz } as Duration<Hz>) : steps
+}
+
+type StepsMessage = "Clock.durationOfSteps needs a positive whole number of steps"
+
+/** `N` when it is a positive whole number (or a computed `number`); otherwise the message. */
+export type ValidSteps<N extends number> =
+  number extends N ? N
+  : `${N}` extends `-${string}` | `${string}.${string}` | `${string}e${string}` | "0" ? StepsMessage
+  : N
+
+/**
+ * A whole number of steps of `step` as a duration: `Clock.durationOfSteps(Clock.hz(60), 3)`.
+ * Use it when the length is counted in steps (an animation of 3 frames, a
+ * cooldown stored as steps); use `duration` for literal seconds and
+ * `durationRaw` for seconds from data. A count cannot round, so nothing can
+ * fail for a positive whole number: a literal zero, negative, or fraction is
+ * a compile error, and a computed one throws.
+ */
+export const durationOfSteps = <Hz extends number, const N extends number>(step: Step<Hz>, steps: ValidSteps<N>): Duration<Hz> => {
+  const count = steps as number
+  if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`Clock.durationOfSteps needs a positive whole number of steps, got ${count}`)
+  return { kind: "ClockDuration", steps: count, hz: step.hz } as Duration<Hz>
 }
 
 /** The whole steps a duration spans. */

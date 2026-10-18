@@ -114,3 +114,13 @@ describe("Clock", () => {
     expect(Plain.kind).toBe("resource")
   })
 })
+
+describe("Clock.durationOfSteps", () => {
+  it("spans exactly the given steps, and throws on a computed count that is not a positive whole number", () => {
+    expect(Clock.steps(Clock.durationOfSteps(step, 3))).toBe(3)
+    const zero: number = 0
+    expect(() => Clock.durationOfSteps(step, zero)).toThrow("Clock.durationOfSteps needs a positive whole number of steps, got 0")
+    const half: number = 0.5
+    expect(() => Clock.durationOfSteps(step, half)).toThrow("got 0.5")
+  })
+})
