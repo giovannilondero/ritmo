@@ -313,9 +313,7 @@ const main = (): void => {
       console.error(`\nPerformance regressions:\n${failures.map((failure) => `  - ${failure}`).join("\n")}`)
       process.exit(1)
     }
-    console.log(warnTypes
-      ? "\nNo blocking performance regressions; type metric growth is advisory."
-      : "\nNo performance regressions against the baseline.")
+    console.log("\nNo blocking performance regressions.")
   }
 }
 
