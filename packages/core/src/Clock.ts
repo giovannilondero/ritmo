@@ -9,7 +9,8 @@
  * - `Clock.system(Game, { name, resource, hold })` advances it every tick:
  *   `step + 1` and `dt = 1/hz`, or `dt = 0` while a `hold` condition passes.
  * - `Clock.duration(step, 0.5)` is a span in whole steps; `Clock.every(t, d)`
- *   is true on the step each period begins; `Clock.elapsed(t)` is exact.
+ *   is true on the step each period begins after the start (steps `d`,
+ *   `2d`, ...); `Clock.elapsed(t)` is exact.
  *
  * Time is counted in steps, never accumulated in floating point: elapsed
  * seconds are `step / hz`.
@@ -305,7 +306,9 @@ export const steps = (duration: Duration): number => duration.steps
 
 /**
  * Whether a period of `duration` begins on this tick: the clock advanced
- * (not held) to a step that is a multiple of the period. False while held.
+ * (not held) to a step that is a multiple of the period. False while held,
+ * and on the first step (0), which no advance reached: the first period
+ * begins at step `duration`.
  */
 export const every = <Hz extends number>(time: Time<Hz>, duration: Duration<NoInfer<Hz>>): boolean =>
   time.dt > 0 && time.step % duration.steps === 0

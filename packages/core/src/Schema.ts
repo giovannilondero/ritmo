@@ -847,7 +847,8 @@ export namespace Schema {
       /**
        * Builds a schedule whose systems run only while every condition
        * passes (in addition to their own `when`). Nested schedules are
-       * gated too; marker steps still run. Gated systems drop the events
+       * gated too; marker steps still run, and so do the transition schedules
+       * an `applyStateTransitions(bundle)` in the group runs. Gated systems drop the events
        * published while gated; use `pauseWhen` to keep them. For one system,
        * use `when` in its spec.
        */

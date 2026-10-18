@@ -632,7 +632,10 @@ export interface EntityStateMismatchError<T> {
  */
 export interface EntityStateWriteCell<T, Transitions> extends ConstructedWriteCell<T, T, DecodeError> {
   /**
-   * Moves from `from` to `to` if the component is still in `from`.
+   * Moves from `from` to `to` if the component is still in `from`. Use it for
+   * every move the transition table describes; `set` writes any state
+   * without checking the table, for resets that must not depend on the
+   * current state.
    *
    * @example
    * ```ts

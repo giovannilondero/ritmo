@@ -282,7 +282,8 @@ export const entry = <D extends Descriptor<"component", string, any>>(
 
 /**
  * Validates raw input through a constructed descriptor's own validator and
- * returns an entry result for `spawn(...)` / `insert(...)`.
+ * returns an entry result for `Game.Command.spawn(...)` / `extend(...)`.
+ * `commands.insert` takes valid entries only: check the result first.
  *
  * This is the one way to put unvalidated data on an entity: the descriptor
  * owns its validator (`Descriptor.ConstructedComponent(...)`, built with
@@ -375,7 +376,7 @@ const build = (
  *
  * Drafts are plain values: build them anywhere (including small factories),
  * then queue them with `commands.spawn(...)`. Entries may be `[Descriptor,
- * value]` pairs or results from `entryRaw(...)`; see `insert(...)` for how
+ * value]` pairs or results from `entryRaw(...)`; see `extend(...)` for how
  * failures are reported.
  *
  * @example

@@ -667,7 +667,8 @@ export const make = <S extends Schema.Any, const Entries extends ReadonlyArray<S
  *
  * Conditions gate every system in `entries`, nested schedules included.
  * Marker steps (`applyDeferred`, `applyStateTransitions`) in the group still
- * run. A gated system is the same system as far as the runtime is concerned:
+ * run, and so do the transition schedules an `applyStateTransitions(bundle)`
+ * in the group runs: gate those systems in their own specs. A gated system is the same system as far as the runtime is concerned:
  * it shares change detection and event cursors with the original and with
  * any other gated copy, so using one system in two groups of one schedule is
  * a duplicate like any other.
