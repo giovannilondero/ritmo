@@ -6,8 +6,8 @@
 - The library is early: breaking changes, removals, and renames are welcome. Do NOT keep deprecated aliases or re-exports. Long-term clean API first.
 
 ## Repo Structure
-- [`packages/core`](./packages/core/): strict public ECS/runtime library surface.
-- [`packages/browser`](./packages/browser/): browser timing (FixedLoop) and keyboard, pointer, and touch input.
+- [`packages/core`](./packages/core/): strict public ECS/runtime library surface, plus the platform-free fixed-step loop (`FixedLoop`).
+- [`packages/browser`](./packages/browser/): browser host adapters (BrowserTickSource, BrowserHostClock) and keyboard, pointer, and touch input.
 - [`packages/render`](./packages/render/): renderer-agnostic node registry and render-sync systems.
 - [`packages/pixi`](./packages/pixi/): Pixi container adapter (`PixiNodeRegistry.make`) for the render package's registry contract.
 - [`packages/math`](./packages/math/): validated math values (Scalar, Vector2, Size2, Aabb, InputAxis) and hot-path game helpers (Vec2, Box2, Collide2, SpatialGrid, FlowField, Random).
@@ -18,7 +18,7 @@
 - Packages never draw. Drawing, particles, and effects stay in games.
 - Bridge code that hands a renderer or the platform what it needs (nodes, positions, input, timing) and glue that would otherwise repeat in every game belong in the support packages.
 - Hand the game the data it needs to draw (like `Touch`'s `view()`), never the drawing itself.
-- Core and generic package modules never call a platform API (`performance`, `window`, `document`, timers, file system, network). A platform detail is a generic contract in the owning package with platform implementations injected (like `NodeRegistry` / `PixiNodeRegistry`, `HostClock` / `BrowserHostClock`). A default may use only what JavaScript itself guarantees in every engine. The compiler enforces this: package configs get only the ES2022 library, so a DOM or Node global does not compile; a host package that needs DOM types lists `"DOM"` in its own `lib`, as `packages/devtools` does for `Monitor`.
+- Core and generic package modules never call a platform API (`performance`, `window`, `document`, timers, file system, network). A platform detail is a generic contract in the owning package with platform implementations injected (like `NodeRegistry` / `PixiNodeRegistry`, `HostClock` / `BrowserHostClock`, `FixedLoop.TickSource` / `BrowserTickSource`). A default may use only what JavaScript itself guarantees in every engine. The compiler enforces this: package configs get only the ES2022 library, so a DOM or Node global does not compile; a host package that needs DOM types lists `"DOM"` in its own `lib`, as `packages/devtools` does for `Monitor`.
 - Simulation code reads time from `Clock` and randomness from `Random`; host time (`HostClock`) is for hosts, tools, and debug timing, never for systems.
 
 ## Core Principles

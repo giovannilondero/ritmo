@@ -34,6 +34,10 @@ export * as Entity from "./Entity.ts"
  */
 export * as EntityScope from "./EntityScope.ts"
 /**
+ * Fixed-step timing for any host: clamping, catch-up limits, interpolation.
+ */
+export * as FixedLoop from "./FixedLoop.ts"
+/**
  * The host's wall clock as an injected contract (`standard`, `test()`).
  */
 export * as HostClock from "./HostClock.ts"

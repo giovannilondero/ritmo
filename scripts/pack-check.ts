@@ -93,11 +93,12 @@ writeFileSync(path.join(consumer, "tsconfig.json"), JSON.stringify({
 }, null, 2))
 
 const program = `
-import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, FixedLoop, HostClock, Schema } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { Collide2, FlowField, Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
-import { BrowserHostClock, Keyboard } from "@typeonce/ritmo-browser"
+import { BrowserHostClock, BrowserTickSource, Keyboard } from "@typeonce/ritmo-browser"
+import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
 import * as Pixi from "@typeonce/ritmo-pixi"
@@ -134,6 +135,22 @@ const field = cell.ok ? FlowField.make(cell.value) : undefined
 field?.setWalls([{ minX: 0, minY: 0, maxX: 16, maxY: 4 }], 1)
 const moved = Collide2.moveCircle({ x: 0, y: 10 }, { x: 0, y: -20 }, 2, [{ minX: -8, minY: 0, maxX: 8, maxY: 4 }])
 if (BrowserHostClock.make({ performance: { now: () => 7 } }).now() !== 7) throw new Error("BrowserHostClock misbehaves when packed")
+const frames: Array<(timestamp: number) => void> = []
+let loopUpdates = 0
+const loop = FixedLoop.start({
+  source: BrowserTickSource.make({ requestAnimationFrame: (callback) => frames.push(callback), cancelAnimationFrame: () => {} }),
+  step: Clock.hz(100),
+  maxFrameSeconds: 0.1,
+  maxStepsPerFrame: 5,
+  update: () => { loopUpdates += 1; return Result.success(undefined) },
+  render: () => {},
+  onFailure: () => {}
+})
+frames.shift()?.(0)
+frames.shift()?.(20)
+if (!loop.ok || loopUpdates !== 2) throw new Error("FixedLoop with BrowserTickSource misbehaves when packed")
+loop.value.stop()
+if ("FixedLoop" in Browser) throw new Error("Browser publishes the moved FixedLoop")
 if (!moved.blocked || Random.make(42).next() !== 0.6011037519201636) throw new Error("math helpers misbehave when packed")
 if ("NodeRegistry" in Pixi || "RenderSync" in Pixi) throw new Error("Pixi publishes removed compatibility exports")
 console.log(JSON.stringify({

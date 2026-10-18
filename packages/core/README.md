@@ -23,7 +23,7 @@ Modules are also importable by path, for example `@typeonce/ritmo/Result`.
 Related packages, released together with the same version:
 
 - [`@typeonce/ritmo-math`](https://www.npmjs.com/package/@typeonce/ritmo-math): validated vectors, sizes, and bounding boxes
-- [`@typeonce/ritmo-browser`](https://www.npmjs.com/package/@typeonce/ritmo-browser): fixed-step loop and keyboard actions
+- [`@typeonce/ritmo-browser`](https://www.npmjs.com/package/@typeonce/ritmo-browser): animation-frame ticks for the fixed-step loop, keyboard, pointer, and touch input
 - [`@typeonce/ritmo-render`](https://www.npmjs.com/package/@typeonce/ritmo-render): entity-to-node sync for any renderer
 - [`@typeonce/ritmo-pixi`](https://www.npmjs.com/package/@typeonce/ritmo-pixi): Pixi container adapter for the render-node registry
 - [`@typeonce/ritmo-devtools`](https://www.npmjs.com/package/@typeonce/ritmo-devtools): headless debug sessions and trace reports

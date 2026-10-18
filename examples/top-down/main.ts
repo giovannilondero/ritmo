@@ -1,4 +1,4 @@
-import { FixedLoop } from "@typeonce/ritmo-browser"
+import { FixedLoop } from "@typeonce/ritmo"
 
 import { FIXED_STEP, MAX_FRAME_SECONDS, MAX_STEPS_PER_FRAME } from "./constants.ts"
 import { createTopDownBrowserHost } from "./host.ts"

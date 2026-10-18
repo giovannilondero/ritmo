@@ -1,17 +1,34 @@
 /**
- * Deterministic fixed-step timing for browser and renderer hosts.
+ * Deterministic fixed-step timing for any host: browsers, native shells,
+ * desktop runtimes, and headless tests.
  *
  * The loop owns the timing policy that is easy to get subtly wrong in every
  * game: frame clamping, catch-up limits, interpolation, cancellation, and
- * typed update failures. It does not know about an ECS runtime or renderer.
+ * typed update failures. It does not know about an ECS runtime, a renderer,
+ * or a platform: frames arrive through a `TickSource` that the host supplies.
+ * Use a platform adapter such as `BrowserTickSource.make(window)` from
+ * `@typeonce/ritmo-browser`, or wrap a renderer's own ticker with `source`.
+ *
+ * @example
+ * ```ts
+ * const loop = FixedLoop.start({
+ *   source: BrowserTickSource.make(window),
+ *   step: Clock.hz(60),
+ *   maxFrameSeconds: 0.25,
+ *   maxStepsPerFrame: 5,
+ *   update: () => runtime.tick(update),
+ *   render: (frame) => draw(frame.alpha),
+ *   onFailure: (failure) => console.error(failure)
+ * })
+ * ```
  *
  * @module FixedLoop
- * @docGroup browser
+ * @docGroup runtime
  */
-import type * as Clock from "@typeonce/ritmo/Clock"
-import * as Result from "@typeonce/ritmo/Result"
+import type * as Clock from "./Clock.ts"
+import * as Result from "./Result.ts"
 
-/** One renderer or browser tick measured in milliseconds. */
+/** One host frame: milliseconds elapsed since the previous one. */
 export interface Tick {
   readonly deltaMS: number
 }
@@ -21,7 +38,11 @@ export interface Subscription {
   stop(): void
 }
 
-/** Minimal adapter implemented by Pixi tickers, RAF, and deterministic tests. */
+/**
+ * Where host frames come from. Implemented by platform adapters
+ * (`BrowserTickSource.make(window)`), by `source` around a renderer's ticker,
+ * and by deterministic tests.
+ */
 export interface TickSource<TTick extends Tick = Tick> {
   subscribe(onTick: (tick: TTick) => void): Subscription
 }
@@ -195,42 +216,3 @@ export const start = <TTick extends Tick, UpdateError>(
     }
   })
 }
-
-/** Host surface needed by the built-in requestAnimationFrame adapter. */
-export interface AnimationFrameHost {
-  requestAnimationFrame(callback: (timestamp: number) => void): number
-  cancelAnimationFrame(handle: number): void
-}
-
-/**
- * Adapts requestAnimationFrame to a `TickSource` without reading global state.
- * The first frame reports zero elapsed time because it establishes the clock.
- */
-export const animationFrames = (host: AnimationFrameHost): TickSource => source((onTick) => {
-  let stopped = false
-  let handle = 0
-  let previous: number | undefined
-
-  const frame = (timestamp: number): void => {
-    if (stopped) {
-      return
-    }
-    const deltaMS = previous === undefined ? 0 : timestamp - previous
-    previous = timestamp
-    onTick({ deltaMS })
-    if (!stopped) {
-      handle = host.requestAnimationFrame(frame)
-    }
-  }
-
-  handle = host.requestAnimationFrame(frame)
-  return {
-    stop() {
-      if (stopped) {
-        return
-      }
-      stopped = true
-      host.cancelAnimationFrame(handle)
-    }
-  }
-})

@@ -274,9 +274,9 @@ runtime.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
 
 | Package | What it owns |
 |---|---|
-| `@typeonce/ritmo` | Schema, systems, schedules, runtime, snapshots |
+| `@typeonce/ritmo` | Schema, systems, schedules, runtime, snapshots, `FixedLoop` timing |
 | `@typeonce/ritmo-math` | Validated `Scalar`, `Vector2`, `Size2`, `Aabb`, `InputAxis`; hot-path `Vec2`, `Box2`, `Collide2`, `SpatialGrid`, `FlowField`, `Random` |
-| `@typeonce/ritmo-browser` | `FixedLoop` timing, `Keyboard` action input, `InputCapture` into resources |
+| `@typeonce/ritmo-browser` | `BrowserTickSource` animation frames, `Keyboard` action input, `InputCapture` into resources |
 | `@typeonce/ritmo-render` | `NodeRegistry` and `RenderSync` (with `redrawOn`) for mirroring entities into any renderer |
 | `@typeonce/ritmo-pixi` | `PixiNodeRegistry.make` for Pixi containers |
 
