@@ -61,6 +61,8 @@ describe("query cells", () => {
         // @ts-expect-error Property 'get' does not exist on type 'AbsentOptionalReadCell'
         data.health.get()
         if (data.health.present) expect(data.health.get()).type.toBe<number>()
+        expect(data.health.value()).type.toBe<number | undefined>()
+        if (data.health.present) expect(data.health.value()).type.toBe<number>()
       }
     })
   })

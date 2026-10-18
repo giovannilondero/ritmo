@@ -669,6 +669,8 @@ export type WriteCellForDescriptor<D extends ComponentDescriptor> =
  */
 export interface PresentOptionalReadCell<T> extends ReadCell<T> {
   readonly present: true
+  /** The value, which is present. */
+  value(): T
 }
 
 /**
@@ -676,12 +678,17 @@ export interface PresentOptionalReadCell<T> extends ReadCell<T> {
  */
 export interface AbsentOptionalReadCell {
   readonly present: false
+  /** `undefined`: the entity does not hold the component. */
+  value(): undefined
 }
 
 /**
  * A query slot that may or may not be present on the matched entity.
  *
- * Callers must narrow on `present` before reading the value.
+ * Read it with `value()`: the value, or `undefined` when the entity does not
+ * hold the component. Narrow on `present` (then `get()`) only when the
+ * component's own value can be `undefined`, where `value()` cannot tell the
+ * two apart.
  */
 export type OptionalReadCell<T> = PresentOptionalReadCell<T> | AbsentOptionalReadCell
 

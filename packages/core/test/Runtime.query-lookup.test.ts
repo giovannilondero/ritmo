@@ -821,3 +821,22 @@ describe("Runtime query and lookup", () => {
     expect(readResourceValue(runtime, schema, LastError)).toBe("MissingEntity/MissingEntity")
   })
 })
+
+describe("optional slots", () => {
+  it("read their value, or undefined when the entity does not hold the component", () => {
+    const Hp = Descriptor.Component<number>()("Optional/Hp")
+    const Name = Descriptor.Component<string>()("Optional/Name")
+    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
+    const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Hp, Name)) }, ({ commands }) => {
+      commands.spawn(Local.Command.spawn([Name, "full"], [Hp, 3]))
+      commands.spawn(Local.Command.spawn([Name, "empty"]))
+    })
+    const Read = Local.Inspector("Optional/Read", {
+      queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } }) }
+    }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.hp.value()] as const).sort())
+    const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
+    runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
+    expect(runtime.inspect(Read)).toEqual([["empty", undefined], ["full", 3]])
+  })
+})
+

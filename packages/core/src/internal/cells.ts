@@ -141,6 +141,11 @@ class OptionalComponentCell {
   get(): unknown {
     return this.record.values[this.ordinal]
   }
+
+  value(): unknown {
+    const value = this.record.values[this.ordinal]
+    return value === ABSENT ? undefined : value
+  }
 }
 
 class StoreReadCell {
@@ -193,7 +198,7 @@ export const componentWrite = (
   return entityState === undefined ? constructed : withTransition(constructed, entityState)
 }
 
-export const componentOptional = (record: EntityRecord, ordinal: number): { readonly present: boolean; get(): unknown } =>
+export const componentOptional = (record: EntityRecord, ordinal: number): { readonly present: boolean; get(): unknown; value(): unknown } =>
   new OptionalComponentCell(record, ordinal)
 
 export const storeRead = (store: Map<symbol, unknown>, key: symbol): { get(): unknown } =>
@@ -224,9 +229,10 @@ export const derivedRead = <T>(read: () => T): { get(): T } => ({ get: read })
 export const derivedOptional = <T>(
   isPresent: () => boolean,
   read: () => T
-): { readonly present: boolean; get(): T } => ({
+): { readonly present: boolean; get(): T; value(): T | undefined } => ({
   get present() {
     return isPresent()
   },
-  get: read
+  get: read,
+  value: () => (isPresent() ? read() : undefined)
 })
