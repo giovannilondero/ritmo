@@ -24,6 +24,8 @@
  * Immutable arithmetic, measurement, and steering helpers.
  */
 
+import * as Ops from "./Ops.ts"
+
 /**
  * A two-dimensional vector in world units.
  *
@@ -68,8 +70,8 @@ export const scale = (a: Vec2, factor: number): Vec2 => ({ x: a.x * factor, y: a
  * @category Operations
  */
 export const rotate = (a: Vec2, angle: number): Vec2 => {
-  const cos = Math.cos(angle)
-  const sin = Math.sin(angle)
+  const cos = Ops.cos(angle)
+  const sin = Ops.sin(angle)
   return { x: a.x * cos - a.y * sin, y: a.x * sin + a.y * cos }
 }
 
@@ -85,7 +87,7 @@ export const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y
  *
  * @category Operations
  */
-export const length = (a: Vec2): number => Math.hypot(a.x, a.y)
+export const length = (a: Vec2): number => Ops.hypot(a.x, a.y)
 
 /**
  * Squared length of `a`, for comparisons without a square root.
@@ -99,7 +101,7 @@ export const lengthSquared = (a: Vec2): number => a.x * a.x + a.y * a.y
  *
  * @category Operations
  */
-export const distance = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.y)
+export const distance = (a: Vec2, b: Vec2): number => Ops.hypot(a.x - b.x, a.y - b.y)
 
 /**
  * Squared distance between two points, for comparisons without a square root.
@@ -120,7 +122,7 @@ export const distanceSquared = (a: Vec2, b: Vec2): number => {
  * @category Operations
  */
 export const normalizeOr = (a: Vec2, fallback: Vec2): Vec2 => {
-  const len = Math.hypot(a.x, a.y)
+  const len = Ops.hypot(a.x, a.y)
   return len < 1e-9 ? fallback : { x: a.x / len, y: a.y / len }
 }
 
@@ -139,7 +141,7 @@ export const lerp = (a: Vec2, b: Vec2, t: number): Vec2 => ({ x: a.x + (b.x - a.
 export const moveToward = (current: Vec2, target: Vec2, maxDelta: number): Vec2 => {
   const dx = target.x - current.x
   const dy = target.y - current.y
-  const len = Math.hypot(dx, dy)
+  const len = Ops.hypot(dx, dy)
   if (len <= maxDelta || len < 1e-9) return target
   return { x: current.x + (dx / len) * maxDelta, y: current.y + (dy / len) * maxDelta }
 }
@@ -150,6 +152,6 @@ export const moveToward = (current: Vec2, target: Vec2, maxDelta: number): Vec2 
  * @category Operations
  */
 export const clampLength = (a: Vec2, max: number): Vec2 => {
-  const len = Math.hypot(a.x, a.y)
+  const len = Ops.hypot(a.x, a.y)
   return len <= max ? a : { x: (a.x / len) * max, y: (a.y / len) * max }
 }

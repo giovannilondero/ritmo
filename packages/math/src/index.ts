@@ -10,12 +10,17 @@
  * `Box2` edges, `Collide2` swept circle collision, a `SpatialGrid` broad
  * phase, a `FlowField` for finding the way around walls, and a deterministic
  * `Random` whose state is one integer.
+ *
+ * `Ops` holds the math functions engines are allowed to approximate (`sin`,
+ * `cos`, `atan2`, `exp`, `pow`, `hypot`, ...) as ports that return the same
+ * bits everywhere: use them in simulation code instead of `Math`'s.
  */
 export * as Aabb from "./Aabb.ts"
 export * as Box2 from "./Box2.ts"
 export * as Collide2 from "./Collide2.ts"
 export * as FlowField from "./FlowField.ts"
 export * as InputAxis from "./InputAxis.ts"
+export * as Ops from "./Ops.ts"
 export * as Random from "./Random.ts"
 export * as Scalar from "./Scalar.ts"
 export * as Size2 from "./Size2.ts"
