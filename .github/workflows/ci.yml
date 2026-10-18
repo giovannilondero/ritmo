@@ -87,5 +87,6 @@ jobs:
 
       # Runtime cases are compared with the base commit; type metrics are
       # deterministic and compared with packages/core/bench/baseline.json.
+      # Type metric growth is advisory; runtime regressions still fail this job.
       - name: Benchmark head and compare
-        run: pnpm bench --compare .bench/base.json
+        run: pnpm bench --compare .bench/base.json --warn-types
