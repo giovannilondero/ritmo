@@ -59,6 +59,16 @@ describe("Game.System.thisTick", () => {
     runtime.tick(Game.Schedule(Show), Game.Schedule(Count))
   })
 
+  it("checks a writer that shares the reader's display name", () => {
+    // Two systems may share a display name; a writer named like its reader is still a writer.
+    const Twin = Game.System("ThisTick/Apply", { events: { damage: Game.System.writeEvent(Damage) } }, ({ events }) => {
+      events.damage.emit({ amount: 2 })
+    })
+    // @ts-expect-error ThisTick/Apply needs ThisTick/Damage from this tick, but its writer ThisTick/Apply runs after it
+    runtime.tick(Game.Schedule(Apply, Twin))
+    runtime.tick(Game.Schedule(Twin, Apply))
+  })
+
   it("counts gated groups by position", () => {
     // @ts-expect-error ThisTick/Apply needs ThisTick/Damage from this tick, but its writer ThisTick/Deal runs after it
     runtime.tick(Game.Schedule(Game.Schedule.when([Game.Condition.inState(Flow, "Playing")], Apply), Deal))

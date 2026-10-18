@@ -147,10 +147,12 @@ export type CompositionOrder<Entries extends ReadonlyArray<unknown>> = ScheduleO
 // walks back from the reader to the nearest marker, which is usually close.
 
 /** An event or resource read. */
-interface DataRead<Kind, Key, Reader> {
+interface DataRead<Kind, Key, Reader, ReaderSystem> {
   readonly kind: Kind
   readonly key: Key
   readonly reader: Reader
+  /** The reader itself: systems may share a display name, so writers are told apart by type. */
+  readonly readerSystem: ReaderSystem
 }
 
 /**
@@ -158,12 +160,13 @@ interface DataRead<Kind, Key, Reader> {
  * component it names (`Named`: selection slots, optional ones included,
  * `with`, `without`, and filters).
  */
-interface QueryRead<Slot, Required, Named, Reader> {
+interface QueryRead<Slot, Required, Named, Reader, ReaderSystem> {
   readonly kind: "query"
   readonly slot: Slot
   readonly required: Required
   readonly named: Named
   readonly reader: Reader
+  readonly readerSystem: ReaderSystem
 }
 
 type DescriptorKind<D> = D extends { readonly kind: infer Kind } ? Kind : never
@@ -183,13 +186,14 @@ type SystemsIn<Entry> =
     ? [Order] extends [never] ? never : SystemsIn<Order["entries"][number]>
     : never
 
-type QueryReadOf<Slot, Q, Reader> =
+type QueryReadOf<Slot, Q, Reader, ReaderSystem> =
   Q extends { readonly selection: infer Selection; readonly with: infer With extends ReadonlyArray<unknown>; readonly without: infer Without extends ReadonlyArray<unknown>; readonly filters: infer Filters extends ReadonlyArray<unknown> }
     ? QueryRead<
         Slot,
         Names<{ readonly [K in keyof Selection]: Selection[K] extends { readonly mode: "read" | "write"; readonly descriptor: infer D } ? D : never }[keyof Selection] | With[number]>,
         Names<DescriptorsOf<Selection[keyof Selection]> | With[number] | Without[number] | DescriptorsOf<Filters[number]>>,
-        Reader
+        Reader,
+        ReaderSystem
       >
     : never
 
@@ -199,19 +203,22 @@ type SystemReads<Sys> =
       :
         | (Extract<SpecAccessValues<Sys["spec"]>, ThisTick> extends infer Access
           ? Access extends { readonly descriptor: infer D extends { readonly name: string } }
-            ? DataRead<DescriptorKind<D>, D["name"], Sys["name"]>
+            ? DataRead<DescriptorKind<D>, D["name"], Sys["name"], Sys>
             : never
           : never)
         | (Sys["spec"] extends { readonly queries: infer Queries }
-          ? { readonly [K in keyof Queries]: Queries[K] extends ThisTick ? QueryReadOf<K, Queries[K], Sys["name"]> : never }[keyof Queries]
+          ? { readonly [K in keyof Queries]: Queries[K] extends ThisTick ? QueryReadOf<K, Queries[K], Sys["name"], Sys> : never }[keyof Queries]
           : never)
     : never
 
-/** Names of the systems among `Systems` that write `Key` (other than `Reader`). */
-type WritersOf<Systems, Kind, Key, Reader> =
+/** Whether two system types are the same system (mutually assignable): a shared display name is not enough. */
+type SameSystem<A, B> = [A] extends [B] ? [B] extends [A] ? true : false : false
+
+/** Names of the systems among `Systems` that write `Key` (other than the reader itself). */
+type WritersOf<Systems, Kind, Key, ReaderSystem> =
   Systems extends AnySystem
     ? IsErased<Systems["spec"]> extends true ? never
-      : Systems["name"] extends Reader ? never
+      : SameSystem<Systems, ReaderSystem> extends true ? never
       : [Extract<SpecAccessValues<Systems["spec"]>, { readonly mode: "write"; readonly descriptor: { readonly kind: Kind; readonly name: Key } }>] extends [never]
         ? never
         : Systems["name"]
@@ -237,18 +244,18 @@ type CommandNames<Commands> =
     : readonly [never, never]
 
 /** Names of the systems among `Systems` whose commands count for a query read (other than its reader). */
-type CommandWritersOf<Systems, Required, Named, Reader> =
+type CommandWritersOf<Systems, Required, Named, ReaderSystem> =
   Systems extends AnySystem
     ? IsErased<Systems["spec"]> extends true ? never
-      : Systems["name"] extends Reader ? never
+      : SameSystem<Systems, ReaderSystem> extends true ? never
       : Systems["spec"] extends { readonly commands: infer Commands }
         ? CommandsCount<Commands, Required, Named> extends true ? Systems["name"] : never
         : never
     : never
 
 type WritersFor<Systems, R> =
-  R extends QueryRead<any, infer Required, infer Named, infer Reader> ? CommandWritersOf<Systems, Required, Named, Reader>
-  : R extends DataRead<infer Kind, infer Key, infer Reader> ? WritersOf<Systems, Kind, Key, Reader>
+  R extends QueryRead<any, infer Required, infer Named, any, infer ReaderSystem> ? CommandWritersOf<Systems, Required, Named, ReaderSystem>
+  : R extends DataRead<infer Kind, infer Key, any, infer ReaderSystem> ? WritersOf<Systems, Kind, Key, ReaderSystem>
   : never
 
 /**
@@ -292,16 +299,16 @@ type ReaderIndices<Entries extends ReadonlyArray<unknown>, Reader> = {
 
 type LateWriterError<R, Writer> =
   Writer extends string
-    ? R extends QueryRead<infer Slot extends string, any, any, infer Reader extends string>
+    ? R extends QueryRead<infer Slot extends string, any, any, infer Reader extends string, any>
       ? `${Writer} queues commands that ${Reader} needs this tick (queries.${Slot}), but it runs after ${Reader}: move ${Writer} before the applyDeferred() that precedes ${Reader}, or read queries.${Slot} without thisTick`
-      : R extends DataRead<any, infer Key extends string, infer Reader extends string>
+      : R extends DataRead<any, infer Key extends string, infer Reader extends string, any>
         ? `${Reader} needs ${Key} from this tick, but its writer ${Writer} runs after it: move ${Writer} before ${Reader}, or read ${Key} without thisTick`
         : never
     : never
 
 type UnflushedWriterError<R, Writer> =
   Writer extends string
-    ? R extends QueryRead<infer Slot extends string, any, any, infer Reader extends string>
+    ? R extends QueryRead<infer Slot extends string, any, any, infer Reader extends string, any>
       ? `${Reader} needs this tick's commands for queries.${Slot}, but ${Writer} queues them with no applyDeferred() in between: add Game.Schedule.applyDeferred() after ${Writer}`
       : never
     : never
@@ -375,7 +382,7 @@ type TailSegment<Entries, Acc = never> =
     : readonly [Acc, false]
 
 type UnflushedWriters<Entries, R, Reader extends string> =
-  R extends QueryRead<any, any, any, any>
+  R extends QueryRead<any, any, any, any, any>
     ? Segment<Entries, Reader> extends infer Found
       ? Found extends readonly [infer Systems, any] ? UnflushedWriterError<R, WritersFor<Systems, R>> : never
       : never
