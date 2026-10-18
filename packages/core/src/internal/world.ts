@@ -48,6 +48,8 @@ export interface EntityRecord {
    * Cached query matches by query ordinal, reused while the entity matches.
    */
   readonly matches: Array<unknown>
+  /** The name of the component at an ordinal, for error messages (shared by the world's records). */
+  readonly nameAt: (ordinal: number) => string
   alive: boolean
 }
 
@@ -238,6 +240,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /** Suppresses per-component and relation hooks inside spawns and despawns. */
   let hookDepth = 0
 
+  const nameAt = (ordinal: number): string => descriptors[ordinal]?.name ?? `component #${ordinal}`
+
   const ordinalOf = (descriptor: ComponentDescriptor): number => {
     const known = ordinals.get(descriptor.key)
     if (known !== undefined) {
@@ -337,6 +341,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         values,
         marks,
         matches: [],
+        nameAt,
         alive: true
       }
       records.set(record.id, record)
@@ -779,7 +784,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     records,
     relationDefinitions,
     ordinalOf,
-    nameAt: (ordinal: number): string => descriptors[ordinal]?.name ?? `component #${ordinal}`,
+    nameAt,
     has,
     entityIdOf,
     allocateEntity,
