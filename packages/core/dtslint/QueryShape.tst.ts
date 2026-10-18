@@ -58,3 +58,32 @@ describe("what a filtered query proves", () => {
     })
   })
 })
+
+describe("lookups through a filtered query", () => {
+  const Moved = Game.Query({ selection: { position: Game.Query.read(Position) }, filters: [Game.Query.changed(Position)] })
+  const Positions = Game.Query({ selection: { position: Game.Query.read(Position) } })
+
+  it("iterates a filtered query and resolves through an unfiltered one", () => {
+    Game.System("QueryShape/Follow", { queries: { moved: Moved, positions: Positions } }, ({ queries }) => {
+      for (const match of queries.moved.each()) {
+        const again = queries.positions.get(match.entity.id)
+        expect(again.ok).type.toBe<boolean>()
+      }
+      expect(queries.moved.singleOptional().ok).type.toBe<boolean>()
+      expect(queries.positions.single().ok).type.toBe<boolean>()
+    })
+  })
+
+  it("rejects get, getHandle, single, children, and descendants on a filtered query", () => {
+    Game.System("QueryShape/Lookups", { queries: { moved: Moved, positions: Positions } }, ({ queries }) => {
+      const [first] = queries.positions.each()
+      if (first === undefined) return
+      // @ts-expect-error lookups need a query without added/changed filters: declare a second query for resolving entities
+      queries.moved.get(first.entity.id)
+      // @ts-expect-error lookups need a query without added/changed filters
+      queries.moved.getHandle(Game.Entity.handle(first.entity))
+      // @ts-expect-error lookups need a query without added/changed filters
+      queries.moved.single()
+    })
+  })
+})

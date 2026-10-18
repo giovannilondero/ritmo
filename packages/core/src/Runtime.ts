@@ -89,7 +89,8 @@ import type {
   ResourceChangedView,
   EventWriteView,
   LookupApi,
-  QueryHandle,
+  QueryIteration,
+  QueryLookups,
   RelationFailureReadView,
   RemovedReadView,
   TransitionEventReadView,
@@ -1175,7 +1176,7 @@ const makeValidatedRuntime = <
     return lookup
   }
 
-  const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryHandle<S, Q> => {
+  const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryIteration<S, Q> & QueryLookups<S, Q> => {
     const each = () => queries.each(query, reader.since) as ReadonlyArray<QueryMatch<S, Q>>
     const matching = (ids: ReadonlyArray<Entity.EntityId<S, Root>>): Array<QueryMatch<S, Q>> => {
       const matches: Array<QueryMatch<S, Q>> = []
@@ -1486,7 +1487,8 @@ const makeValidatedRuntime = <
     const lookup = makeLookup(reader)
     return {
       local: (spec.local as (() => unknown) | undefined)?.(),
-      queries: mapRecord(spec.queries as Record<string, Query.Query.Any<Root>>, (query) => makeQueryHandle(query, reader, lookup)),
+      // A filtered query hands out the same object; its type hides the lookups.
+      queries: mapRecord(spec.queries as Record<string, Query.Query.Any<Root>>, (query) => makeQueryHandle(query, reader, lookup) as never),
       lookup,
       resources: mapRecord(spec.resources as Record<string, any>, (access) =>
         access.mode === "read"
