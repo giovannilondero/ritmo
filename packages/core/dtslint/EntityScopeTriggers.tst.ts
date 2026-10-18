@@ -19,9 +19,9 @@ describe("Game.EntityScope triggers", () => {
   })
 
   it("rejects an unknown state", () => {
-    // @ts-expect-error Type '"Paused"' is not assignable to type '"Menu" | "Playing"'
+    // @ts-expect-error Type '"Paused"' is not assignable
     Game.EntityScope("ScopeTriggersTypes/Typo", { despawnOnExit: [Flow, "Paused"] })
-    // @ts-expect-error Type '"Paused"' is not assignable to type '"Menu" | "Playing"'
+    // @ts-expect-error Type '"Paused"' is not assignable
     Game.EntityScope("ScopeTriggersTypes/TypoEnter", { despawnOnEnter: [Flow, "Paused"] })
   })
 
