@@ -48,6 +48,16 @@ describe("Schema.requires", () => {
     Schema.bind(Lonely)
   })
 
+  it("rejects a saved component requiring a transient one", () => {
+    const Trail = Descriptor.TransientComponent<number>()("Req/Trail")
+    const Ghost = Descriptor.Component<{}>()("Req/Ghost")
+    const Shade = Descriptor.TransientComponent<{}>()("Req/Shade")
+    // @ts-expect-error Req/Ghost requires Req/Trail, which is transient and not saved: make Req/Ghost transient too
+    Schema.bind(Schema.fragment({ components: { Ghost, Trail }, requires: [Schema.requires(Ghost, Trail)] }))
+    const Shades = Schema.bind(Schema.fragment({ components: { Shade, Trail }, requires: [Schema.requires(Shade, Trail)] }))
+    expect<Schema.Schema.Requires<typeof Shades.schema>>().type.toBe<readonly ["Req/Shade", "Req/Trail"]>()
+  })
+
   it("expands spawns(...) to the transitive required set", () => {
     expect(Game.System.spawns(Player)).type.toBe<
       Command.Permission<"spawns", typeof Player | typeof Body | typeof Velocity | typeof Position>

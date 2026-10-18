@@ -154,6 +154,10 @@ type PairsOf<R> = R extends ComponentRequirement<infer Pairs> ? Pairs : never
  * Requirements chain (`A` requires `B`, `B` requires `C`) and may name
  * components of other fragments of the same `Schema.bind`.
  *
+ * A saved component cannot require a transient one (`Schema.bind` rejects
+ * it): a restore would bring the requirer back without it. A transient
+ * requirer may require a transient component.
+ *
  * @example
  * ```ts
  * const Gameplay = Schema.fragment({
@@ -271,17 +275,33 @@ export type ValidateFragments<Fragments extends ReadonlyArray<Schema.Any>> =
 type UnregisteredRequirements<S extends Schema.Any> =
   Exclude<Schema.Requires<S>[0] | Schema.Requires<S>[1], Schema.ComponentDescriptor<S>["name"]>
 
+type TransientComponentName<S extends Schema.Any> = Extract<Schema.ComponentDescriptor<S>, { readonly transient: true }>["name"]
+
+/** One message per saved requirer that requires a transient component. */
+type TransientRequirements<S extends Schema.Any, Pairs = Schema.Requires<S>> =
+  Pairs extends readonly [infer From extends string, infer To extends string]
+    ? To extends TransientComponentName<S>
+      ? From extends TransientComponentName<S> ? never
+      : `${From} requires ${To}, which is transient and not saved: make ${From} transient too, or give ${To} a constructor`
+    : never
+    : never
+
 /**
  * Rejects requirements naming a component the bound schema does not
  * register. Checked at `bind`, so a fragment may require a component another
- * fragment registers. Erased schemas (`Schema.Any`) are checked by `bind` at
- * runtime instead.
+ * fragment registers. Also rejects a saved component requiring a transient
+ * one (a restore would bring the requirer back without it). Erased schemas
+ * (`Schema.Any`) are checked by `bind` at runtime instead.
  */
 export type ValidateRequires<S extends Schema.Any> =
-  [UnregisteredRequirements<S>] extends [never]
+  string extends Schema.Requires<S>[1]
     ? unknown
-    : string extends Schema.Requires<S>[1]
-    ? unknown
+    : [UnregisteredRequirements<S>] extends [never]
+    ? [TransientRequirements<S>] extends [never]
+      ? unknown
+      : {
+          readonly __schemaRequires__: TransientRequirements<S>
+        }
     : {
         readonly __schemaRequires__: `${UnregisteredRequirements<S>} is named in Schema.requires(...) but no fragment registers it: add it to a fragment's components`
       }
