@@ -1,5 +1,20 @@
 # Plan: `@typeonce/ritmo-native`, native hosts and compiled systems
 
+Implementation status (single PR, per the user's instruction; do not merge):
+
+- Linux top-down and inkline-town run natively and pass 600-frame Node oracles.
+- Private numeric columns/query views/transaction hooks and a conservative C
+  compiler are implemented. 10k numeric fuzz cases pass; at 5k entities native
+  movement measured 0.0817ms/frame versus Node JIT 0.2712ms on this machine.
+- The user approved normalizing NaN sign/payload bits in the oracle; all other
+  IEEE-754 bits remain exact. V8 and QuickJS differ even with kernels disabled.
+- Android/iOS generators, structural touch controls, lifecycle handling and CI
+  build/launch/oracle jobs are implemented; platform gates await CI verification.
+- The initial compiler intentionally reports unsupported constructs, including
+  top-down's map/validation/helper-based movement. Those callbacks stay interpreted.
+  The complete subset and its movement gate remain outstanding; see the package
+  README for the implemented subset. This plan remains until all gates are met.
+
 Run games written with ritmo outside the browser, as native desktop and mobile
 apps, without a webview, while games stay TypeScript-only. Later, the same
 host carries them to consoles. Hot systems are compiled ahead of time to C,
