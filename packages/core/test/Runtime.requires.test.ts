@@ -5,7 +5,8 @@ const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.numbe
 const Velocity = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number }))("Requires/Velocity")
 const Player = Descriptor.Tag("Requires/Player")
 const Trail = Descriptor.TransientComponent<number>()("Requires/Trail")
-const Ghost = Descriptor.Tag("Requires/Ghost")
+// A transient requirer may require a transient component: a restore drops both.
+const Ghost = Descriptor.TransientComponent<{}>()("Requires/Ghost")
 
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Velocity, Player, Trail, Ghost },
@@ -120,7 +121,7 @@ describe("Schema.requires at runtime", () => {
     })
   })
 
-  it("does not check transient requirements on restore", () => {
+  it("restores without a transient requirer and what it requires", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(Game.System("Requires/SpawnGhost", {
       commands: Game.System.commands(Game.System.spawns(Ghost))
@@ -129,5 +130,14 @@ describe("Schema.requires at runtime", () => {
     }), Game.Schedule.applyDeferred()))
     const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
     expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
+  })
+
+  it("rejects a saved component requiring a transient one when bound from erased fragments", () => {
+    const Saved = Descriptor.Tag("Requires/Saved")
+    const fragment: Schema.Schema.Any = Schema.fragment({ components: { Saved, Trail } })
+    const requirement: Schema.Schema.Any = Schema.fragment({ requires: [Schema.requires(Saved, Trail)] })
+    expect(() => Schema.bind(fragment, requirement)).toThrow(
+      "Requires/Saved requires Requires/Trail, which is transient and not saved: make Requires/Saved transient too, or give Requires/Trail a constructor"
+    )
   })
 })

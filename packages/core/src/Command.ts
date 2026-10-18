@@ -243,6 +243,12 @@ export interface InternalWorld<S extends Schema.Any> {
    */
   readonly insertComponents: (id: Entity.EntityId<S, any>, entries: ReadonlyArray<Entity.StagedComponent>) => void
   /**
+   * Reports a `despawn` or `remove` given a numeric id this run did not
+   * spawn: an id kept from an earlier run, or a raw id that erased types let
+   * through. The command is skipped.
+   */
+  readonly reportStaleTarget: (command: "despawn" | "remove", id: Entity.EntityId<S, any>) => void
+  /**
    * Attempts to attach one relation edge between two live entities.
    */
   readonly tryRelate: (
@@ -564,6 +570,10 @@ declare const spawnedTypeId: unique symbol
  * The id `spawn` / `spawnIn` return: an `EntityId` that also records the
  * components its draft holds in every case, so the system that queued it can
  * `despawn` it before the next `applyDeferred()` (no query can match it yet).
+ * It is valid only in the run that spawned it: kept in a closure or a
+ * resource and passed to `despawn` / `remove` in a later run, the command is
+ * skipped and reported (the `stale-target` lint). Keep the entity id or a
+ * handle and resolve it again through a query instead.
  * Stored as a plain `EntityId`, it is a raw id again.
  */
 export type SpawnedId<S extends Schema.Any, Root, Components extends string> =
@@ -883,10 +893,17 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
    * the system effect completes.
    */
   const queue: Array<DeferredCommand<S>> = []
+  /**
+   * Ids this run spawned: the only numeric targets `despawn` and `remove`
+   * accept. Their types reject raw ids, so any other number is an id kept
+   * from an earlier run (or erased types), and proves nothing now.
+   */
+  const spawnedThisRun = new Set<number>()
 
   return {
     spawn(draft) {
       const id = allocateId()
+      spawnedThisRun.add(id)
       queue.push({
         tag: "spawn",
         apply(world) {
@@ -900,6 +917,7 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
     },
     spawnIn(scope, draft) {
       const id = allocateId()
+      spawnedThisRun.add(id)
       queue.push({
         tag: "spawnIn",
         apply(world) {
@@ -924,10 +942,12 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
     },
     despawn(entity) {
       const id = typeof entity === "object" ? entity.id : entity
+      const stale = typeof entity !== "object" && !spawnedThisRun.has(id)
       queue.push({
         tag: "despawn",
         apply(world) {
-          world.destroyEntity(id)
+          if (stale) world.reportStaleTarget("despawn", id)
+          else world.destroyEntity(id)
         }
       })
     },
@@ -941,10 +961,12 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
     },
     remove(target, ...descriptors) {
       const entity = typeof target === "object" ? target.id : target
+      const stale = typeof target !== "object" && !spawnedThisRun.has(entity)
       queue.push({
         tag: "remove",
         apply(world) {
-          world.removeComponents(entity, descriptors)
+          if (stale) world.reportStaleTarget("remove", entity)
+          else world.removeComponents(entity, descriptors)
         }
       })
       return entity
@@ -974,6 +996,7 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
       })
     },
     flush() {
+      spawnedThisRun.clear()
       return queue.splice(0, queue.length)
     }
   }

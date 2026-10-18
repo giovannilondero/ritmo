@@ -400,3 +400,22 @@ describe("Decode", () => {
     expect(runtime.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
   })
 })
+
+describe("Runtime.services and Runtime.machines", () => {
+  const Flow = Game.StateMachine("RuntimeTypes/Flow", ["Menu", "Playing"] as const)
+  const silent = { log: (_: string) => {} }
+
+  it("collects one provision per service and machine", () => {
+    expect(Runtime.services(Runtime.service(Logger, silent), Runtime.service(PrefixedLogger, silent))).type.toBe<
+      Runtime.RuntimeServices<{ readonly Logger: { readonly log: (message: string) => void }; readonly "RuntimeTypes/Logger": { readonly log: (message: string) => void } }>
+    >()
+    expect(Runtime.machines(Runtime.machine(Flow, "Menu"))).type.toBe<Runtime.RuntimeMachines<{ readonly "RuntimeTypes/Flow": "Menu" | "Playing" }>>()
+  })
+
+  it("rejects a service or machine provided twice", () => {
+    // @ts-expect-error Logger is provided twice: keep one Game.Runtime.service(...) for it
+    Runtime.services(Runtime.service(Logger, silent), Runtime.service(Logger, silent))
+    // @ts-expect-error RuntimeTypes/Flow is provided twice: keep one Game.Runtime.machine(...) for it
+    Runtime.machines(Runtime.machine(Flow, "Menu"), Runtime.machine(Flow, "Playing"))
+  })
+})

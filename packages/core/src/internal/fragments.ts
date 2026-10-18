@@ -4,6 +4,7 @@
  * The compile-time counterpart is `ValidateFragments` in `Schema.ts`; these
  * guards cover schemas assembled from erased types.
  */
+import { isTransient } from "../Descriptor.ts"
 import type { Schema, SchemaDefinition } from "../Schema.ts"
 
 type NamedRegistry = Record<string, { readonly name: string; readonly kind?: string }>
@@ -66,6 +67,15 @@ export const buildSchema = (fragments: ReadonlyArray<Schema.Any>): Schema.Any =>
         throw new Error(`${descriptor.name} is named in Schema.requires(...) but no fragment registers it: add it to a fragment's components`)
       }
     }
+    for (const required of requirement.required) {
+      if (isTransient(required) && !isTransient(requirement.component)) {
+        throw new Error(transientRequirementMessage(requirement.component.name, required.name))
+      }
+    }
   }
   return current
 }
+
+/** Why a saved component cannot require a transient one: a restore would bring it back without it. */
+export const transientRequirementMessage = (requirer: string, required: string): string =>
+  `${requirer} requires ${required}, which is transient and not saved: make ${requirer} transient too, or give ${required} a constructor`

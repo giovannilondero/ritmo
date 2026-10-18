@@ -229,6 +229,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const journalRecords: Array<EntityRecord> = []
   const journalOrdinals: Array<number> = []
   const journalValues: Array<unknown> = []
+  /**
+   * Journal of a phase: several system transactions undone together (a
+   * transition's exit schedules). Each committed write keeps its value and
+   * change tick from before it, so rollback restores both, newest first.
+   */
+  let inPhase = false
+  const phaseRecords: Array<EntityRecord> = []
+  const phaseOrdinals: Array<number> = []
+  const phaseValues: Array<unknown> = []
+  const phaseChanged: Array<number> = []
 
   /**
    * Entity ownership used by scene and level lifetime scopes.
@@ -414,6 +424,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     inTransaction = false
     for (let index = 0; index < journalRecords.length; index++) {
       const record = journalRecords[index]!
+      if (inPhase) {
+        const ordinal = journalOrdinals[index]!
+        phaseRecords.push(record)
+        phaseOrdinals.push(ordinal)
+        phaseValues.push(journalValues[index])
+        phaseChanged.push(record.marks[ordinal * MARK_STRIDE + CHANGED]!)
+      }
       if (record.alive) {
         markChanged(record, journalOrdinals[index]!)
       }
@@ -430,6 +447,30 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       journalRecords[index]!.values[journalOrdinals[index]!] = journalValues[index]
     }
     clearJournal()
+  }
+
+  const clearPhase = (): void => {
+    inPhase = false
+    phaseRecords.length = 0
+    phaseOrdinals.length = 0
+    phaseValues.length = 0
+    phaseChanged.length = 0
+  }
+
+  /** Starts a phase: the transactions committed until it ends can be undone together. */
+  const beginPhase = (): void => {
+    inPhase = true
+  }
+
+  /** Restores every write committed in the phase, with its change tick. */
+  const rollbackPhase = (): void => {
+    for (let index = phaseRecords.length - 1; index >= 0; index--) {
+      const record = phaseRecords[index]!
+      const ordinal = phaseOrdinals[index]!
+      record.values[ordinal] = phaseValues[index]
+      record.marks[ordinal * MARK_STRIDE + CHANGED] = phaseChanged[index]!
+    }
+    clearPhase()
   }
 
   const clearEntityScope = (id: number): void => {
@@ -804,6 +845,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     beginTransaction,
     commitTransaction,
     rollbackTransaction,
+    beginPhase,
+    commitPhase: clearPhase,
+    rollbackPhase,
     tryRelate,
     unrelate,
     reorderChildren,

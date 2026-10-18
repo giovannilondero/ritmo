@@ -7,7 +7,10 @@
  * entity loses any of them or despawns. A node appears whichever of those
  * components arrives last, and goes as soon as one leaves. `RenderSync.system(...)` builds one system that does all three,
  * in a safe order (destroy, create, update), for one bound `Game`. What a
- * node looks like and how state is applied stay caller-defined.
+ * node looks like and how state is applied stay caller-defined. The registry
+ * belongs to the system: when removals were dropped before it read them
+ * (`lagged()`, after it did not run for long), it destroys every node whose
+ * entity no longer matches, so give each `RenderSync.system` its own registry.
  *
  * Change detection is per system, so the system sees every addition, change,
  * and removal exactly once, wherever it sits in the schedule, and applies each
@@ -244,6 +247,11 @@ export const system = <
   ]
   // Never empty: `required` always holds the renderable.
   queries["sync"] = Query({ selection, filters: [filters.length === 1 ? filters[0] : anyOf(...filters)] })
+  // Every entity that should have a node: read only after removals were lost.
+  queries["members"] = Query({
+    selection: { __renderable: Game.Query.read(options.renderable) },
+    with: required.filter((descriptor) => descriptor !== options.renderable)
+  })
 
   return System(options.name, {
     queries,
@@ -255,8 +263,21 @@ export const system = <
     const registry = services.__registry as NodeRegistry<Node>
     // Destroy first: an entity that lost a required component has no node,
     // and one that lost it and got it back since the last run gets a fresh one.
+    let lagged = false
     for (let index = 0; index < required.length; index++) {
-      for (const entity of removed[`removed${index}`].all()) registry.remove(entity)
+      const stream = removed[`removed${index}`]
+      for (const entity of stream.all()) registry.remove(entity)
+      if (stream.lagged()) lagged = true
+    }
+    // Removals were dropped before this system read them (it did not run
+    // for longer than the stream keeps them): destroy every node whose
+    // entity no longer has one, so none stays on screen.
+    if (lagged) {
+      const members = new Set<number>()
+      for (const { entity } of queries["members"].each()) members.add(entity.id)
+      for (const [entity] of [...registry.entries()]) {
+        if (!members.has(entity)) registry.remove(entity)
+      }
     }
 
     for (const { entity, data } of queries["sync"].each()) {

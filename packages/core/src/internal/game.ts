@@ -21,6 +21,10 @@ import type { Schema } from "../Schema.ts"
 import * as System from "../System.ts"
 import { requirementIndex, withRequired } from "./requirements.ts"
 
+/** Why an exit phase (`onExit`, `onTransition`) cannot contain `applyDeferred()`. */
+export const exitApplyDeferredMessage =
+  "onExit and onTransition schedules cannot contain applyDeferred(): the exit phase rolls back as one when a system in it fails, so its commands are applied at the next applyDeferred() after the marker" as const
+
 export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Schema.Game<S, Root> => {
   const requirements = requirementIndex(schema)
   const definedMachines: Array<Machine.StateMachine.Any> = []
@@ -80,6 +84,9 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
     plan: ReadonlyArray<Schedule.ScheduleEntry>
   ) => {
     const schedule = Schedule.make(schema, plan)
+    if (transition.phase !== "enter" && schedule.steps.some((step) => !Schedule.isSystemStep(step) && step.kind === "applyDeferred")) {
+      throw new Error(exitApplyDeferredMessage)
+    }
     // The machine is a requirement: a runtime without it could never run the schedule.
     return { ...schedule, requirements: Requirement.collect([...schedule.requirements, transition.machine]), transition }
   }

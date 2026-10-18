@@ -283,6 +283,8 @@ export interface DescribeInput {
   /** Commands skipped because they would have broken a `Schema.requires` requirement. */
   readonly requirementViolations: ReadonlyArray<Debug.RequirementViolation>
   readonly nextStateReplacements: ReadonlyArray<Debug.NextStateReplacement>
+  readonly staleTargets: ReadonlyArray<Debug.StaleTarget>
+  readonly streamLosses: ReadonlyArray<Debug.StreamLoss>
   readonly hasResource: (descriptor: Descriptor.Any) => boolean
   readonly schedules: ReadonlyArray<readonly [string, AnySchedule]>
 }
@@ -502,6 +504,33 @@ export const describe = (input: DescribeInput): Debug.Description => {
       message: `${replacement.by.system} queued ${replacement.machine}=${String(replacement.by.value)}, replacing ${String(replacement.replaced.value)} queued by ${replacement.replaced.system} before the same applyStateTransitions()${times}: the last value wins`
     })
   }
+  for (const stale of input.staleTargets) {
+    const times = stale.count === 1 ? "once" : `${stale.count} times`
+    lints.push({
+      severity: "warning",
+      code: "stale-target",
+      subject: stale.system,
+      message: `${stale.system} passed ${stale.command} an id spawned in an earlier run (last entity ${stale.entity}), so it was skipped ${times}`
+    })
+  }
+  for (const loss of input.streamLosses) {
+    if (loss.checksLagged) continue
+    if (loss.lostRuns > 0) {
+      lints.push({
+        severity: "warning",
+        code: "stream-loss-unread",
+        subject: loss.system,
+        message: `${loss.system} read ${loss.stream} after entries were dropped before it read them (${loss.lostRuns === 1 ? "once" : `${loss.lostRuns} runs`}), and never checks lagged()`
+      })
+    } else if (loss.paused) {
+      lints.push({
+        severity: "info",
+        code: "stream-loss-unread",
+        subject: loss.system,
+        message: `${loss.system} reads ${loss.stream} under pauseWhen and never checks lagged(): a long pause drops entries past the stream's capacity`
+      })
+    }
+  }
 
   return {
     version: 1,
@@ -578,6 +607,10 @@ const fixFor = (code: Debug.Lint["code"], subject: string): string => {
       return `fine if ${subject} is read outside the described schedules (rendering, inspectors); otherwise stop writing it`
     case "requirement-violated":
       return `keep what ${subject} spawns or inserts complete (every component its components require), and remove a required component only together with its requirers; a query proof can go stale when another system's command is applied first in the same applyDeferred()`
+    case "stream-loss-unread":
+      return `check lagged() in ${subject} where a missed entry matters (a node never destroyed, a count off), and rebuild from queries when it is true; fine if a missed entry is harmless`
+    case "stale-target":
+      return `an id spawn returns is valid only in the run that spawned it; in ${subject}, keep the entity id or a handle and resolve it again with a query (queries.x.get(id) / lookup.getHandle(handle, query)) and pass match.entity`
     case "next-state-replaced":
       return "decide between the values in one system, or check whether a next state is already queued (nextMachines.x.getPending()) before setting another"
     case "command-permission-unused":

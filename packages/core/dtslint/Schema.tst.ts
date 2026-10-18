@@ -688,7 +688,8 @@ describe("Schema", () => {
             queries.wrong.getHandle(current)
             // @ts-expect-error this query does not prove the handle's intent component: select it, or add it to with
             queries.optionalOnly.getHandle(current)
-            // A changed(Position) filter proves Position: a match holds it (the lookup still fails when nothing changed).
+            // A query with a changed filter has no lookups: they would fail whenever nothing changed.
+            // @ts-expect-error lookups need a query without added/changed filters: declare a second query for resolving entities
             queries.lifecycleOnly.getHandle(current)
             // @ts-expect-error Property 'getHandle' does not exist on type 'LookupApi
             lookup.getHandle(current, PositionQuery)

@@ -666,10 +666,47 @@ export interface RelationFailureReadView<
  * A runtime query handle exposed to system implementations.
  *
  * The handle is already typed from the query spec, so iterating it returns
- * strongly typed entity proofs and cells.
+ * strongly typed entity proofs and cells. A query with `added` / `changed`
+ * filters only iterates (`each`, `singleOptional`): its lookups would fail
+ * for every entity that did not change since this system's previous run, so
+ * declare a second query without filters to resolve entities.
  */
-export interface QueryHandle<S extends Schema.Any, Q extends Query.Any> {
+export type QueryHandle<S extends Schema.Any, Q extends Query.Any> =
+  & QueryIteration<S, Q>
+  & (Q["filters"] extends readonly [] ? QueryLookups<S, Q> : FilteredQueryLookups)
+
+/** What every query handle has: iteration over its current matches. */
+export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
   each(): ReadonlyArray<QueryMatch<S, Q>>
+  /**
+   * Returns a single match when zero or one entity satisfies the query.
+   *
+   * Use this when absence is acceptable but multiplicity is still a bug. Zero
+   * matches return `ok: true` with `value: undefined`; multiple matches remain
+   * an explicit `MultipleEntities` failure.
+   *
+   * @example
+   * ```ts
+   * const player = queries.player.singleOptional()
+   * if (!player.ok || !player.value) {
+   *   return
+   * }
+   *
+   * player.value.data.position.set({ x: 0, y: 0 })
+   * ```
+   */
+  singleOptional(): Result.Result<QueryMatch<S, Q> | undefined, Query.MultipleEntitiesError>
+}
+
+type FilteredLookupMessage = "lookups need a query without added/changed filters: declare a second query for resolving entities"
+
+/** The lookups of a query with filters, each replaced by the message naming the fix. */
+export type FilteredQueryLookups = {
+  readonly [K in keyof QueryLookups<Schema.Any, Query.Any>]: (this: FilteredLookupMessage, ...args: ReadonlyArray<unknown>) => never
+}
+
+/** Lookups of one entity or one hierarchy through a query without `added` / `changed` filters. */
+export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
   /**
    * Retrieves the match for one specific entity id when it satisfies the query.
    *
@@ -691,7 +728,7 @@ export interface QueryHandle<S extends Schema.Any, Q extends Query.Any> {
       ? H
       : Query.ProvesComponent<Q, Entity.Handle.Intent<H> & Descriptor<"component", string, any>> extends true
         ? H
-        : "this query does not prove the handle's intent component: select it, or add it to with (an added or changed filter on it proves it too)"
+        : "this query does not prove the handle's intent component: select it, or add it to with"
   ): Result.Result<QueryMatch<S, Q>, Query.LookupError>
   /**
    * The direct children of one hierarchy parent that match this query, in the
@@ -716,24 +753,6 @@ export interface QueryHandle<S extends Schema.Any, Q extends Query.Any> {
    * Returns a single match when exactly one entity satisfies the query.
    */
   single(): Result.Result<QueryMatch<S, Q>, Query.SingleError>
-  /**
-   * Returns a single match when zero or one entity satisfies the query.
-   *
-   * Use this when absence is acceptable but multiplicity is still a bug. Zero
-   * matches return `ok: true` with `value: undefined`; multiple matches remain
-   * an explicit `MultipleEntities` failure.
-   *
-   * @example
-   * ```ts
-   * const player = queries.player.singleOptional()
-   * if (!player.ok || !player.value) {
-   *   return
-   * }
-   *
-   * player.value.data.position.set({ x: 0, y: 0 })
-   * ```
-   */
-  singleOptional(): Result.Result<QueryMatch<S, Q> | undefined, Query.MultipleEntitiesError>
 }
 
 /**

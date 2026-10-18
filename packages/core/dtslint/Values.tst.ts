@@ -42,3 +42,28 @@ describe("Decode", () => {
     Decode.struct({ level: 1 })
   })
 })
+
+describe("Descriptor values", () => {
+  it("infers the descriptor of a typed value", () => {
+    const Health = Descriptor.Component<number>()("Values/TypedHealth")
+    expect(Health).type.toBe<Descriptor.Descriptor<"component", "Values/TypedHealth", number>>()
+    expect(Descriptor.Resource<unknown>()("Values/Blob")).type.toBe<Descriptor.Descriptor<"resource", "Values/Blob", unknown>>()
+  })
+
+  it("rejects any and never as a value", () => {
+    // @ts-expect-error a component value cannot be `any`
+    Descriptor.Component<any>()("Values/Anything")
+    // @ts-expect-error a component value cannot be `never`
+    Descriptor.Component<never>()("Values/Gone")
+    // @ts-expect-error a component value cannot be `any`
+    Descriptor.TransientComponent<any>()("Values/AnyTrail")
+    // @ts-expect-error a resource value cannot be `any`
+    Descriptor.Resource<any>()("Values/AnyScore")
+    // @ts-expect-error a resource value cannot be `never`
+    Descriptor.TransientResource<never>()("Values/NoTime")
+    // @ts-expect-error an event value cannot be `any`
+    Descriptor.Event<any>()("Values/AnyHit")
+    // @ts-expect-error a service value cannot be `any`
+    Descriptor.Service<any>()("Values/AnyLogger")
+  })
+})

@@ -89,7 +89,8 @@ import type {
   ResourceChangedView,
   EventWriteView,
   LookupApi,
-  QueryHandle,
+  QueryIteration,
+  QueryLookups,
   RelationFailureReadView,
   RemovedReadView,
   TransitionEventReadView,
@@ -948,6 +949,39 @@ const makeValidatedRuntime = <
       requirementViolations.set(key, { system: commandOrigin, command, component, missing, entity, count: (seen?.count ?? 0) + 1 })
     }
   }
+  const streamLosses = new Map<string, Debug.StreamLoss>()
+  const watchStreamLoss = <V extends { all(): unknown; lagged(): boolean }>(view: V, system: string, stream: string, paused: boolean): V => {
+    const key = `${system}/${stream}`
+    const entry = (): { -readonly [K in keyof Debug.StreamLoss]: Debug.StreamLoss[K] } => {
+      let found = streamLosses.get(key)
+      if (found === undefined) {
+        found = { system, stream, lostRuns: 0, checksLagged: false, paused }
+        streamLosses.set(key, found)
+      }
+      return found as { -readonly [K in keyof Debug.StreamLoss]: Debug.StreamLoss[K] }
+    }
+    return {
+      ...view,
+      all: () => {
+        const status = entry()
+        if (view.lagged()) status.lostRuns += 1
+        return view.all()
+      },
+      lagged: () => {
+        entry().checksLagged = true
+        return view.lagged()
+      }
+    }
+  }
+  const staleTargets = new Map<string, Debug.StaleTarget>()
+  const reportStaleTarget = (command: Debug.StaleTarget["command"], entity: number): void => {
+    if (tracing) recordEffect({ kind: "staleTarget", entity, command })
+    if (debugEnabled) {
+      const key = `${commandOrigin}/${command}`
+      const seen = staleTargets.get(key)
+      staleTargets.set(key, { system: commandOrigin, command, entity, count: (seen?.count ?? 0) + 1 })
+    }
+  }
   const holds = (id: number) => {
     const record = world.records.get(id)
     return (descriptor: Descriptor<"component", string, any>): boolean =>
@@ -1029,6 +1063,9 @@ const makeValidatedRuntime = <
         if (debugEnabled) noteCommand("inserts", descriptor.name)
         world.writeComponent(id, descriptor, value)
       }
+    },
+    reportStaleTarget(command, id) {
+      reportStaleTarget(command, id)
     },
     tryRelate(id, relation, target) {
       if (debugEnabled) {
@@ -1163,7 +1200,7 @@ const makeValidatedRuntime = <
     return lookup
   }
 
-  const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryHandle<S, Q> => {
+  const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryIteration<S, Q> & QueryLookups<S, Q> => {
     const each = () => queries.each(query, reader.since) as ReadonlyArray<QueryMatch<S, Q>>
     const matching = (ids: ReadonlyArray<Entity.EntityId<S, Root>>): Array<QueryMatch<S, Q>> => {
       const matches: Array<QueryMatch<S, Q>> = []
@@ -1221,6 +1258,32 @@ const makeValidatedRuntime = <
   const machineOriginals = new Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>()
   const emittedEvents = new Map<symbol, Array<unknown>>()
 
+  /**
+   * The open phase, or `undefined`. A transition's exit phase (the exit
+   * schedules of the sub-states it ends and of the state it leaves, then its
+   * `onTransition` schedules) commits or rolls back as one: when one of its
+   * systems fails, the writes, events, queued next states, queued commands,
+   * and stream positions of the systems that ran before it are undone too, so
+   * the retry at a later marker starts from the same state.
+   */
+  interface Phase {
+    readonly tick: number
+    readonly commands: number
+    readonly origins: number
+    readonly resources: Map<symbol, unknown>
+    readonly resourceChangedAt: Map<symbol, number | undefined>
+    readonly machines: Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>
+    readonly readers: Map<ReaderState, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number]>
+  }
+  let phase: Phase | undefined
+
+  /** Keeps a reader's position from before the phase, the first time the phase moves it. */
+  const journalReader = (reader: ReaderState): void => {
+    if (phase !== undefined && !phase.readers.has(reader)) {
+      phase.readers.set(reader, [reader.since, reader.lastRun, reader.streamSince, reader.streamLastRun])
+    }
+  }
+
   const journalStoreWrite = (store: Map<symbol, unknown>, originals: Map<symbol, unknown>) =>
     (key: symbol, value: unknown): void => {
       if (!originals.has(key)) {
@@ -1251,10 +1314,19 @@ const makeValidatedRuntime = <
 
   const commitSystemTransaction = (): void => {
     world.commitTransaction()
+    if (phase !== undefined) {
+      for (const [key, before] of resourceOriginals) {
+        if (!phase.resources.has(key)) phase.resources.set(key, before)
+      }
+      for (const [key, before] of machineOriginals) {
+        if (!phase.machines.has(key)) phase.machines.set(key, before)
+      }
+    }
     if (watchedResources.size > 0) {
       for (const [key, before] of resourceOriginals) {
         if (!watchedResources.has(key)) continue
         if (before === absentValue || !sameValue(before, resources.get(key))) {
+          if (phase !== undefined && !phase.resourceChangedAt.has(key)) phase.resourceChangedAt.set(key, resourceChangedAt.get(key))
           resourceChangedAt.set(key, world.currentTick())
         }
       }
@@ -1293,6 +1365,54 @@ const makeValidatedRuntime = <
     }
     machineOriginals.clear()
     emittedEvents.clear()
+  }
+
+  /**
+   * Runs `run` as one phase: on failure, or a thrown defect, everything the
+   * systems in it committed is undone.
+   */
+  const runAsPhase = (run: () => Result.Result<void, SystemFailure>): Result.Result<void, SystemFailure> => {
+    const opened: Phase = {
+      tick: world.currentTick(),
+      commands: pendingCommands.length,
+      origins: pendingOrigins.length,
+      resources: new Map(),
+      resourceChangedAt: new Map(),
+      machines: new Map(),
+      readers: new Map()
+    }
+    phase = opened
+    world.beginPhase()
+    let result: Result.Result<void, SystemFailure> | undefined
+    try {
+      result = run()
+    } finally {
+      phase = undefined
+      if (result?.ok === true) {
+        world.commitPhase()
+      } else {
+        world.rollbackPhase()
+        restoreStore(resources, opened.resources)
+        for (const [key, value] of opened.machines) {
+          if (value === absentValue) pendingMachines.delete(key)
+          else pendingMachines.set(key, value)
+        }
+        for (const [key, tick] of opened.resourceChangedAt) {
+          if (tick === undefined) resourceChangedAt.delete(key)
+          else resourceChangedAt.set(key, tick)
+        }
+        for (const [reader, [since, lastRun, streamSince, streamLastRun]] of opened.readers) {
+          reader.since = since
+          reader.lastRun = lastRun
+          reader.streamSince = streamSince
+          reader.streamLastRun = streamLastRun
+        }
+        events.retract(opened.tick)
+        pendingCommands.length = opened.commands
+        pendingOrigins.length = opened.origins
+      }
+    }
+    return result
   }
 
   const makeResourceWriteView = (
@@ -1472,9 +1592,14 @@ const makeValidatedRuntime = <
   const makeContext = (system: SystemDefinition<any, any, any>, reader: ReaderState, queue: Command.CommandQueue<S, Root>): SystemContext<any> => {
     const spec = system.spec
     const lookup = makeLookup(reader)
+    const paused = (spec.pauseWhen as ReadonlyArray<unknown>).length > 0
+    /** On a debug runtime, records reads after a loss and calls of `lagged()`, for the `stream-loss-unread` lint. */
+    const watch = <V extends { all(): unknown; lagged(): boolean }>(view: V, stream: string): V =>
+      debugEnabled ? watchStreamLoss(view, system.name, stream, paused) : view
     return {
       local: (spec.local as (() => unknown) | undefined)?.(),
-      queries: mapRecord(spec.queries as Record<string, Query.Query.Any<Root>>, (query) => makeQueryHandle(query, reader, lookup)),
+      // A filtered query hands out the same object; its type hides the lookups.
+      queries: mapRecord(spec.queries as Record<string, Query.Query.Any<Root>>, (query) => makeQueryHandle(query, reader, lookup) as never),
       lookup,
       resources: mapRecord(spec.resources as Record<string, any>, (access) =>
         access.mode === "read"
@@ -1484,15 +1609,15 @@ const makeValidatedRuntime = <
             : makeResourceWriteView(access.descriptor, resources, writeResource)),
       events: mapRecord(spec.events as Record<string, any>, (access) =>
         access.mode === "read"
-          ? makeEventReadView(access.descriptor.key, reader)
+          ? watch(makeEventReadView(access.descriptor.key, reader), `events ${access.descriptor.name}`)
           : makeEventWriteView(access.descriptor.key)),
       machines: mapRecord(spec.machines as Record<string, any>, (access) => makeMachineReadView(access.machine)),
       nextMachines: mapRecord(spec.nextMachines as Record<string, any>, (access) => makeNextMachineWriteView(access.machine)),
-      transitionEvents: mapRecord(spec.transitionEvents as Record<string, any>, (access) => makeTransitionEventReadView(access.machine, reader)),
+      transitionEvents: mapRecord(spec.transitionEvents as Record<string, any>, (access) => watch(makeTransitionEventReadView(access.machine, reader), `transition events ${access.machine.name}`)),
       transitions: mapRecord(spec.transitions as Record<string, any>, (access) => makeTransitionReadView(access.machine)),
-      removed: mapRecord(spec.removed as Record<string, any>, (access) => makeRemovedReadView(access.descriptor, reader)),
-      despawned: mapRecord(spec.despawned as Record<string, any>, () => makeDespawnedReadView(reader)),
-      relationFailures: mapRecord(spec.relationFailures as Record<string, any>, (access) => makeRelationFailureReadView(access.relation, reader)),
+      removed: mapRecord(spec.removed as Record<string, any>, (access) => watch(makeRemovedReadView(access.descriptor, reader), `removed ${access.descriptor.name}`)),
+      despawned: mapRecord(spec.despawned as Record<string, any>, () => watch(makeDespawnedReadView(reader), "despawned")),
+      relationFailures: mapRecord(spec.relationFailures as Record<string, any>, (access) => watch(makeRelationFailureReadView(access.relation, reader), `relation failures ${access.relation.name}`)),
       services: mapRecord(spec.services as Record<string, any>, (access) =>
         providedServices[access.descriptor.name as keyof Services]),
       // The queue serves every declared permission set; the spec's types narrow it.
@@ -1685,6 +1810,7 @@ const makeValidatedRuntime = <
         // neither holds them nor receives a backlog when it runs again.
         const skipped = slotOf(system, true)
         if (tracing) traceSkipped(system, condition, skipped.reader, false)
+        journalReader(skipped.reader)
         skipped.reader.streamLastRun = world.currentTick()
         return succeeded
       }
@@ -1704,6 +1830,7 @@ const makeValidatedRuntime = <
       ranSystems.add(system.name)
       runningSystem = system.name
     }
+    journalReader(reader)
     // Changes stamped after the previous completed run are visible to this run.
     reader.since = reader.lastRun
     reader.streamSince = reader.streamLastRun
@@ -1903,44 +2030,35 @@ const makeValidatedRuntime = <
       // Sub-states that exist in the state being left exit first, deepest
       // first: their exit schedules run before the parent's, while they
       // still have their values, and they lose them at the parent's commit.
+      // The exit phase is one transaction: a failure undoes all of it, and
+      // the transition stays queued for a later attempt.
       const leaving = activeSubStatesIn(machineKey, snapshot.from)
-      for (const sub of leaving) {
-        const value = currentMachines.get(sub.key)
-        const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
-        if (!result.ok) {
-          requeue()
-          if (tracing) traceTransition(machineKey, snapshot, "failed")
-          return result
+      const exited = runAsPhase(() => {
+        for (const sub of leaving) {
+          const value = currentMachines.get(sub.key)
+          const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
+          if (!result.ok) return result
         }
-      }
-
-      for (const schedule of schedules) {
-        const transition = schedule.transition
-        if (transition.phase === "exit" && transition.machine.key === machineKey && transition.state === snapshot.from) {
-          const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
-            // The transition did not happen; keep it queued for a later attempt.
-            requeue()
-            if (tracing) traceTransition(machineKey, snapshot, "failed")
-            return result
+        const left = runPhase(machineKey, "exit", snapshot.from, snapshot, schedules)
+        if (!left.ok) return left
+        for (const schedule of schedules) {
+          const transition = schedule.transition
+          if (
+            transition.phase === "transition"
+            && transition.machine.key === machineKey
+            && transition.from === snapshot.from
+            && transition.to === snapshot.to
+          ) {
+            const result = runTransitionSchedule(schedule, snapshot)
+            if (!result.ok) return result
           }
         }
-      }
-      for (const schedule of schedules) {
-        const transition = schedule.transition
-        if (
-          transition.phase === "transition"
-          && transition.machine.key === machineKey
-          && transition.from === snapshot.from
-          && transition.to === snapshot.to
-        ) {
-          const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
-            requeue()
-            if (tracing) traceTransition(machineKey, snapshot, "failed")
-            return result
-          }
-        }
+        return succeeded
+      })
+      if (!exited.ok) {
+        requeue()
+        if (tracing) traceTransition(machineKey, snapshot, "failed")
+        return exited
       }
 
       for (const sub of leaving) commitMachine(sub.key, currentMachines.get(sub.key), undefined)
@@ -2613,6 +2731,8 @@ const makeValidatedRuntime = <
       ranSystems,
       requirementViolations: [...requirementViolations.values()],
       nextStateReplacements: [...nextStateReplacements.values()],
+      staleTargets: [...staleTargets.values()],
+      streamLosses: [...streamLosses.values()],
       hasResource: (descriptor) => resources.has(descriptor.key),
       schedules: [...scheduleNames].map(([schedule, name]) => [name, schedule as ExecutableScheduleDefinition<S>] as const)
     }),
@@ -2705,6 +2825,39 @@ export const make = <
   return Result.success(runtime) as never
 }
 
+/** Names listed more than once in `Names` (a tuple), in order of their second listing. */
+type RepeatedNames<Names extends ReadonlyArray<string>, Seen extends string = never> =
+  Names extends readonly [infer Head extends string, ...infer Tail extends ReadonlyArray<string>]
+    ? (string extends Head ? never : Head extends Seen ? Head : never) | RepeatedNames<Tail, Seen | Head>
+    : never
+
+type ProvidedServiceNames<Entries extends ReadonlyArray<ServiceProvision>> = {
+  readonly [K in keyof Entries]: Entries[K] extends ServiceProvision<infer D> ? D["name"] : string
+}
+type ProvidedMachineNames<Entries extends ReadonlyArray<MachineProvision>> = {
+  readonly [K in keyof Entries]: Entries[K] extends MachineProvision<infer M> ? M["name"] : string
+}
+
+/** Rejects a service provided twice: only the last would be used. */
+type UniqueServices<Entries extends ReadonlyArray<ServiceProvision>> =
+  [RepeatedNames<ProvidedServiceNames<Entries>>] extends [never] ? unknown : {
+    readonly __fixServices__: `${RepeatedNames<ProvidedServiceNames<Entries>>} is provided twice: keep one Game.Runtime.service(...) for it`
+  }
+
+/** Rejects a machine started twice: only the last initial value would be used. */
+type UniqueMachines<Entries extends ReadonlyArray<MachineProvision>> =
+  [RepeatedNames<ProvidedMachineNames<Entries>>] extends [never] ? unknown : {
+    readonly __fixMachines__: `${RepeatedNames<ProvidedMachineNames<Entries>>} is provided twice: keep one Game.Runtime.machine(...) for it`
+  }
+
+const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine"): void => {
+  const seen = new Set<string>()
+  for (const name of names) {
+    if (seen.has(name)) throw new Error(`${name} is provided twice: keep one Game.Runtime.${kind}(...) for it`)
+    seen.add(name)
+  }
+}
+
 /**
  * Builds the descriptor-backed runtime service environment.
  *
@@ -2714,6 +2867,8 @@ export const make = <
  *
  * The helper keeps the runtime map keyed by service descriptors instead of
  * ad hoc strings, so the provision site cannot drift from the declaration site.
+ * Each service is provided once: a second provision of the same one does not
+ * compile.
  *
  * @example
  * ```ts
@@ -2726,7 +2881,8 @@ export const make = <
  */
 export const services = <
   const Entries extends ReadonlyArray<ServiceProvision>
->(...entries: Entries): RuntimeServices<ServiceEntriesToRecord<Entries>> => {
+>(...entries: Entries & UniqueServices<Entries>): RuntimeServices<ServiceEntriesToRecord<Entries>> => {
+  rejectRepeated(entries.map((entry) => entry.descriptor.name), "service")
   const provided: Record<string, unknown> = {}
   for (const { descriptor, implementation } of entries) {
     provided[descriptor.name] = implementation
@@ -2756,11 +2912,14 @@ export const service = <
  * Builds the machine initialization environment from machine definitions.
  *
  * Use this when gameplay phases need a known committed starting state before
- * any schedule runs, for example `"Boot"`, `"Menu"`, or `"Playing"`.
+ * any schedule runs, for example `"Boot"`, `"Menu"`, or `"Playing"`. Each
+ * machine is provided once: a second provision of the same one does not
+ * compile.
  */
 export const machines = <
   const Entries extends ReadonlyArray<MachineProvision>
->(...entries: Entries): RuntimeMachines<MachineEntriesToRecord<Entries>> => {
+>(...entries: Entries & UniqueMachines<Entries>): RuntimeMachines<MachineEntriesToRecord<Entries>> => {
+  rejectRepeated(entries.map((entry) => entry.machine.name), "machine")
   const provided: Record<string, unknown> = {}
   for (const { machine, initial } of entries) {
     provided[machine.name] = initial
