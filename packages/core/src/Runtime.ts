@@ -740,7 +740,8 @@ const makeValidatedRuntime = <
    * Machine-keyed committed, pending, and previous values.
    */
   const currentMachines = new Map<symbol, unknown>()
-  const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean }>()
+  /** Queued next values; with `debug`, `by` is the system that queued it, for the `next-state-replaced` lint. */
+  const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean; by?: string }>()
   /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
   const discardedPending = new WeakSet<object>()
   const previousMachines = new Map<symbol, unknown>()
@@ -904,6 +905,10 @@ const makeValidatedRuntime = <
    */
   const commandUses = new Map<string, Set<string>>()
   const ranSystems = new Set<string>()
+  /** With `debug`, the system running now: who queued a next state. */
+  let runningSystem = "(host)"
+  /** With `debug`, next states one system queued and another replaced before the marker. */
+  const nextStateReplacements = new Map<string, Debug.NextStateReplacement>()
   const noteCommand = (kind: string, name: string): void => {
     let uses = commandUses.get(commandOrigin)
     if (uses === undefined) {
@@ -1389,7 +1394,23 @@ const makeValidatedRuntime = <
       } satisfies Machine.SubStateInactive) as Machine.SetResult<M>
     }
     journalMachine(stateMachine.key)
-    pendingMachines.set(stateMachine.key, { value, skipIfSame })
+    if (debugEnabled) {
+      const previous = pendingMachines.get(stateMachine.key)
+      // A set from a transition schedule waits for the next marker: it replaces nothing queued for this one.
+      if (previous?.by !== undefined && previous.by !== runningSystem && previous.value !== value && activeTransitions.size === 0) {
+        const key = `${stateMachine.name}/${previous.by}/${runningSystem}/${String(previous.value)}/${String(value)}`
+        const seen = nextStateReplacements.get(key)
+        nextStateReplacements.set(key, {
+          machine: stateMachine.name,
+          replaced: { system: previous.by, value: previous.value as Machine.StateValue },
+          by: { system: runningSystem, value: value as Machine.StateValue },
+          count: (seen?.count ?? 0) + 1
+        })
+      }
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem })
+    } else {
+      pendingMachines.set(stateMachine.key, { value, skipIfSame })
+    }
     return (within === undefined ? undefined : succeeded) as Machine.SetResult<M>
   }
 
@@ -1679,7 +1700,10 @@ const makeValidatedRuntime = <
       }
     }
     const { context, commands, reader } = slotOf(system, true)
-    if (debugEnabled) ranSystems.add(system.name)
+    if (debugEnabled) {
+      ranSystems.add(system.name)
+      runningSystem = system.name
+    }
     // Changes stamped after the previous completed run are visible to this run.
     reader.since = reader.lastRun
     reader.streamSince = reader.streamLastRun
@@ -2588,6 +2612,7 @@ const makeValidatedRuntime = <
       commandUses,
       ranSystems,
       requirementViolations: [...requirementViolations.values()],
+      nextStateReplacements: [...nextStateReplacements.values()],
       hasResource: (descriptor) => resources.has(descriptor.key),
       schedules: [...scheduleNames].map(([schedule, name]) => [name, schedule as ExecutableScheduleDefinition<S>] as const)
     }),

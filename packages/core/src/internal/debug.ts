@@ -282,6 +282,7 @@ export interface DescribeInput {
   readonly ranSystems: ReadonlySet<string>
   /** Commands skipped because they would have broken a `Schema.requires` requirement. */
   readonly requirementViolations: ReadonlyArray<Debug.RequirementViolation>
+  readonly nextStateReplacements: ReadonlyArray<Debug.NextStateReplacement>
   readonly hasResource: (descriptor: Descriptor.Any) => boolean
   readonly schedules: ReadonlyArray<readonly [string, AnySchedule]>
 }
@@ -471,15 +472,6 @@ export const describe = (input: DescribeInput): Debug.Description => {
         })
       }
     }
-    for (const violation of input.requirementViolations) {
-      const times = violation.count === 1 ? "once" : `${violation.count} times`
-      lints.push({
-        severity: "warning",
-        code: "requirement-violated",
-        subject: violation.system,
-        message: `${violation.system} queued ${violation.command === "insert" ? "an" : "a"} ${violation.command} that would have left ${violation.component} without ${violation.missing} (last on entity ${violation.entity}), so it was skipped ${times}`
-      })
-    }
     for (const entry of components.list()) {
       if (entry.writers.length > 0 && entry.readers.every((reader) => entry.writers.includes(reader))) {
         lints.push({
@@ -490,6 +482,25 @@ export const describe = (input: DescribeInput): Debug.Description => {
         })
       }
     }
+  }
+  // Observed with debug, whether or not schedules are named.
+  for (const violation of input.requirementViolations) {
+    const times = violation.count === 1 ? "once" : `${violation.count} times`
+    lints.push({
+      severity: "warning",
+      code: "requirement-violated",
+      subject: violation.system,
+      message: `${violation.system} queued ${violation.command === "insert" ? "an" : "a"} ${violation.command} that would have left ${violation.component} without ${violation.missing} (last on entity ${violation.entity}), so it was skipped ${times}`
+    })
+  }
+  for (const replacement of input.nextStateReplacements) {
+    const times = replacement.count === 1 ? "" : `, ${replacement.count} times`
+    lints.push({
+      severity: "warning",
+      code: "next-state-replaced",
+      subject: replacement.machine,
+      message: `${replacement.by.system} queued ${replacement.machine}=${String(replacement.by.value)}, replacing ${String(replacement.replaced.value)} queued by ${replacement.replaced.system} before the same applyStateTransitions()${times}: the last value wins`
+    })
   }
 
   return {
@@ -567,6 +578,8 @@ const fixFor = (code: Debug.Lint["code"], subject: string): string => {
       return `fine if ${subject} is read outside the described schedules (rendering, inspectors); otherwise stop writing it`
     case "requirement-violated":
       return `keep what ${subject} spawns or inserts complete (every component its components require), and remove a required component only together with its requirers; a query proof can go stale when another system's command is applied first in the same applyDeferred()`
+    case "next-state-replaced":
+      return "decide between the values in one system, or check whether a next state is already queued (nextMachines.x.getPending()) before setting another"
     case "command-permission-unused":
       return `fine if the session did not reach the case where ${subject} uses it; otherwise drop the permission from its Game.System.commands(...)`
     case "read-before-write":

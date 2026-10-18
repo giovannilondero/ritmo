@@ -146,6 +146,32 @@ describe("Runtime debug handle", () => {
     expect(relationLints()).toEqual([])
   })
 
+  it("lints a next state one system queued and another replaced before the marker", () => {
+    const runtime = makeRuntime()
+    const queue = (name: string, value: "Menu" | "Playing") =>
+      Game.System(`Debug/Queue${name}`, { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
+        nextMachines.flow.set(value)
+      })
+    const Lose = queue("Lose", "Menu")
+    const Win = queue("Win", "Playing")
+    const Again = queue("Again", "Playing")
+    const replaced = () => runtime.debug.describe().lints.filter((lint) => lint.code === "next-state-replaced")
+
+    // The same value twice, or one system alone, replaces nothing.
+    runtime.tick(Game.Schedule(Win, Again, Game.Schedule.applyStateTransitions()))
+    expect(replaced()).toEqual([])
+
+    runtime.tick(Game.Schedule(Lose, Win, Game.Schedule.applyStateTransitions()))
+    runtime.tick(Game.Schedule(Lose, Win, Game.Schedule.applyStateTransitions()))
+    expect(replaced()).toEqual([{
+      severity: "warning",
+      code: "next-state-replaced",
+      subject: "Debug/Flow",
+      message: "Debug/QueueWin queued Debug/Flow=Playing, replacing Menu queued by Debug/QueueLose before the same applyStateTransitions(), 2 times: the last value wins",
+      fix: "decide between the values in one system, or check whether a next state is already queued (nextMachines.x.getPending()) before setting another"
+    }])
+  })
+
   it("lints a relation a system may relate (declared relates) before any command ran, and not once its failures are read", () => {
     const runtime = makeRuntime()
     const Adopt = Game.System("Debug/Adopt", { commands: Game.System.commands(Game.System.relates(ChildOf)) }, () => {})
