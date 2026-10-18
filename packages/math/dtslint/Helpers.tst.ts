@@ -44,3 +44,14 @@ describe("hot-path helpers", () => {
     FlowField.make(16)
   })
 })
+
+describe("Random resource", () => {
+  it("draws only from the cell of a random resource", () => {
+    expect(Random.seed(1)).type.toBe<Random.State>()
+    const cell = { get: () => Random.seed(1), set: (_: Random.State) => {}, update: () => {} }
+    expect(Random.draw(cell)).type.toBe<Random.Random>()
+    const score = { get: () => 1, set: (_: number) => {}, update: () => {} }
+    // @ts-expect-error Type 'number' is not assignable to type 'State'
+    Random.draw(score)
+  })
+})

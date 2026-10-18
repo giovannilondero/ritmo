@@ -3,16 +3,22 @@
  * integer.
  *
  * Keep the state in a resource, so a run replays exactly and saves with the
- * world: a system makes a generator from the stored state, draws from it,
- * then writes `random.state` back. Two generators made from the same state
- * draw the same sequence on every platform.
+ * world: declare it with this module as its validator, start it with
+ * `seed`, and draw in systems through `draw` over its write cell, which writes
+ * every draw back (rolled back with a failed system). Two generators made
+ * from the same state draw the same sequence on every platform. `make` is for
+ * a state that lives outside the world (a level generator seeded once).
  *
  * @example
  * ```ts
- * const random = Random.make(resources.rng.get().state)
- * const angle = random.range(0, Math.PI * 2)
- * const kind = random.pick(kinds) ?? "grunt"
- * resources.rng.set({ state: random.state })
+ * const Rng = Descriptor.ConstructedResource(Random)("Game/Rng")
+ * const runtime = Game.Runtime.make({ services, resources: { Rng: Random.seed(0x5eed) } })
+ *
+ * Game.System("Spawn", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
+ *   const random = Random.draw(resources.rng)
+ *   const angle = random.range(0, Math.PI * 2)
+ *   const kind = random.pick(kinds) ?? "grunt"
+ * })
  * ```
  *
  * @module Random
@@ -23,7 +29,13 @@
  *
  * @categoryDescription Construction
  * Making a generator from a stored state.
+ *
+ * @categoryDescription Resource
+ * Keeping the state in a world resource.
  */
+import type * as Brand from "@typeonce/ritmo/Brand"
+import type { WriteCell } from "@typeonce/ritmo/Query"
+import * as Result from "@typeonce/ritmo/Result"
 
 /**
  * A generator. Every draw advances `state`.
@@ -121,3 +133,72 @@ class Mulberry32 implements Random {
  * @category Construction
  */
 export const make = (state: number): Random => new Mulberry32(state)
+
+/**
+ * A generator's state as a resource holds it: an unsigned 32-bit integer.
+ * Only `seed`, `result`, and `decode` make one, so `draw` takes the cell of a
+ * random resource and nothing else.
+ *
+ * @category Resource
+ */
+export type State = Brand.Branded<number, "Random/State">
+
+/** Why a value is not a generator state. @category Resource */
+export interface InvalidState {
+  readonly _tag: "InvalidRandomState"
+  readonly value: unknown
+}
+
+const isState = (value: unknown): value is State =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 0xffffffff
+
+/**
+ * Validates a state, for `Descriptor.ConstructedResource(Random)` and saves.
+ *
+ * @category Resource
+ */
+export const result = (raw: number): Result.Result<State, InvalidState> =>
+  isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw })
+
+/**
+ * Validates a state read from untrusted data (a save).
+ *
+ * @category Resource
+ */
+export const decode = (raw: unknown): Result.Result<State, InvalidState> =>
+  isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw })
+
+/**
+ * The starting state for a seed, reduced to an unsigned 32-bit integer like
+ * `make`: the value to give a random resource in `Game.Runtime.make`.
+ *
+ * @category Resource
+ */
+export const seed = (value: number): State => (value >>> 0) as State
+
+class CellRandom extends Mulberry32 {
+  readonly #cell: WriteCell<State>
+
+  constructor(cell: WriteCell<State>) {
+    super(cell.get())
+    this.#cell = cell
+  }
+
+  override next(): number {
+    // Read the cell each time, so two generators over one cell share one sequence.
+    this.state = this.#cell.get()
+    const value = super.next()
+    this.#cell.set(this.state as State)
+    return value
+  }
+}
+
+/**
+ * A generator over a random resource's write cell: every draw continues from
+ * the stored state and writes the new one back, so the system needs no
+ * `set` of its own, a failed run rolls the draws back, and generators made
+ * from the same cell in one run continue one sequence.
+ *
+ * @category Resource
+ */
+export const draw = (cell: WriteCell<State>): Random => new CellRandom(cell)
