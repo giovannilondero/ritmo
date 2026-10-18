@@ -68,6 +68,33 @@ Fix each error where it is reported; the messages name the fix.
   per resource (a write or changed view reads too).
 - **Optional slots read with `value()`**: `cell.value()` replaces
   `cell.present ? cell.get() : undefined`.
+- **A `SpawnedId` is valid only in the run that spawned it.** A `despawn`
+  or `remove` given one kept from an earlier run is skipped and reported
+  by the `stale-target` lint. Keep the entity id or a handle and resolve it
+  through a query (`queries.x.get(id)`), then pass `match.entity`.
+- **Descriptor values cannot be `any` or `never`.** Give the value a type;
+  use `unknown` for a value no system reads, and `Descriptor.Tag` for a
+  marker.
+- **A saved component cannot require a transient one.** Make the requirer
+  transient too, or give the required component a constructor.
+- **Filtered queries have no lookups.** Resolve entities through a second
+  query without `added` / `changed` filters:
+
+  ```diff
+  -Game.System("Follow", { queries: { moved: Moved } }, ({ queries }) => {
+  -  const target = queries.moved.getHandle(handle)
+  +Game.System("Follow", { queries: { moved: Moved, targets: Targets } }, ({ queries }) => {
+  +  const target = queries.targets.getHandle(handle)
+  ```
+
+- **`onExit` / `onTransition` schedules cannot contain `applyDeferred()`.**
+  Their commands are applied at the next `applyDeferred()` after the
+  marker; a failure in the exit phase now undoes the whole phase.
+- **Provide each service and machine once** in `Runtime.services(...)` /
+  `Runtime.machines(...)`.
+- **New lints `stale-target` and `stream-loss-unread`** on debug runtimes.
+  For the second, check `lagged()` where a missed entry matters and rebuild
+  from queries when it is true.
 - **Behaviour:** `Collide2` now stops a circle that starts exactly touching
   a wall and moves into it. A game that fingerprints its simulation
   re-records the fingerprints with the upgrade.
