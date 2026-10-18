@@ -10,7 +10,7 @@
 - [`packages/browser`](./packages/browser/): browser host adapters (BrowserTickSource, BrowserHostClock) and keyboard, pointer, and touch input.
 - [`packages/render`](./packages/render/): renderer-agnostic node registry and render-sync systems.
 - [`packages/pixi`](./packages/pixi/): Pixi container adapter (`PixiNodeRegistry.make`) for the render package's registry contract.
-- [`packages/math`](./packages/math/): validated math values (Scalar, Vector2, Size2, Aabb, InputAxis) and hot-path game helpers (Vec2, Box2, Collide2, SpatialGrid, FlowField, Random).
+- [`packages/math`](./packages/math/): validated math values (Scalar, Vector2, Size2, Aabb, InputAxis) and hot-path game helpers (Vec2, Box2, Collide2, SpatialGrid, FlowField, Random, Ops).
 - [`packages/devtools`](./packages/devtools/): debug sessions, trace history, and text reports over the core `Debug` handle.
 - [`examples`](./examples/): workspace example apps that consume packages by package name.
 
@@ -20,6 +20,7 @@
 - Hand the game the data it needs to draw (like `Touch`'s `view()`), never the drawing itself.
 - Core and generic package modules never call a platform API (`performance`, `window`, `document`, timers, file system, network). A platform detail is a generic contract in the owning package with platform implementations injected (like `NodeRegistry` / `PixiNodeRegistry`, `HostClock` / `BrowserHostClock`, `FixedLoop.TickSource` / `BrowserTickSource`). A default may use only what JavaScript itself guarantees in every engine. The compiler enforces this: package configs get only the ES2022 library, so a DOM or Node global does not compile; a host package that needs DOM types lists `"DOM"` in its own `lib`, as `packages/devtools` does for `Monitor`.
 - Simulation code reads time from `Clock` and randomness from `Random`; host time (`HostClock`) is for hosts, tools, and debug timing, never for systems.
+- Engines may approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `tanh`, `pow`, `hypot`, and `a ** b`, and they differ across browsers and CPUs. Package code and simulation code use `Ops` from `@typeonce/ritmo-math` instead (or `Math.sqrt(x * x + y * y)`); `Ops.test.ts` scans every package source for them.
 
 ## Core Principles
 - Type safety is the first and absolute priority.

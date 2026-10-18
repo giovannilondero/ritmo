@@ -31,6 +31,7 @@
  * Making a flow field.
  */
 import { type Box2, overlapsCircle } from "./Box2.ts"
+import * as Ops from "./Ops.ts"
 import type * as Scalar from "./Scalar.ts"
 import type { Vec2 } from "./Vec2.ts"
 
@@ -215,7 +216,7 @@ class Field implements FlowField {
       found = true
     }
     if (!found) return undefined
-    const length = Math.hypot(targetX - at.x, targetY - at.y)
+    const length = Ops.hypot(targetX - at.x, targetY - at.y)
     return length > 1e-6 ? { x: (targetX - at.x) / length, y: (targetY - at.y) / length } : undefined
   }
 

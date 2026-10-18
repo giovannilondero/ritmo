@@ -1,6 +1,7 @@
 import * as Result from "@typeonce/ritmo/Result"
 import * as Scalar from "../Scalar.ts"
 import type * as Vector2 from "../Vector2.ts"
+import * as Ops from "../Ops.ts"
 
 const make = (x: Scalar.Finite, y: Scalar.Finite): Vector2.Vector2 => ({ x, y }) as Vector2.Vector2
 
@@ -88,7 +89,7 @@ export const normalizeXYOrZero = (x: number, y: number): {
   readonly y: number
   readonly length: number
 } => {
-  const magnitude = Math.hypot(x, y)
+  const magnitude = Ops.hypot(x, y)
   if (magnitude <= 0.0001) {
     return {
       x: 0,

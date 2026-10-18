@@ -5,7 +5,7 @@ Migrating from bevy-ts? See the [package migration guide](https://github.com/typ
 Math for ritmo games, in two kinds:
 
 - **Validated values**: `Scalar`, `Vector2`, `Size2`, `Aabb`, and `InputAxis`. Every one exports constructors that validate untrusted input, so they work as `Descriptor.ConstructedComponent(...)` constructors and survive snapshot restore.
-- **Hot-path helpers** on plain numbers, for code that runs every step: `Vec2` vector arithmetic (validated `Vector2` values pass straight in), `Box2` edge boxes, `Collide2` swept circle collision that slides along walls and never tunnels through them, a `SpatialGrid` broad phase that allocates nothing per step, a `FlowField` that leads bodies around walls, and a deterministic `Random` whose whole state is one integer (keep it in a resource, so runs replay).
+- **Hot-path helpers** on plain numbers, for code that runs every step: `Vec2` vector arithmetic (validated `Vector2` values pass straight in), `Box2` edge boxes, `Collide2` swept circle collision that slides along walls and never tunnels through them, a `SpatialGrid` broad phase that allocates nothing per step, a `FlowField` that leads bodies around walls, a deterministic `Random` whose whole state is one integer (keep it in a resource, so runs replay), and `Ops`, math functions that return the same bits on every engine.
 
 ```ts
 import { Collide2, FlowField, Random, SpatialGrid, Vec2 } from "@typeonce/ritmo-math"
@@ -19,6 +19,18 @@ const moved = Collide2.moveCircle(enemy, Vec2.scale(way, speed * dt), radius, wa
 
 ```sh
 pnpm add @typeonce/ritmo-math @typeonce/ritmo
+```
+
+## Determinism across devices
+
+JavaScript engines may approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `tanh`, `pow`, `hypot`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run, so a session recorded on a phone stops replaying on a server. `Ops` has the same functions as pure-JavaScript ports of fdlibm, built only from operations every engine rounds exactly, so they return the same bits everywhere (within an ulp of the exact value). Use them in simulation code; `Math.abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `sqrt`, `+ - * /`, and `x ** 2` are already exact. `Vec2`, `Collide2`, and `FlowField` use `Ops` themselves.
+
+```ts
+import { Ops } from "@typeonce/ritmo-math"
+
+const heading = Ops.atan2(target.y - position.y, target.x - position.x)
+const velocity = { x: Ops.cos(heading) * speed, y: Ops.sin(heading) * speed }
+const damping = Ops.exp(-friction * dt)
 ```
 
 Released together with [`@typeonce/ritmo`](https://www.npmjs.com/package/@typeonce/ritmo), always with the same version.

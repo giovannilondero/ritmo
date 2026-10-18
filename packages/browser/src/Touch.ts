@@ -196,7 +196,7 @@ export const idle = <const B extends string>(buttons: ReadonlyArray<B>): Snapsho
 
 /** `offset / radius`, clamped to length 1, with the inner `deadZone` fraction mapped to zero. */
 const tilt = (offset: Position, radius: number, deadZone: number): Vector => {
-  const length = Math.hypot(offset.x, offset.y)
+  const length = Math.sqrt(offset.x * offset.x + offset.y * offset.y)
   if (radius <= 0 || length <= deadZone * radius) return zero
   const strength = Math.min(1, (length / radius - deadZone) / (1 - deadZone))
   return { x: (offset.x / length) * strength, y: (offset.y / length) * strength }
@@ -206,7 +206,7 @@ const tilt = (offset: Position, radius: number, deadZone: number): Vector => {
 const aimOf = (zone: ButtonZone, at: Position): Vector | null => {
   if (zone.aimRadius === undefined) return null
   const offset = { x: at.x - zone.center.x, y: at.y - zone.center.y }
-  const length = Math.hypot(offset.x, offset.y)
+  const length = Math.sqrt(offset.x * offset.x + offset.y * offset.y)
   if (length <= (zone.aimDeadZone ?? 0.2) * zone.aimRadius) return null
   const scale = Math.min(1, length / zone.aimRadius) / length
   return { x: offset.x * scale, y: offset.y * scale }
@@ -304,7 +304,9 @@ export const track = <const B extends string>(
     for (const name of names) {
       const zone = current.buttons[name]
       const button = buttons.get(name)!
-      if (button.held || Math.hypot(at.x - zone.center.x, at.y - zone.center.y) > zone.radius) continue
+      const dx = at.x - zone.center.x
+      const dy = at.y - zone.center.y
+      if (button.held || dx * dx + dy * dy > zone.radius * zone.radius) continue
       press(button, aimOf(zone, at))
       fingers.set(event.pointerId, name)
       target.setPointerCapture?.(event.pointerId)
@@ -398,7 +400,7 @@ export const track = <const B extends string>(
           ? null
           : (() => {
             const offset = { x: stick.knob.x - stick.origin.x, y: stick.knob.y - stick.origin.y }
-            const length = Math.hypot(offset.x, offset.y)
+            const length = Math.sqrt(offset.x * offset.x + offset.y * offset.y)
             const scale = length > radius ? radius / length : 1
             return { origin: stick.origin, knob: { x: stick.origin.x + offset.x * scale, y: stick.origin.y + offset.y * scale } }
           })(),
@@ -461,7 +463,7 @@ export const scripted = <const B extends string>(buttons: ReadonlyArray<B>, time
     else byFrame.set(entry.frame, [entry])
   }
   const clamp = (vector: Vector): Vector => {
-    const length = Math.hypot(vector.x, vector.y)
+    const length = Math.sqrt(vector.x * vector.x + vector.y * vector.y)
     return length <= 1 ? vector : { x: vector.x / length, y: vector.y / length }
   }
   const tracks = makeButtonTracks(buttons)

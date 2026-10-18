@@ -8,7 +8,7 @@
  */
 import type { BenchCase } from "../../core/bench/harness.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-import { Aabb, Box2, Collide2, FlowField, InputAxis, Random, Scalar, SpatialGrid, Vector2 } from "@typeonce/ritmo-math"
+import { Aabb, Box2, Collide2, FlowField, InputAxis, Ops, Random, Scalar, SpatialGrid, Vec2, Vector2 } from "@typeonce/ritmo-math"
 
 const N = 10_000
 
@@ -247,6 +247,28 @@ const randomDraw: BenchCase = {
   }
 }
 
+const opsSteer: BenchCase = {
+  name: "math/ops-steer-10k",
+  description: "Aim 10k bodies with Ops.atan2, step along the heading with Ops.cos/sin, and measure with Vec2.length",
+  setup: () => {
+    const positions = vectors(N)
+    const targets = vectors(N).reverse()
+    return {
+      run: () => {
+        let total = 0
+        for (let index = 0; index < N; index++) {
+          const position = positions[index]!
+          const target = targets[index]!
+          const heading = Ops.atan2(target.y - position.y, target.x - position.x)
+          const next = { x: position.x + Ops.cos(heading) * 2.5, y: position.y + Ops.sin(heading) * 2.5 }
+          total += Vec2.length(next) * Ops.exp(-0.1)
+        }
+        check(total)
+      }
+    }
+  }
+}
+
 export const cases: ReadonlyArray<BenchCase> = [
   vectorOps,
   vectorValidate,
@@ -258,5 +280,6 @@ export const cases: ReadonlyArray<BenchCase> = [
   flowFieldWay,
   moveCircle,
   randomNext,
-  randomDraw
+  randomDraw,
+  opsSteer
 ]

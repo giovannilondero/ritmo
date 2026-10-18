@@ -29,6 +29,7 @@
  * Moving a circle through walls with sliding.
  */
 import type { Box2 } from "./Box2.ts"
+import * as Ops from "./Ops.ts"
 import type { Vec2 } from "./Vec2.ts"
 
 /**
@@ -161,7 +162,7 @@ export const sweepCircleBox = (origin: Vec2, delta: Vec2, radius: number, box: B
     if (t === undefined) return undefined
     const cx = origin.x + delta.x * t - cornerX
     const cy = origin.y + delta.y * t - cornerY
-    const len = Math.hypot(cx, cy) || 1
+    const len = Ops.hypot(cx, cy) || 1
     return { time: t, nx: cx / len, ny: cy / len }
   }
   if (nx === 0 && ny === 0) return undefined // Started overlapping the box.
