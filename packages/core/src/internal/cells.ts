@@ -120,8 +120,7 @@ class ComponentWriteCell extends WriteCellBase<unknown> {
   }
 
   set(value: unknown): void {
-    if (this.values[this.ordinal] === ABSENT) staleRead(this.record, this.ordinal)
-    this.world.setComponentValue(this.record, this.ordinal, value)
+    if (!this.world.setComponentValue(this.record, this.ordinal, value)) staleRead(this.record, this.ordinal)
   }
 }
 
