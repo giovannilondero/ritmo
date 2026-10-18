@@ -35,6 +35,11 @@ pnpm add @typeonce/ritmo
 Requires TypeScript 5.9 or newer. The type tests run on every TypeScript
 version from 5.9 up, and the packages build with TypeScript 7.
 
+Leave `noErrorTruncation` off in your tsconfig. A rejected call's error names
+the fix near its start, and the type tests check that every fix stays visible
+in TypeScript's default (truncated) message; with truncation off, an error that
+prints a whole schema can run to tens of kilobytes.
+
 | Package | Contents |
 |---|---|
 | `@typeonce/ritmo` | The ECS runtime and the fixed-step loop |
