@@ -1,5 +1,48 @@
 # Migration guide
 
+## Upgrading to 0.9.0
+
+0.9.0 rejects several calls that compiled before but were always wrong.
+Fix each error where it is reported; the messages name the fix.
+
+- **Draft relations need `relates`.** A system that spawns a draft built
+  with `Game.Command.relate(...)` declares the relation:
+
+  ```diff
+  -commands: Game.System.commands(Game.System.spawns(Errand))
+  +commands: Game.System.commands(Game.System.spawns(Errand), Game.System.relates(WalkerOf))
+  ```
+
+  The `relation-failure-never-read` lint then sees these relations: read
+  their failures (`Game.System.readRelationFailures(WalkerOf)`) and handle
+  them, for example by despawning a child whose parent was gone when it
+  spawned.
+
+- **A command target picked from several queries must be valid for each.**
+  `commands.despawn(cond ? a.entity : b.entity)` needs both queries to prove
+  a `despawns` component; resolve the entity through one query, or branch
+  and call the command in each branch. A raw id is never a target, not even
+  as one side of a conditional.
+- **Conditional and spread entries count as maybe present.** A requirer a
+  draft may hold needs its requirements surely held:
+  `spawn(Game.Command.spawn(...parts))` with a widened array fails when a
+  part requires another; list the required components as fixed entries.
+- **`Runtime.make` names unknown resource keys.** Fix the spelling, or
+  remove the key.
+- **Queries that can never match fail to compile.** Remove the component
+  from `without` or from the required side.
+- **A bundle's transition schedules require their machine.** Provide it with
+  `Game.Runtime.machine(...)`, or drop the schedule.
+- **Registries take their own kind.** Move a resource out of `components`,
+  and so on.
+- **Type-level:** `EntityRef` / `EntityMut` `Proves` and `Lacks` parameters
+  are contravariant and default to `never`; `EntityDraft` has a fourth
+  parameter (`Relates`). Code that names these types with explicit
+  arguments updates them; inferred code is unchanged.
+- **Behaviour:** `Collide2` now stops a circle that starts exactly touching
+  a wall and moves into it. A game that fingerprints its simulation
+  re-records the fingerprints with the upgrade.
+
 ## Upgrading to 0.8.0
 
 0.8.0 adds component requirements (`Schema.requires`) and changes how
