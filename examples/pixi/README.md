@@ -22,22 +22,22 @@ import { NodeRegistry, RenderSync } from "@typeonce/ritmo-render"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
 import { Application, Container, Sprite, Texture } from "pixi.js"
 
-const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
-const Renderable = Descriptor.Component<{ size: number }>()("Renderable")
-const Tint = Descriptor.Component<{ value: number }>()("Tint")
+const Position = Descriptor.Component<{ x: number; y: number }>()("Pixi/Position")
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Pixi/Velocity")
+const Renderable = Descriptor.Component<{ size: number }>()("Pixi/Renderable")
+const Tint = Descriptor.Component<{ value: number }>()("Pixi/Tint")
 
-const DeltaTime = Descriptor.Resource<number>()("DeltaTime")
-const Viewport = Descriptor.Resource<{ width: number; height: number }>()("Viewport")
+const DeltaTime = Descriptor.Resource<number>()("Pixi/DeltaTime")
+const Viewport = Descriptor.Resource<{ width: number; height: number }>()("Pixi/Viewport")
 
 const PixiHost = Descriptor.Service<{
   readonly application: Application
   readonly scene: Container
   readonly clock: { deltaSeconds: number }
-}>()("PixiHost")
+}>()("Pixi/PixiHost")
 
 // One Pixi sprite per rendered entity, mirrored by @typeonce/ritmo-render.
-const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Sprites")
+const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Pixi/Sprites")
 ```
 
 This split is the first important API rule:
@@ -94,7 +94,7 @@ Start with setup. This system reads the Pixi screen size through the service and
 
 ```ts
 const SetupSceneSystem = Game.System(
-  "SetupSceneSystem",
+  "Pixi/SetupSceneSystem",
   {
     services: {
       pixi: Game.System.service(PixiHost)
@@ -123,7 +123,7 @@ Now capture frame input from the host into ECS resources.
 
 ```ts
 const CaptureFrameInputSystem = Game.System(
-  "CaptureFrameInputSystem",
+  "Pixi/CaptureFrameInputSystem",
   {
     resources: {
       deltaTime: Game.System.writeResource(DeltaTime),
@@ -148,7 +148,7 @@ Then define pure simulation systems. They only touch ECS data, so they do not ne
 
 ```ts
 const IntegrateMotionSystem = Game.System(
-  "IntegrateMotionSystem",
+  "Pixi/IntegrateMotionSystem",
   {
     queries: {
       moving: Game.Query({
@@ -187,7 +187,7 @@ The full example adds a `BounceWithinViewportSystem` as the next simulation step
 
 ```ts
 const render = RenderSync.system(Game, {
-  name: "Render",
+  name: "Pixi/Render",
   renderable: Renderable,
   transform: Position,
   registry: Sprites,

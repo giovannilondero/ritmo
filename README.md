@@ -48,6 +48,7 @@ prints a whole schema can run to tens of kilobytes.
 | `@typeonce/ritmo-render` | Entity to renderer node sync, for any renderer |
 | `@typeonce/ritmo-pixi` | Pixi container adapter (`PixiNodeRegistry.make`) |
 | `@typeonce/ritmo-devtools` | Headless debug sessions and trace reports ([README](./packages/devtools/README.md)) |
+| `@typeonce/oxlint-plugin-ritmo` | Oxlint rules that keep simulation code deterministic and headless and runtime results checked ([README](./packages/oxlint-plugin/README.md)) |
 
 All packages are released together with the same version.
 
@@ -55,15 +56,15 @@ All packages are released together with the same version.
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 // Define the ECS world shape once.
-const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
-const DeltaTime = Descriptor.Resource<number>()("DeltaTime")
+const Position = Descriptor.Component<{ x: number; y: number }>()("Example/Position")
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Example/Velocity")
+const DeltaTime = Descriptor.Resource<number>()("Example/DeltaTime")
 
 // Bind the schema to its game-facing APIs.
 const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { DeltaTime } }))
 
 // Systems only receive the access they declare here.
-const Move = Game.System("Move", {
+const Move = Game.System("Example/Move", {
   queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) },
   resources: { deltaTime: Game.System.readResource(DeltaTime) }
 }, ({ queries, resources }) => {

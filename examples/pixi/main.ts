@@ -10,18 +10,18 @@ export interface BrowserExampleHandle {
 
 // ECS-owned simulation data.
 const Position = Descriptor.Component<{ x: number; y: number }>()(
-  "Position",
+  "Pixi/Position",
 );
 const Velocity = Descriptor.Component<{ x: number; y: number }>()(
-  "Velocity",
+  "Pixi/Velocity",
 );
-const Renderable = Descriptor.Component<{ size: number }>()("Renderable");
-const Tint = Descriptor.Component<{ value: number }>()("Tint");
+const Renderable = Descriptor.Component<{ size: number }>()("Pixi/Renderable");
+const Tint = Descriptor.Component<{ value: number }>()("Pixi/Tint");
 
 // Per-frame world data captured from the host renderer.
-const DeltaTime = Descriptor.Resource<number>()("DeltaTime");
+const DeltaTime = Descriptor.Resource<number>()("Pixi/DeltaTime");
 const Viewport = Descriptor.Resource<{ width: number; height: number }>()(
-  "Viewport",
+  "Pixi/Viewport",
 );
 
 // Host-side renderer bridge. ECS owns simulation state; Pixi owns renderer objects.
@@ -31,8 +31,8 @@ const PixiHost = Descriptor.Service<{
   readonly clock: {
     deltaSeconds: number;
   };
-}>()("PixiHost");
-const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Sprites");
+}>()("Pixi/PixiHost");
+const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Pixi/Sprites");
 
 const pixiSchema = Schema.fragment({
   components: {
@@ -51,7 +51,7 @@ const Game = Schema.bind(pixiSchema);
 const schema = Game.schema;
 
 const SetupSceneSystem = Game.System(
-  "SetupSceneSystem",
+  "Pixi/SetupSceneSystem",
   {
     services: {
       pixi: Game.System.service(PixiHost),
@@ -106,7 +106,7 @@ const SetupSceneSystem = Game.System(
 );
 
 const CaptureFrameInputSystem = Game.System(
-  "CaptureFrameInputSystem",
+  "Pixi/CaptureFrameInputSystem",
   {
     resources: {
       deltaTime: Game.System.writeResource(DeltaTime),
@@ -127,7 +127,7 @@ const CaptureFrameInputSystem = Game.System(
 );
 
 const IntegrateMotionSystem = Game.System(
-  "IntegrateMotionSystem",
+  "Pixi/IntegrateMotionSystem",
   {
     queries: {
       moving: Game.Query({
@@ -157,7 +157,7 @@ const IntegrateMotionSystem = Game.System(
 );
 
 const BounceWithinViewportSystem = Game.System(
-  "BounceWithinViewportSystem",
+  "Pixi/BounceWithinViewportSystem",
   {
     queries: {
       moving: Game.Query({
@@ -230,7 +230,7 @@ const BounceWithinViewportSystem = Game.System(
 
 // Pixi owns the sprites; RenderSync keeps one per Renderable entity in sync.
 const render = RenderSync.system(Game, {
-  name: "Render",
+  name: "Pixi/Render",
   renderable: Renderable,
   transform: Position,
   registry: Sprites,
@@ -304,12 +304,15 @@ export const startPixiExample = async (
       },
     },
   }).value;
-  runtime.tick(setupSchedule);
-  runtime.tick(updateSchedule);
+  const setup = runtime.tick(setupSchedule);
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`);
+  const first = runtime.tick(updateSchedule);
+  if (!first.ok) console.error("update failed", first.error);
 
   const tick = (ticker: { readonly deltaMS: number }) => {
     host.clock.deltaSeconds = ticker.deltaMS / 1000;
-    runtime.tick(updateSchedule);
+    const ran = runtime.tick(updateSchedule);
+    if (!ran.ok) console.error("update failed", ran.error);
   };
 
   application.ticker.add(tick);

@@ -38,7 +38,7 @@ const Game = Schema.bind(Schema.fragment({
 const schema = Game.schema
 // `Phase` is a machine because the queued transition boundary matters for
 // gameplay flow. A plain state descriptor would not model that boundary.
-const Phase = Game.StateMachine("Phase", ["Running", "Paused"])
+const Phase = Game.StateMachine("Smoke/Phase", ["Running", "Paused"])
 
 const MovingQuery = Game.Query({
   selection: {
@@ -152,7 +152,8 @@ const runtime = Game.Runtime.make({
 }).value
 
 export const createSmokeExample = () => {
-  runtime.tick(bootstrap)
+  const setup = runtime.tick(bootstrap)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
 
   return {
     runtime,

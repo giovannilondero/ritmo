@@ -1,3 +1,4 @@
+import { Ops } from "@typeonce/ritmo-math"
 import {
   Agent,
   AgentDecisionQuery,
@@ -256,7 +257,7 @@ export const ChooseIntentSystem = Game.System(
 
           const deltaX = other.position.x - position.x
           const deltaY = other.position.y - position.y
-          const distance = Math.hypot(deltaX, deltaY)
+          const distance = Ops.hypot(deltaX, deltaY)
           if (distance > agent.sightRange || distance < 0.001) {
             continue
           }
@@ -321,7 +322,7 @@ export const ChooseIntentSystem = Game.System(
         for (const food of foods) {
           const deltaX = food.position.x - position.x
           const deltaY = food.position.y - position.y
-          const distance = Math.hypot(deltaX, deltaY)
+          const distance = Ops.hypot(deltaX, deltaY)
           if (distance > agent.sightRange || distance >= foodDistance) {
             continue
           }
@@ -351,8 +352,8 @@ export const ChooseIntentSystem = Game.System(
           }
 
           let direction = {
-            x: Math.cos(nextBehavior.wanderAngle),
-            y: Math.sin(nextBehavior.wanderAngle)
+            x: Ops.cos(nextBehavior.wanderAngle),
+            y: Ops.sin(nextBehavior.wanderAngle)
           }
 
           const full = vitals.fullness >= 0.62 || vitals.energy >= agent.maxEnergy * 0.76
@@ -493,7 +494,7 @@ export const ResolveFoodAndHazardSystem = Game.System(
         const agent = match.data.agent.get()
 
         for (const food of foods) {
-          const distance = Math.hypot(food.position.x - position.x, food.position.y - position.y)
+          const distance = Ops.hypot(food.position.x - position.x, food.position.y - position.y)
           if (distance > agent.size + 8) {
             continue
           }
@@ -551,7 +552,7 @@ export const ResolveAgentInteractionsSystem = Game.System(
 
           const deltaX = right.position.x - left.position.x
           const deltaY = right.position.y - left.position.y
-          const distance = Math.hypot(deltaX, deltaY)
+          const distance = Ops.hypot(deltaX, deltaY)
           const gap = geneDistance(left.genes, right.genes)
           const compatible = gap <= Math.min(left.agent.mateCompatibility, right.agent.mateCompatibility)
           const hostile =

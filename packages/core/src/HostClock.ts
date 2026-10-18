@@ -33,6 +33,7 @@ export interface HostClock {
  * 0. Prefer a monotonic platform clock when there is one
  * (`BrowserHostClock.make(window)`).
  */
+// oxlint-disable-next-line ritmo/use-clock-for-time -- HostClock is host time, for hosts and tools; systems read Clock.
 export const standard: HostClock = { now: () => Date.now() }
 
 /** `adjust` must leave a finite clock reading and never move backwards. */

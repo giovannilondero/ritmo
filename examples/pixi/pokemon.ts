@@ -427,12 +427,14 @@ export const createPokemonExample = (input: {
       DeltaTime: 1 / 60
     }
   }).value
-  runtime.tick(setupSchedule)
+  const setup = runtime.tick(setupSchedule)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
 
   return {
     runtime,
     update() {
-      runtime.tick(updateSchedule)
+      const ran = runtime.tick(updateSchedule)
+      if (!ran.ok) console.error("update failed", ran.error)
     }
   }
 }
@@ -521,12 +523,15 @@ export const startPokemonExample = async (mount: HTMLElement): Promise<BrowserEx
       DeltaTime: host.clock.deltaSeconds
     }
   }).value
-  runtime.tick(browserSetupSchedule)
-  runtime.tick(browserUpdateSchedule)
+  const setup = runtime.tick(browserSetupSchedule)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
+  const first = runtime.tick(browserUpdateSchedule)
+  if (!first.ok) console.error("update failed", first.error)
 
   const tick = (ticker: { readonly deltaMS: number }) => {
     host.clock.deltaSeconds = Math.min(ticker.deltaMS / 1000, 0.05)
-    runtime.tick(browserUpdateSchedule)
+    const ran = runtime.tick(browserUpdateSchedule)
+    if (!ran.ok) console.error("update failed", ran.error)
   }
 
   application.ticker.add(tick)

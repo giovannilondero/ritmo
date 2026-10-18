@@ -30,7 +30,8 @@
       "@typeonce/ritmo-math": ["./packages/math/src/index.ts"],
       "@typeonce/ritmo-math/*": ["./packages/math/src/*"],
       "@typeonce/ritmo-devtools": ["./packages/devtools/src/index.ts"],
-      "@typeonce/ritmo-devtools/*": ["./packages/devtools/src/*"]
+      "@typeonce/ritmo-devtools/*": ["./packages/devtools/src/*"],
+      "@typeonce/oxlint-plugin-ritmo": ["./packages/oxlint-plugin/src/index.ts"]
     }
   }
 }

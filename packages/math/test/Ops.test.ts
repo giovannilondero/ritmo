@@ -1,7 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
-import { fileURLToPath } from "node:url"
-
 import { describe, expect, it } from "vitest"
 
 import { Ops } from "@typeonce/ritmo-math"
@@ -104,10 +100,50 @@ describe("Ops", () => {
     })
   })
 
+  // Same recording as above, for the logarithms, hyperbolic functions, and
+  // cube root added later.
+  it("returns the same bits on every platform for logarithms, hyperbolics, and cbrt", () => {
+    const positive = (draw: (min: number, max: number) => number, min: number, max: number) => () => Math.abs(draw(min, max))
+    const inputs = {
+      expm1: [-30, 9, false],
+      log: [-1022, 1023, true],
+      log2: [-1022, 1023, true],
+      log10: [-1022, 1023, true],
+      log1p: [-30, 30, true],
+      cbrt: [-1022, 1023, false],
+      sinh: [-30, 9, false],
+      cosh: [-30, 9, false],
+      asinh: [-30, 600, false],
+      atanh: [-30, -1, false]
+    } as const
+    const hashes: Record<string, string> = {}
+    for (const [name, [min, max, onlyPositive]] of Object.entries(inputs)) {
+      const draw = generator(name.length * 104729)
+      const input = onlyPositive ? positive(draw, min, max) : () => draw(min, max)
+      hashes[name] = hashOf(sample(COUNT, () => Ops[name as keyof typeof inputs](input())))
+    }
+    const above = generator(5)
+    hashes.acosh = hashOf(sample(COUNT, () => Ops.acosh(1 + Math.abs(above(-50, 600)))))
+
+    expect(hashes).toEqual({
+      expm1: "bc2bff6d5407367f",
+      log: "15b864c38b9216a5",
+      log2: "aa77428c43b796df",
+      log10: "e5c4b907e2a163e3",
+      log1p: "574578cdd9bd65c9",
+      cbrt: "bf00c8f98d06cfaf",
+      sinh: "0a3caa24b9a18795",
+      cosh: "3b864d701de5fa74",
+      asinh: "032b000a779e2d35",
+      atanh: "4d16f52e5388e7cc",
+      acosh: "294609db4506d689"
+    })
+  })
+
   it("stays within an ulp or two of the engine's Math", () => {
     // The engine's Math is itself up to an ulp off (and differs per platform),
     // so the bound is loose by one; tanh is within 2 ulp of the exact value,
-    // like the native one.
+    // like the native one, and sinh and cosh round the other way from V8's.
     const draw = generator(99)
     const bounds: Array<readonly [string, (x: number, y: number) => number, (x: number, y: number) => number, number]> = [
       ["sin", Ops.sin, Math.sin, 2],
@@ -120,7 +156,18 @@ describe("Ops", () => {
       ["asin", (x) => Ops.asin(x / 2048), (x) => Math.asin(x / 2048), 2],
       ["acos", (x) => Ops.acos(x / 2048), (x) => Math.acos(x / 2048), 2],
       ["pow", (x, y) => Ops.pow(Math.abs(x), y / 128), (x, y) => Math.pow(Math.abs(x), y / 128), 2],
-      ["hypot", Ops.hypot, Math.hypot, 3]
+      ["hypot", Ops.hypot, Math.hypot, 3],
+      ["expm1", (x) => Ops.expm1(x / 64), (x) => Math.expm1(x / 64), 2],
+      ["log", (x) => Ops.log(Math.abs(x)), (x) => Math.log(Math.abs(x)), 2],
+      ["log2", (x) => Ops.log2(Math.abs(x)), (x) => Math.log2(Math.abs(x)), 2],
+      ["log10", (x) => Ops.log10(Math.abs(x)), (x) => Math.log10(Math.abs(x)), 2],
+      ["log1p", (x) => Ops.log1p(Math.abs(x)), (x) => Math.log1p(Math.abs(x)), 2],
+      ["cbrt", Ops.cbrt, Math.cbrt, 2],
+      ["sinh", (x) => Ops.sinh(x / 64), (x) => Math.sinh(x / 64), 3],
+      ["cosh", (x) => Ops.cosh(x / 64), (x) => Math.cosh(x / 64), 3],
+      ["asinh", Ops.asinh, Math.asinh, 2],
+      ["acosh", (x) => Ops.acosh(1 + Math.abs(x)), (x) => Math.acosh(1 + Math.abs(x)), 2],
+      ["atanh", (x) => Ops.atanh(x / 2048), (x) => Math.atanh(x / 2048), 2]
     ]
     for (const [name, ours, native, bound] of bounds) {
       let worst = 0
@@ -135,10 +182,13 @@ describe("Ops", () => {
 
   it("matches the engine's Math on special values", () => {
     const exact = [0, -0, Infinity, -Infinity, NaN, 5e-324, -5e-324, 1e300, -1e300]
-    for (const name of ["sin", "cos", "tan", "asin", "acos", "atan", "exp", "tanh"] as const) {
+    const unary = ["sin", "cos", "tan", "asin", "acos", "atan", "exp", "tanh", "expm1", "log", "log2", "log10", "log1p", "cbrt", "sinh", "cosh", "asinh", "acosh", "atanh"] as const
+    for (const name of unary) {
       for (const x of exact) expect([name, x, Ops[name](x)]).toEqual([name, x, Math[name](x)])
     }
     expect([Ops.asin(1), Ops.asin(-1), Ops.acos(1), Ops.acos(-1), Ops.exp(1)]).toEqual([Math.PI / 2, -Math.PI / 2, 0, Math.PI, Math.E])
+    expect([Ops.log(1), Ops.log2(8), Ops.log10(1000), Ops.log1p(-1), Ops.cbrt(-27), Ops.acosh(1), Ops.atanh(1), Ops.atanh(-1)]).toEqual([0, 3, 3, -Infinity, -3, 0, Infinity, -Infinity])
+    expect([Ops.log(-1), Ops.log1p(-2), Ops.acosh(0.5), Ops.atanh(2)]).toEqual([NaN, NaN, NaN, NaN])
     const specials = [0, -0, 1, -1, 2, -2, 0.5, -0.5, 3, -3, Infinity, -Infinity, NaN, 5e-324, -5e-324, 1e300, -1e300]
     for (const name of ["atan2", "pow", "hypot"] as const) {
       for (const x of specials) {
@@ -171,36 +221,6 @@ describe("Ops", () => {
       expect(ulps(Ops.hypot(x, y), exactHypot(x, y))).toBeLessThanOrEqual(1)
     }
     expect(Ops.hypot(1e308, 1e308)).toBeLessThan(Infinity)
-  })
-
-  it("is the only place in package sources that calls Math functions engines approximate", () => {
-    const packages = fileURLToPath(new URL("../../", import.meta.url))
-    const sources = (dir: string): Array<string> =>
-      readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-        entry.isDirectory() ? sources(join(dir, entry.name)) : entry.name.endsWith(".ts") ? [join(dir, entry.name)] : []
-      )
-    const files = readdirSync(packages, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .flatMap((entry) => {
-        try {
-          return sources(join(packages, entry.name, "src"))
-        } catch {
-          return []
-        }
-      })
-    expect(files.length).toBeGreaterThan(20)
-    const approximated = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|exp|expm1|tanh|sinh|cosh|asinh|acosh|atanh|pow|hypot|log|log2|log10|log1p|cbrt)\b/
-    const power = /\*\*\s*(?!2\b)[^\s]/
-    const found: Array<string> = []
-    for (const file of files) {
-      const code = readFileSync(file, "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/(^|[^:])\/\/.*$/gm, "$1")
-      code.split("\n").forEach((line, index) => {
-        if (approximated.test(line) || power.test(line)) found.push(`${file.slice(packages.length)}:${index + 1}: ${line.trim()}`)
-      })
-    }
-    expect(found).toEqual([])
   })
 })
 

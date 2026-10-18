@@ -106,6 +106,34 @@ The organization transfer, repository rename, Pages removal, npm authentication,
 publication, trust configuration, deprecation, and changes in other repositories happen after merge.
 They are not performed by this PR or by its CI.
 
+## Add a new package
+
+CI publishes with npm trusted publishing, which cannot create a package: a new
+name must exist on npm, with a trusted publisher, before the first release that
+includes it. For a new `packages/<dir>` (named `@typeonce/<name>`):
+
+1. In the PR that adds it: give it the group's current version in
+   `package.json`, add it to the `fixed` group in `.changeset/config.json`, to
+   `scripts/pack-check.ts`, and to `tsconfig.packages.json`, and add a changeset.
+2. After that PR merges, from clean `main`, publish the current version once by
+   hand, as in step 4 above:
+
+   ```sh
+   pnpm install --frozen-lockfile && pnpm run check && pnpm pack:check
+   npm login
+   mkdir -p /tmp/ritmo-bootstrap
+   pnpm build
+   pnpm --dir packages/<dir> pack --pack-destination /tmp/ritmo-bootstrap
+   npm publish /tmp/ritmo-bootstrap/typeonce-<name>-<version>.tgz --access public --provenance=false --ignore-scripts
+   ```
+
+3. Configure its trusted publisher with the same values as step 5 (`typeonce-dev`
+   / `ritmo` / `release.yml` / environment `npm`), close to the next release:
+   an unvalidated configuration expires after two days.
+4. Release as usual: merge the Version Packages PR, and CI publishes the new
+   package with the others, with provenance. After that publish succeeds,
+   require 2FA and disallow token publishing in the package's npm settings.
+
 ## References
 
 - [GitHub repository renaming](https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository)
