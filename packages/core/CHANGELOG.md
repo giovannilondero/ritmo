@@ -1,5 +1,77 @@
 # @typeonce/ritmo
 
+## 0.9.0
+
+### Minor Changes
+
+- c2c32e0: **API additions from a second review.**
+
+  - **Writes take what reads return.** `set`, `update`, `emit`, `runtime.send`, `Command.entry`, and plain `[Descriptor, value]` entries accept `ReadonlyValue<T>`, so a value read from one cell (deeply readonly) can be written to another without a copy or a cast.
+  - **`Clock.durationOfSteps(step, n)`** builds a duration from a whole number of steps, instead of a round trip through seconds and `durationRaw`. A literal zero, negative, or fractional count does not compile; a computed one throws.
+  - **`Game.Entity.id(handle)`** returns the entity id a handle names, so games no longer store the id beside the handle.
+  - **Save migrations.** `Game.Runtime.make({ saves: Snapshot.migrations(Snapshot.migration(1, ...), Snapshot.migration(2, ...)) })`: snapshots carry a `gameVersion` (the last step; 0 without migrations and for older saves), and `restore` runs every step after the save's version in order, checking the structure after each, before validating as usual. A save newer than the last step fails with `NewerGameVersion`. Steps must be numbered 1, 2, 3, ... in order (checked at compile time and at runtime).
+  - **Docs** now state that a system does not see its own writes as changes (it does see its own events), how long `Condition.stateChanged` holds, that a sub-state value set at the marker its parent leaves is dropped, and that `restore` keeps a current resource the save lacks.
+
+- 9cca78b: **One shape for `Runtime.make`, and runtime guards from a review of 0.8.0.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **Breaking: `Runtime.make` always returns a `Result`.** It returned the bare runtime or a `Result` depending on the resource values present at runtime, while its type decided from the keys of the provided type, so resources typed `{ Score?: ... }` produced a bare runtime the type called a `Result`. The type is now `Success<Runtime>` when nothing provided can fail (read `.value`), and a `Result` to check when a constructed resource may be provided.
+  - **`thisTick` checks a writer that shares its reader's display name.** Systems may share a display name; the static check skipped any writer named like the reader. It now tells the reader apart by its system type.
+  - **New lint `next-state-replaced`** (warning, debug runtimes): a next state one system queued and another replaced with a different value before the same `applyStateTransitions(...)`, naming both. Observed lints (this one and `requirement-violated`) no longer need `nameSchedules` to appear. `Debug.NextStateReplacement` describes an entry.
+  - **A query match used after its run throws a named error.** Reading through a match kept past its run (in `local`) returned the internal absent marker once the entity was despawned, and writing put a removed component back without the insert path.
+  - **A query descriptor that behaves unlike the registered one throws**: a look-alike (same kind and name) that adds or drops entity-state transitions, a constructor, immutability, or transience. Look-alikes that behave the same keep working.
+  - `Scalar.Finite` and the `Vector2` / `Scalar` arithmetic helpers document that results keep the brand without re-validating, finite while they stay within `±Number.MAX_VALUE`.
+
+- 6c09482: **`FixedLoop` moves to core, so any host can drive it.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **`FixedLoop` is now exported from `@typeonce/ritmo`** (`import { FixedLoop } from "@typeonce/ritmo"`). Its API is unchanged. `@typeonce/ritmo-browser` no longer exports it.
+  - **`BrowserTickSource.make(window)`** in `@typeonce/ritmo-browser` replaces `FixedLoop.animationFrames(window)`. It is the browser's `TickSource`, named like `BrowserHostClock`. Native shells, desktop runtimes, and renderer tickers wrap their own frames with `FixedLoop.source(...)`.
+  - **Package sources compile without DOM types.** Core, math, render, browser, and pixi reach no DOM global, and the compiler now rejects one. Published code is unchanged.
+
+- ecfd0f1: **One way to do each thing, and docs that match the code.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **Removed** `Relation.Hierarchy` / `Relation.Relation` (use `Descriptor.Hierarchy` / `Descriptor.Relation`), `Schema.empty()` (use `Schema.fragment({})`), and `Debug.MemberFor` (described the removed `debug: true`). `Relation.PairBrand` is now exported as a type.
+  - **Command permissions need at least one entry**: `Game.System.spawns()` with nothing no longer compiles (it made `commands.spawn` say spawn is not declared).
+  - **Redundant resource and event slots are rejected**: a `readResource` next to another slot of the same resource, or one resource or event twice in the same mode. A `changedResource` next to a `writeResource`, and reading the events a system emits, stay allowed.
+  - **`value()` on optional query cells** returns the value, or `undefined` when the entity does not hold the component.
+  - JSDoc now matches the code: `Game.Command.spawn` and `entryRaw` name `extend`, `Schedule.when` says bundle transition schedules are not gated, `Clock.every` is false on step 0, and `EntityStateWriteCell.transition` says when to use `set` instead.
+
+- 330246e: **Safety follow-ups from a second review.** Each closes a way a game could go wrong silently; see [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **A `SpawnedId` is valid only in the run that spawned it.** Kept in a closure or resource and passed to `commands.despawn` / `commands.remove` in a later run, it could name an entity despawned meanwhile whose id was reused. Such a command is now skipped, traced as a `staleTarget` effect, and reported by the new `stale-target` lint (`Debug.StaleTarget`). Keep the entity id or a handle and resolve it through a query.
+  - **`any` and `never` are not descriptor values.** `Descriptor.Component<any>()`, `Resource`, `Event`, `Service`, and the transient variants fail at the constructor: `any` turned off every check on the descriptor, and `never` erased the fragment listing it.
+  - **A saved component cannot require a transient one.** `Schema.bind` rejects `Schema.requires(Ghost, Trail)` when only `Trail` is transient: a restore brought `Ghost` back without it. A transient requirer may still require a transient component.
+  - **Queries with `added` / `changed` filters have no lookups.** `get`, `getHandle`, `single`, `children`, and `descendants` failed with `QueryMismatch` whenever the target had not changed since the system's previous run; they no longer compile there. Declare a second query without filters to resolve entities. `each()` and `singleOptional()` are unchanged. The handle types are now `QueryIteration` and `QueryLookups` (`QueryHandle` combines them).
+  - **A transition's exit phase is one transaction.** When a system in `onExit` / `onTransition` fails, everything the phase did (component writes, resources, events, queued next states and commands, stream positions) is undone and the transition stays queued, so the retry starts from the same state instead of running the earlier exit systems twice. These schedules can no longer contain `applyDeferred()`.
+  - **A service or machine provided twice does not compile.** `Runtime.services` / `Runtime.machines` kept the last of two provisions; the second now fails, naming it.
+  - **`RenderSync` recovers from dropped removals.** After a pause longer than a stream keeps entries, the removals it missed left nodes on screen; when its removal stream reports `lagged()`, it now destroys every node whose entity no longer matches. Give each `RenderSync.system` its own registry.
+  - **New lint `stream-loss-unread`.** On a debug runtime, a reader of events, transition events, removed, despawned, or relation failures that lost entries without checking `lagged()` is a warning, and one reading under `pauseWhen` without checking it is noted (`Debug.StreamLoss`).
+
+- 7f2b2dd: **Stricter types from a review of 0.8.0.** Each change rejects code that was always wrong; see [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **A command target chosen from several queries is checked for every one of them.** `commands.despawn(cond ? a.entity : b.entity)`, `insert`, and `remove` compiled when either target was allowed, and a raw id joined with a match (`cond ? match.entity : match.entity.id`) passed as a match. `EntityRef` / `EntityMut` proof parameters are now contravariant (proving nothing is `never`), so a union of refs keeps only what all of them prove.
+  - **Drafts and inserts check components they may hold.** A conditional or spread entry holding a component with requirements now needs those requirements surely present, in `commands.spawn` and `commands.insert`. Fixed entries before or after a spread count as held.
+  - **Spawning a draft that stages relations needs `relates`.** `Game.Command.relate(draft, ChildOf, parent)` now requires `Game.System.relates(ChildOf)` on the spawning system, like `commands.relate`. `EntityDraft` gains a fourth type parameter, the relations it stages.
+  - **`thisTick` counts components named inside `Query.anyOf`** at compile time, as `tryTick` already did.
+  - **`Runtime.make` rejects an unknown resource key** next to known ones, naming it.
+  - **A query that can never match is rejected:** a component in `without` that a read or write slot, `with`, or a plain `added` / `changed` filter requires.
+  - **A plain `added` / `changed` filter proves its component** (`Query.Proven`, `ProvesComponent`): its matches hold it, so `despawn`, `insert`, and `getHandle` accept them. A `Query.anyOf` member proves nothing alone.
+  - **A transition schedule requires its machine**: `applyStateTransitions(transitions(onEnter(M, ...)))` on a runtime without `M` fails with `Missing machine`, and `tryTick` reports it.
+  - **A descriptor in the registry of another kind is rejected** (`components: { Score }` with a resource), naming where it belongs, at compile time and when an erased fragment is built.
+
+### Patch Changes
+
+- d47a4f9: **Runtime fixes from a review of 0.8.0.** No API changes; each fix restores what the docs already promised.
+
+  - **Sub-states enter with their parent.** A sub-state now gets its entry value at the parent's commit, before any `onEnter` schedule runs. A failing `onEnter` of the parent no longer leaves it without a value (`inState` false and `set` failing with `SubStateInactive` until the parent came back), and its `despawnOnEnter` scopes no longer despawn what the parent's `onEnter` just spawned. The `onEnter` schedules still run parents first.
+  - **A queued transition survives a transition schedule setting the same machine.** A value queued before `applyStateTransitions(...)` is committed there even when an `onEnter` / `onExit` of an earlier machine also calls `set` on it; that newer value waits for the next marker.
+  - **`snapshot` and `restore` throw while a schedule is running**, like `send`. A restore from a system let its queued spawns overwrite restored entities, and a snapshot captured writes a failing system then rolled back. `tryTick` now sets the same guard, so `send` inside `tryTick` throws too.
+  - **`restore` rejects an unknown scope name** with the new `UnknownScope` error, instead of putting entities in a scope nothing can name.
+  - **`describe()` counts reads inside `Query.anyOf`**, so `component-never-read` no longer fires for a component read only through `anyOf`, and `read-before-write` sees it. A system placed directly and under `Schedule.when` / `pauseWhen` is one entry with both placements and the conditions of each.
+  - **`Collide2` stops a circle that starts exactly touching a wall** and moves into it, instead of moving it through the wall: `sweepCircleBox` / `sweepCircleBoxes` now report a hit at time 0, and `moveCircle` blocks. This happens whenever a game places a body exactly at a wall without a skin (a snapped spawn point, or a projectile set to a sweep's contact point). Moving away from the wall or sliding along it is unchanged. A game that fingerprints its simulation will see fights that touched a wall this way play differently: re-record the fingerprints with the upgrade.
+  - **Replays carry input into their window.** A replay saved after unchanged input (holding a direction longer than `keep`) had no input on its first ticks and handed systems `undefined` when played.
+  - **`Session.run` stops with `invariant-threw`** when an invariant throws, naming the invariant and the error, instead of throwing out of `run` and losing the run's text.
+  - The `Snapshot` docs now say that unread `runtime.send` events survive a restore, as they always did.
+
 ## 0.8.0
 
 ### Minor Changes

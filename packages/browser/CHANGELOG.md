@@ -1,5 +1,47 @@
 # @typeonce/ritmo-browser
 
+## 0.9.0
+
+### Minor Changes
+
+- 6c09482: **`FixedLoop` moves to core, so any host can drive it.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **`FixedLoop` is now exported from `@typeonce/ritmo`** (`import { FixedLoop } from "@typeonce/ritmo"`). Its API is unchanged. `@typeonce/ritmo-browser` no longer exports it.
+  - **`BrowserTickSource.make(window)`** in `@typeonce/ritmo-browser` replaces `FixedLoop.animationFrames(window)`. It is the browser's `TickSource`, named like `BrowserHostClock`. Native shells, desktop runtimes, and renderer tickers wrap their own frames with `FixedLoop.source(...)`.
+  - **Package sources compile without DOM types.** Core, math, render, browser, and pixi reach no DOM global, and the compiler now rejects one. Published code is unchanged.
+
+### Patch Changes
+
+- 6cd9771: **`Ops`: math that returns the same bits on every engine.**
+
+  JavaScript engines may approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `tanh`, `pow`, `hypot`, and `a ** b`, and they do: V8 on macOS arm64 and on Linux x64, and JavaScriptCore (Safari, every iOS browser), return different last bits, and a simulation grows that bit into a different run. `Ops` from `@typeonce/ritmo-math` has the same functions as pure-JavaScript ports of fdlibm (musl libm), built only from operations every engine rounds exactly, so a run replays bit for bit on any device. Each is within 1 ulp of the exact value (`tanh` within 2, like the native one); `Ops.hypot` takes exactly two numbers and never overflows.
+
+  ```ts
+  import { Ops } from "@typeonce/ritmo-math";
+
+  const heading = Ops.atan2(dy, dx);
+  const step = { x: Ops.cos(heading) * speed, y: Ops.sin(heading) * speed };
+  ```
+
+  Use `Ops` in simulation code instead of those `Math` functions; `Math.abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `sqrt`, `+ - * /`, and `x ** 2` are already exact everywhere.
+
+  `Vec2.rotate`, `length`, `distance`, `normalizeOr`, `moveToward`, `clampLength`, `Collide2` corner normals, and `FlowField.way` now use `Ops`. Their results can differ from the previous version in the last bit, so a replay recorded on an earlier version may diverge. `Touch` (browser) measures stick and aim offsets with `Math.sqrt(x * x + y * y)` instead of `Math.hypot`, for the same reason.
+
+- 886ba39: **Support package fixes from a second review.**
+
+  - **Random state in a resource.** `Random` is now a validator for its own state (`Descriptor.ConstructedResource(Random)("Game/Rng")`, saved and checked like any constructed resource), `Random.seed(n)` is its starting value, and `Random.draw(resources.rng)` gives a generator over the system's write cell that writes every draw back, so a system no longer stores the state by hand and a failed run rolls its draws back. `Random.make(state)` stays for state kept outside the world.
+  - **Preconditions are checked.** `Random.integer` throws unless both bounds are whole with `min < maxExclusive` (it drew outside both bounds), and `Random.range` throws when `min > max` or a bound is not finite (equal bounds still return `min`). `SpatialGrid.insert` / `forEachIn` throw on non-finite numbers (an infinite box never returned), and a box covering more cells than are occupied scans the occupied cells. `Random.weighted` calls `weight` once per item.
+  - **Input edges.** `Touch`: a `pointerdown` for a pointer id still held (its up was lost) cancels what that id held first, instead of leaving a button held until blur. `Keyboard.scripted`: pressing an action that is already held is not a new press, as with a live keyboard.
+
+- Updated dependencies [c2c32e0]
+- Updated dependencies [9cca78b]
+- Updated dependencies [6c09482]
+- Updated dependencies [ecfd0f1]
+- Updated dependencies [d47a4f9]
+- Updated dependencies [330246e]
+- Updated dependencies [7f2b2dd]
+  - @typeonce/ritmo@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes
