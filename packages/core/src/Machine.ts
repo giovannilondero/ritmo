@@ -418,7 +418,10 @@ export const inState = <M extends StateMachine.Any>(
 })
 
 /**
- * Creates a condition that passes when the machine changed during the current schedule execution.
+ * Creates a condition that passes when the machine changed during the current schedule execution:
+ * from the `applyStateTransitions(...)` that committed the change to the end of
+ * that schedule (or the next `applyStateTransitions(...)`), not for the rest of
+ * the tick call or the next schedule.
  */
 export const stateChanged = <M extends StateMachine.Any>(
   machine: M

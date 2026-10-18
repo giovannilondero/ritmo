@@ -134,3 +134,20 @@ describe("Clock.system", () => {
     expect(Clock.system).type.toBeCallableWith(Game, { name: "ClockTypes/Good", resource: Time })
   })
 })
+
+describe("Clock.durationOfSteps", () => {
+  it("infers a duration of the step's rate from a whole step count", () => {
+    expect(Clock.durationOfSteps(step, 3)).type.toBe<Clock.Duration<60>>()
+    const counted: number = 4
+    expect(Clock.durationOfSteps(step, counted)).type.toBe<Clock.Duration<60>>()
+  })
+
+  it("rejects a literal zero, negative, or fractional count", () => {
+    // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
+    Clock.durationOfSteps(step, 0)
+    // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
+    Clock.durationOfSteps(step, -2)
+    // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
+    Clock.durationOfSteps(step, 1.5)
+  })
+})

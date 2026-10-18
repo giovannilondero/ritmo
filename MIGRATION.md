@@ -92,6 +92,11 @@ Fix each error where it is reported; the messages name the fix.
   marker; a failure in the exit phase now undoes the whole phase.
 - **Provide each service and machine once** in `Runtime.services(...)` /
   `Runtime.machines(...)`.
+- **Snapshots carry `gameVersion`.** Saves without it restore as version
+  0. Code that builds a `Snapshot.WorldSnapshot` by hand adds
+  `gameVersion: 0`. To change a game's save format, pass
+  `saves: Snapshot.migrations(...)` to `Game.Runtime.make` instead of editing
+  raw saves before `restore`.
 - **New lints `stale-target` and `stream-loss-unread`** on debug runtimes.
   For the second, check `lagged()` where a missed entry matters and rebuild
   from queries when it is true.

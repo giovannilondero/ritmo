@@ -66,6 +66,7 @@ import type * as Result from "./Result.ts"
 import type * as Debug from "./Debug.ts"
 import type * as Runtime from "./Runtime.ts"
 import type * as Schedule from "./Schedule.ts"
+import type * as Snapshot from "./Snapshot.ts"
 import type * as System from "./System.ts"
 
 /**
@@ -657,6 +658,13 @@ export namespace Schema {
         target: Entity.HandleTarget<S, Root>,
         intent?: D
       ) => Entity.Handle<Root, D>
+      /**
+       * The entity id a handle names, to compare with ids or pass where an id
+       * is expected (`queries.x.get(id)`), instead of storing the id beside
+       * the handle. Like the handle, it proves nothing about liveness:
+       * resolve it through a query. Two handles of the same entity are `===`.
+       */
+      id: (handle: Entity.Handle<Root, ComponentDescriptor<S> | undefined>) => Entity.EntityId<S, Root>
     }
     readonly Query: {
       <
@@ -709,7 +717,7 @@ export namespace Schema {
         draft: Entity.EntityDraft<S, P, Root, Relates>,
         ...entries: Entries
       ) => Command.DraftFor<S, Entries, P, Root, Relates>
-      entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: Descriptor.Value<D>) => Command.Entry<D>
+      entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: QueryModule.ReadonlyValue<Descriptor.Value<D>>) => Command.Entry<D>
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>
@@ -935,6 +943,8 @@ export namespace Schema {
         readonly machines?: ProvidedMachines
         /** Attaches a `debug` handle to the runtime; see the `Debug` module. */
         readonly debug?: Enabled
+        /** The game's save migrations (`Snapshot.migrations`): `restore` upgrades older saves with them. */
+        readonly saves?: Snapshot.Migrations
       }) => Runtime.MakeRuntimeResult<S, RuntimeServicesOf<ProvidedServices>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled>
       service: typeof Runtime.service
       services: typeof Runtime.services

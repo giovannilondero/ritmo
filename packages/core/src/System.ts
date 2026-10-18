@@ -461,7 +461,8 @@ export interface EventReadView<T> {
  * A writable event stream view.
  */
 export interface EventWriteView<T> {
-  emit(value: T): void
+  /** Publishes one event. Takes the readonly shape reads return, so a read event can be emitted again. */
+  emit(value: import("./Query.ts").ReadonlyValue<T>): void
 }
 
 /**
@@ -486,7 +487,9 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * One value is queued per machine: a later `set` before the marker
    * replaces an earlier one. A `set` from a transition schedule (`onEnter`,
    * `onExit`, `onTransition`) is committed at the following marker, while a
-   * value queued before the current marker still commits at it.
+   * value queued before the current marker still commits at it. A sub-state
+   * value set while its parent is still in its state but leaves it at the
+   * same marker returns ok and is dropped with the sub-state.
    */
   set(value: Machine.StateMachine.Value<M>): Machine.SetResult<M>
   /** Like `set`, but committing the current value again is skipped (no exit or enter schedules). */

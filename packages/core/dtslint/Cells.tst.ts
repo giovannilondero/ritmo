@@ -109,3 +109,29 @@ describe("commands", () => {
     })
   })
 })
+
+describe("writes take what reads return", () => {
+  it("writes a value read from another cell back without a copy", () => {
+    const Bag = Descriptor.Component<{ items: Array<number> }>()("Cells/Bag")
+    const Hit = Descriptor.Event<{ amount: number }>()("Cells/Hit")
+    const Game = Schema.bind(Schema.fragment({ components: { Bag }, events: { Hit } }))
+    const Bags = Game.Query({ selection: { bag: Game.Query.write(Bag) } })
+    Game.System("Cells/Copy", {
+      queries: { bags: Bags },
+      events: { read: Game.System.readEvent(Hit), write: Game.System.writeEvent(Hit) },
+      commands: Game.System.commands(Game.System.spawns(Bag))
+    }, ({ queries, events, commands }) => {
+      const [first, second] = queries.bags.each()
+      if (first === undefined || second === undefined) return
+      const read = first.data.bag.get()
+      expect(read).type.toBe<{ readonly items: ReadonlyArray<number> }>()
+      second.data.bag.set(read)
+      second.data.bag.update((current) => current)
+      commands.spawn(Game.Command.spawn([Bag, read]))
+      commands.spawn(Game.Command.spawn(Game.Command.entry(Bag, read)))
+      for (const hit of events.read.all()) events.write.emit(hit)
+      // @ts-expect-error Type 'string' is not assignable to type 'number'
+      second.data.bag.set({ items: ["a"] })
+    })
+  })
+})

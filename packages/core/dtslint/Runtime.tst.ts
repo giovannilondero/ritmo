@@ -1,4 +1,4 @@
-import { Decode, Descriptor, Entity, Result, Schema } from "@typeonce/ritmo"
+import { Decode, Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
 import * as Size2 from "@typeonce/ritmo-math/Size2"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import * as Runtime from "@typeonce/ritmo/Runtime"
@@ -417,5 +417,19 @@ describe("Runtime.services and Runtime.machines", () => {
     Runtime.services(Runtime.service(Logger, silent), Runtime.service(Logger, silent))
     // @ts-expect-error RuntimeTypes/Flow is provided twice: keep one Game.Runtime.machine(...) for it
     Runtime.machines(Runtime.machine(Flow, "Menu"), Runtime.machine(Flow, "Playing"))
+  })
+})
+
+describe("Snapshot.migrations", () => {
+  it("carries the last game version", () => {
+    expect(Snapshot.migrations(Snapshot.migration(1, (save) => save), Snapshot.migration(2, (save) => save))).type.toBe<Snapshot.Migrations<2>>()
+    expect(Snapshot.migration(1, (save) => save)).type.toBe<Snapshot.Migration<1>>()
+  })
+
+  it("rejects steps out of order", () => {
+    // @ts-expect-error migration 3 is listed where migration 2 belongs: number migrations 1, 2, 3, ... in order
+    Snapshot.migrations(Snapshot.migration(1, (save) => save), Snapshot.migration(3, (save) => save))
+    // @ts-expect-error migration 2 is listed where migration 1 belongs
+    Snapshot.migrations(Snapshot.migration(2, (save) => save))
   })
 })
