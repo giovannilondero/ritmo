@@ -649,9 +649,3 @@ export interface Option {
 export interface Member<S extends Schema.Any, Root> {
   readonly debug: Handle<S, Root>
 }
-
-/** Resolves the extra runtime member for a `debug` option type. */
-export type MemberFor<Enabled, S extends Schema.Any, Root> =
-  [Enabled] extends [true] ? Member<S, Root>
-  : [Enabled] extends [false | undefined] ? {}
-  : Partial<Member<S, Root>>

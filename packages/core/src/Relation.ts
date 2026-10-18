@@ -10,11 +10,9 @@
  *
  * @example
  * ```ts
- * // Model a scene-graph style parent/children relationship.
- * const Parent = Relation.Hierarchy("Parent", "Children")
- *
- * // Model another directed gameplay relationship.
- * const Target = Relation.Relation("Target", "TargetedBy")
+ * // Relations are defined with Descriptor.Hierarchy and Descriptor.Relation.
+ * const { relation: ChildOf } = Descriptor.Hierarchy("ChildOf", "Children")
+ * const { relation: Targeting } = Descriptor.Relation("Targeting", "TargetedBy")
  * ```
  *
  * @module Relation
@@ -44,7 +42,8 @@ const relationTypeId: RelationTypeId = "~ritmo/Relation"
 
 export type RelationKind = "hierarchy" | "relation"
 
-type PairBrand<Name extends string, RelatedName extends string, Kind extends RelationKind> = {
+/** The nominal brand tying a relation to its reverse side. */
+export type PairBrand<Name extends string, RelatedName extends string, Kind extends RelationKind> = {
   readonly relation: Name
   readonly related: RelatedName
   readonly kind: Kind
@@ -280,67 +279,6 @@ export const mutationFailure = <
   target,
   error
 })
-
-const makePair = <
-  const Name extends string,
-  const RelatedName extends string,
-  const Kind extends RelationKind
->(
-  kind: Kind,
-  name: Name,
-  relatedName: RelatedName
-): {
-  readonly relation: RelationDefinition<Name, RelatedName, Kind, PairBrand<Name, RelatedName, Kind>>
-  readonly related: RelatedDefinition<RelatedName, Name, Kind, PairBrand<Name, RelatedName, Kind>>
-} => {
-  type Pair = PairBrand<Name, RelatedName, Kind>
-  const related = {
-    kind: "related",
-    relatedName,
-    relationName: name,
-    key: Symbol.for(`ritmo/related/${name}`),
-    relationKind: kind,
-    [relationTypeId]: {
-      _Pair: (_: never) => undefined as unknown as Pair
-    }
-  } as RelatedDefinition<RelatedName, Name, Kind, Pair>
-
-  const relation = {
-    kind: "relation",
-    name,
-    relatedName,
-    key: Symbol.for(`ritmo/relation/${name}`),
-    relationKind: kind,
-    linkedDespawn: kind === "hierarchy",
-    allowSelf: false,
-    ordered: kind === "hierarchy",
-    related,
-    [relationTypeId]: {
-      _Pair: (_: never) => undefined as unknown as Pair
-    }
-  } as RelationDefinition<Name, RelatedName, Kind, Pair>
-
-  return {
-    relation,
-    related
-  }
-}
-
-export const Hierarchy = <
-  const Name extends string,
-  const RelatedName extends string
->(
-  name: Name,
-  relatedName: RelatedName
-) => makePair("hierarchy", name, relatedName)
-
-export const Relation = <
-  const Name extends string,
-  const RelatedName extends string
->(
-  name: Name,
-  relatedName: RelatedName
-) => makePair("relation", name, relatedName)
 
 export interface RelationReadAccess<
   R extends Relation.Any,

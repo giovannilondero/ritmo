@@ -307,11 +307,6 @@ export const defineRoot = <const Name extends string>(name: Name): RootToken<Nam
 }) as RootToken<Name>
 
 /**
- * Creates an empty schema.
- */
-export const empty = (): SchemaDefinition => emptySchema()
-
-/**
  * Creates a schema fragment.
  *
  * Fragments are the composition unit for game modules: each says "this
