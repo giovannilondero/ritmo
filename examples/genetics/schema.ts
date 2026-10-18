@@ -118,7 +118,7 @@ export const Game = Schema.bind(
 )
 
 export const schema = Game.schema
-export const SimulationPhase = Game.StateMachine("SimulationPhase", ["Running", "GenerationSummary", "Extinction"] as const)
+export const SimulationPhase = Game.StateMachine("GeneticsArena/SimulationPhase", ["Running", "GenerationSummary", "Extinction"] as const)
 
 /** One generation's food and agents: despawned when the next generation starts running. */
 export const GenerationScope = Game.EntityScope("GeneticsArena/Generation", {

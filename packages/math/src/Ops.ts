@@ -3,16 +3,19 @@
  * CPU, so a simulation replays exactly on any device.
  *
  * The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`,
- * `atan`, `atan2`, `exp`, `tanh`, `pow`, `hypot`, and `a ** b`, and they do:
- * Chrome, Safari, macOS, and Linux disagree in the last bit, and a
- * simulation grows that bit into a different run. Use these in simulation
- * code instead; each is a pure-JavaScript port of fdlibm (musl libm) built
- * only from operations every engine rounds exactly.
+ * `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `sinh`,
+ * `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `cbrt`, `pow`, `hypot`, and
+ * `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the
+ * last bit, and a simulation grows that bit into a different run. Use these
+ * in simulation code instead; each is a pure-JavaScript port of fdlibm (musl
+ * libm) built only from operations every engine rounds exactly.
  *
  * Keep using `Math.abs`, `sign`, `min`, `max`, `floor`, `ceil`, `round`,
  * `trunc`, `sqrt`, `imul`, `fround`, `+ - * /`, and `x ** 2`: they are
  * already exact everywhere. Use `Random` for randomness and `Clock` for time.
- * Code that only draws (rendering, effects) can use `Math` freely.
+ * Code that only draws (rendering, effects) can use `Math` freely. The
+ * `ritmo/use-ops-for-math` rule (`@typeonce/oxlint-plugin-ritmo`) points
+ * simulation code here.
  *
  * @example
  * ```ts
@@ -29,7 +32,10 @@
  * Sine, cosine, tangent, and their inverses, in radians.
  *
  * @categoryDescription Exponentials
- * Exponential, hyperbolic tangent, and powers.
+ * Exponentials, logarithms, powers, and roots.
+ *
+ * @categoryDescription Hyperbolic
+ * Hyperbolic functions and their inverses.
  *
  * @categoryDescription Lengths
  * Euclidean length without overflow.
@@ -109,9 +115,61 @@ export const exp: (x: number) => number = fdlibm.exp
  * ulp of the exact value, like the native one); use instead of `Math.tanh` in
  * simulation code.
  *
- * @category Exponentials
+ * @category Hyperbolic
  */
 export const tanh: (x: number) => number = fdlibm.tanh
+
+/**
+ * e raised to `x`, minus 1, accurate for `x` near 0 (where `exp(x) - 1` loses
+ * digits). Same bits on every engine; use instead of `Math.expm1` in
+ * simulation code.
+ *
+ * @category Exponentials
+ */
+export const expm1: (x: number) => number = fdlibm.expm1
+
+/**
+ * Natural logarithm of `x`: -Infinity at 0, NaN below 0. Same bits on every
+ * engine (within 1 ulp of the exact value); use instead of `Math.log` in
+ * simulation code.
+ *
+ * @category Exponentials
+ */
+export const log: (x: number) => number = fdlibm.log
+
+/**
+ * Base-2 logarithm of `x`: -Infinity at 0, NaN below 0, exact for powers of
+ * two. Same bits on every engine; use instead of `Math.log2` in simulation
+ * code.
+ *
+ * @category Exponentials
+ */
+export const log2: (x: number) => number = fdlibm.log2
+
+/**
+ * Base-10 logarithm of `x`: -Infinity at 0, NaN below 0. Same bits on every
+ * engine; use instead of `Math.log10` in simulation code.
+ *
+ * @category Exponentials
+ */
+export const log10: (x: number) => number = fdlibm.log10
+
+/**
+ * Natural logarithm of `1 + x`, accurate for `x` near 0 (where `log(1 + x)`
+ * loses digits). Same bits on every engine; use instead of `Math.log1p` in
+ * simulation code.
+ *
+ * @category Exponentials
+ */
+export const log1p: (x: number) => number = fdlibm.log1p
+
+/**
+ * Cube root of `x`, negative for negative `x`. Same bits on every engine;
+ * use instead of `Math.cbrt` and `x ** (1 / 3)` in simulation code.
+ *
+ * @category Exponentials
+ */
+export const cbrt: (x: number) => number = fdlibm.cbrt
 
 /**
  * `base` raised to `exponent`, with the results of `base ** exponent` for
@@ -122,6 +180,46 @@ export const tanh: (x: number) => number = fdlibm.tanh
  * @category Exponentials
  */
 export const pow: (base: number, exponent: number) => number = fdlibm.pow
+
+/**
+ * Hyperbolic sine of `x`. Same bits on every engine (within 1 ulp of the
+ * exact value); use instead of `Math.sinh` in simulation code.
+ *
+ * @category Hyperbolic
+ */
+export const sinh: (x: number) => number = fdlibm.sinh
+
+/**
+ * Hyperbolic cosine of `x`, at least 1. Same bits on every engine (within 1
+ * ulp of the exact value); use instead of `Math.cosh` in simulation code.
+ *
+ * @category Hyperbolic
+ */
+export const cosh: (x: number) => number = fdlibm.cosh
+
+/**
+ * Inverse hyperbolic sine of `x`. Same bits on every engine; use instead of
+ * `Math.asinh` in simulation code.
+ *
+ * @category Hyperbolic
+ */
+export const asinh: (x: number) => number = fdlibm.asinh
+
+/**
+ * Inverse hyperbolic cosine of `x`: NaN below 1. Same bits on every engine;
+ * use instead of `Math.acosh` in simulation code.
+ *
+ * @category Hyperbolic
+ */
+export const acosh: (x: number) => number = fdlibm.acosh
+
+/**
+ * Inverse hyperbolic tangent of `x`: ±Infinity at ±1, NaN beyond. Same bits
+ * on every engine; use instead of `Math.atanh` in simulation code.
+ *
+ * @category Hyperbolic
+ */
+export const atanh: (x: number) => number = fdlibm.atanh
 
 /**
  * The length of the vector (x, y), `sqrt(x² + y²)` without overflow or

@@ -280,5 +280,6 @@ runtime.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
 | `@typeonce/ritmo-browser` | `BrowserTickSource` animation frames, `Keyboard` action input, `InputCapture` into resources |
 | `@typeonce/ritmo-render` | `NodeRegistry` and `RenderSync` (with `redrawOn`) for mirroring entities into any renderer |
 | `@typeonce/ritmo-pixi` | `PixiNodeRegistry.make` for Pixi containers |
+| `@typeonce/oxlint-plugin-ritmo` | Oxlint rules (`ritmo/*`) for what types and devtools cannot see: wall clocks, `Math.random`, engine-dependent math, and the page in simulation code; unsaveable data; dropped runtime results |
 
 Next: [GAME_API.md](./GAME_API.md) for a larger walkthrough, [ARCHITECTURE.md](./ARCHITECTURE.md) for how the types and storage work.

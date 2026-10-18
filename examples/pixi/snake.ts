@@ -93,7 +93,7 @@ const Game = Schema.bind(
   Root
 )
 const schema = Game.schema
-const GamePhase = Game.StateMachine("Phase", ["Playing", "GameOver"])
+const GamePhase = Game.StateMachine("Snake/Phase", ["Playing", "GameOver"])
 
 // One round's head and food. Body segments are ChildOf the head, so they go
 // with it. Entering Playing (a restart) despawns the round, before
@@ -838,12 +838,14 @@ export const createSnakeExample = () => {
       Game.Runtime.machine(GamePhase, "Playing")
     )
   }).value
-  runtime.tick(setupSchedule)
+  const setup = runtime.tick(setupSchedule)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
 
   return {
     runtime,
     update() {
-      runtime.tick(updateSchedule)
+      const ran = runtime.tick(updateSchedule)
+      if (!ran.ok) console.error("update failed", ran.error)
     }
   }
 }
@@ -925,11 +927,13 @@ export const startSnakeExample = async (mount: HTMLElement): Promise<BrowserExam
     )
   }).value
 
-  runtime.tick(browserSetupSchedule)
+  const setup = runtime.tick(browserSetupSchedule)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
 
   const intervalId = window.setInterval(() => {
     input = keyboard.snapshot()
-    runtime.tick(browserUpdateSchedule)
+    const ran = runtime.tick(browserUpdateSchedule)
+    if (!ran.ok) console.error("update failed", ran.error)
   }, 140)
 
   return {

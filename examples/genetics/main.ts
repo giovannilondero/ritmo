@@ -10,11 +10,13 @@ interface BrowserExampleHandle {
 export const startGeneticsExample = async (mount: HTMLElement): Promise<BrowserExampleHandle> => {
   const browserHost = await createGeneticsBrowserHost(mount)
   const runtime = createGeneticsRuntime(browserHost.host, browserHost.nodes)
-  runtime.tick(setupSchedule)
+  const setup = runtime.tick(setupSchedule)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
 
   const tick = (ticker: { readonly deltaMS: number }) => {
     browserHost.host.clock.deltaSeconds = Math.min(ticker.deltaMS / 1000, MAX_DELTA_SECONDS)
-    runtime.tick(updateSchedule)
+    const ran = runtime.tick(updateSchedule)
+    if (!ran.ok) console.error("update failed", ran.error)
   }
 
   browserHost.host.application.ticker.add(tick)

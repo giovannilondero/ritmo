@@ -11,9 +11,9 @@
  * musl libm is MIT licensed, Copyright (c) 2005-2020 Rich Felker, et al.
  *
  * Changes from the C sources: results follow ECMAScript where it differs from
- * C (`pow(1, NaN)` and `pow(±1, ±Infinity)` are NaN), and arguments of sin,
+ * C (`pow(1, NaN)` and `pow(±1, ±Infinity)` are NaN), arguments of sin,
  * cos, and tan beyond 2^20·π/2 are reduced exactly with BigInt instead of
- * `__rem_pio2_large`.
+ * `__rem_pio2_large`, and `exp(1)` returns `Math.E`.
  *
  * @internal
  */
@@ -621,7 +621,7 @@ const Q4 = 4.00821782732936239552e-06
 const Q5 = -2.01099218183624371326e-07
 
 /** e^x − 1, accurate near 0. */
-const expm1 = (xIn: number): number => {
+export const expm1 = (xIn: number): number => {
   let x = xIn
   const hx = highWord(x)
   const negative = hx < 0
@@ -965,4 +965,292 @@ export const hypot = (xIn: number, yIn: number): number => {
   const hyy = y * y
   const lyy = yh * yh - hyy + 2 * yh * yl + yl * yl
   return z * Math.sqrt(lyy + lxx + hyy + hxx)
+}
+
+// ---------------------------------------------------------------------------
+// Logarithms
+
+const LOG1 = 6.666666666666735130e-01
+const LOG2 = 3.999999999940941908e-01
+const LOG3 = 2.857142874366239149e-01
+const LOG4 = 2.222219843214978396e-01
+const LOG5 = 1.818357216161805012e-01
+const LOG6 = 1.531383769920937332e-01
+const LOG7 = 1.479819860511658591e-01
+const TWO_54 = fromWords(0x43500000, 0)
+
+let logK = 0
+let logF = 0
+
+/**
+ * Splits a positive finite non-unit `x` into `2^logK · (1 + logF)` with
+ * `1 + logF` in [√2/2, √2]. Returns a result for the special cases
+ * (±0, negative, NaN, Infinity), or `undefined` once split.
+ */
+const logSplit = (xIn: number): number | undefined => {
+  let x = xIn
+  let hx = highWord(x) >>> 0
+  let k = 0
+  if (hx < 0x00100000 || hx >>> 31 !== 0) {
+    if (x === 0) return -1 / (x * x) // log(±0) = -Infinity
+    if (hx >>> 31 !== 0) return (x - x) / 0.0 // log(negative) = NaN
+    k -= 54 // subnormal: scale up
+    x *= TWO_54
+    hx = highWord(x) >>> 0
+  } else if (hx >= 0x7ff00000) {
+    return x // Infinity or NaN
+  } else if (hx === 0x3ff00000 && lowWord(x) === 0) {
+    return 0 // log(1) = +0
+  }
+  hx += 0x3ff00000 - 0x3fe6a09e
+  k += (hx >>> 20) - 0x3ff
+  hx = (hx & 0x000fffff) + 0x3fe6a09e
+  logK = k
+  logF = fromWords(hx, lowWord(x)) - 1.0
+  return undefined
+}
+
+/** s·(hfsq + R) of the log kernel on f = logF. */
+const logKernel = (f: number, hfsq: number): number => {
+  const s = f / (2.0 + f)
+  const z = s * s
+  const w = z * z
+  const t1 = w * (LOG2 + w * (LOG4 + w * LOG6))
+  const t2 = z * (LOG1 + w * (LOG3 + w * (LOG5 + w * LOG7)))
+  return s * (hfsq + t2 + t1)
+}
+
+export const log = (x: number): number => {
+  const special = logSplit(x)
+  if (special !== undefined) return special
+  const f = logF
+  const hfsq = 0.5 * f * f
+  const dk = logK
+  return logKernel(f, hfsq) + dk * LN2_LO - hfsq + f + dk * LN2_HI
+}
+
+const IVLN2HI = 1.44269504072144627571e+00
+const IVLN2LO = 1.67517131648865118353e-10
+
+export const log2 = (x: number): number => {
+  const special = logSplit(x)
+  if (special !== undefined) return special
+  const f = logF
+  const hfsq = 0.5 * f * f
+  const hi = clearLow(f - hfsq)
+  const lo = f - hi - hfsq + logKernel(f, hfsq)
+  let valHi = hi * IVLN2HI
+  let valLo = (lo + hi) * IVLN2LO + lo * IVLN2HI
+  const y = logK
+  const w = y + valHi
+  valLo += (y - w) + valHi
+  valHi = w
+  return valLo + valHi
+}
+
+const IVLN10HI = 4.34294481878168880939e-01
+const IVLN10LO = 2.50829467116452752298e-11
+const LOG10_2HI = 3.01029995663611771306e-01
+const LOG10_2LO = 3.69423907715893078616e-13
+
+export const log10 = (x: number): number => {
+  const special = logSplit(x)
+  if (special !== undefined) return special
+  const f = logF
+  const hfsq = 0.5 * f * f
+  const hi = clearLow(f - hfsq)
+  const lo = f - hi - hfsq + logKernel(f, hfsq)
+  let valHi = hi * IVLN10HI
+  const dk = logK
+  const y = dk * LOG10_2HI
+  let valLo = dk * LOG10_2LO + (lo + hi) * IVLN10LO + lo * IVLN10HI
+  const w = y + valHi
+  valLo += (y - w) + valHi
+  valHi = w
+  return valLo + valHi
+}
+
+export const log1p = (x: number): number => {
+  const hx = highWord(x) >>> 0
+  let k = 1
+  let c = 0
+  let f = 0
+  if (hx < 0x3fda827a || hx >>> 31 !== 0) {
+    // 1 + x < √2
+    if (hx >= 0xbff00000) {
+      // x <= -1
+      if (x === -1) return x / 0.0 // -Infinity
+      return (x - x) / 0.0 // NaN
+    }
+    if (((hx << 1) >>> 0) < 0x79400000) return x // |x| < 2^-53
+    if (hx <= 0xbfd2bec4) {
+      // √2/2 <= 1 + x < √2
+      k = 0
+      f = x
+    }
+  } else if (hx >= 0x7ff00000) {
+    return x
+  }
+  if (k !== 0) {
+    const u = 1 + x
+    let hu = highWord(u) >>> 0
+    hu += 0x3ff00000 - 0x3fe6a09e
+    k = (hu >>> 20) - 0x3ff
+    // Correction term ~ log(1 + x) - log(u), avoiding underflow in c/u.
+    if (k < 54) {
+      c = k >= 2 ? 1 - (u - x) : x - (u - 1)
+      c /= u
+    } else {
+      c = 0
+    }
+    hu = (hu & 0x000fffff) + 0x3fe6a09e
+    f = fromWords(hu, lowWord(u)) - 1
+  }
+  const hfsq = 0.5 * f * f
+  const dk = k
+  return logKernel(f, hfsq) + (dk * LN2_LO + c) - hfsq + f + dk * LN2_HI
+}
+
+// ---------------------------------------------------------------------------
+// Hyperbolic functions
+
+const EXPO2_KLN2 = fromWords(0x40962066, 0x151add8b) // 2043·ln2 (musl __expo2)
+const EXPO2_SCALE = fromWords((0x3ff + 1021) << 20, 0) // 2^1021
+
+/** exp(x)/2·sign for x > log(DBL_MAX): exp(x - 2043·ln2)·2^2042, without overflowing early. */
+const expo2 = (x: number, sign: number): number => exp(x - EXPO2_KLN2) * (sign * EXPO2_SCALE) * EXPO2_SCALE
+
+export const sinh = (x: number): number => {
+  const h = highWord(x) < 0 ? -0.5 : 0.5
+  const absx = Math.abs(x)
+  const w = highWord(absx)
+  if (w < 0x40862e42) {
+    // |x| < log(DBL_MAX)
+    const t = expm1(absx)
+    if (w < 0x3ff00000) {
+      if (w < 0x3ff00000 - (26 << 20)) return x
+      return h * (2 * t - t * t / (t + 1))
+    }
+    return h * (t + t / (t + 1))
+  }
+  return expo2(absx, 2 * h) // overflow or NaN
+}
+
+export const cosh = (xIn: number): number => {
+  const x = Math.abs(xIn)
+  const w = highWord(x)
+  if (w < 0x3fe62e42) {
+    // |x| < log(2)
+    if (w < 0x3ff00000 - (26 << 20)) return 1
+    const t = expm1(x)
+    return 1 + t * t / (2 * (1 + t))
+  }
+  if (w < 0x40862e42) {
+    // |x| < log(DBL_MAX)
+    const t = exp(x)
+    return 0.5 * (t + 1 / t)
+  }
+  return expo2(x, 1.0) // overflow or NaN
+}
+
+const LN2 = 6.93147180559945286227e-01
+
+export const asinh = (x: number): number => {
+  const hx = highWord(x)
+  const ix = hx & 0x7fffffff
+  if (ix >= 0x7ff00000) return x + x // Infinity or NaN
+  if (ix < 0x3e300000) return x // |x| < 2^-28
+  let w: number
+  if (ix > 0x41b00000) {
+    // |x| > 2^28
+    w = log(Math.abs(x)) + LN2
+  } else if (ix > 0x40000000) {
+    // 2 < |x| <= 2^28
+    const t = Math.abs(x)
+    w = log(2.0 * t + 1 / (Math.sqrt(x * x + 1) + t))
+  } else {
+    // 2^-28 <= |x| <= 2
+    const t = x * x
+    w = log1p(Math.abs(x) + t / (1 + Math.sqrt(1 + t)))
+  }
+  return hx > 0 ? w : -w
+}
+
+export const acosh = (x: number): number => {
+  const hx = highWord(x)
+  if (hx < 0x3ff00000) return (x - x) / (x - x) // x < 1 or negative NaN
+  if (hx >= 0x41b00000) {
+    // x > 2^28
+    if (hx >= 0x7ff00000) return x + x // Infinity or NaN
+    return log(x) + LN2
+  }
+  if (((hx - 0x3ff00000) | lowWord(x)) === 0) return 0 // acosh(1) = 0
+  if (hx > 0x40000000) {
+    // 2 < x <= 2^28
+    const t = x * x
+    return log(2.0 * x - 1 / (x + Math.sqrt(t - 1)))
+  }
+  // 1 < x <= 2
+  const t = x - 1
+  return log1p(t + Math.sqrt(2.0 * t + t * t))
+}
+
+export const atanh = (xIn: number): number => {
+  const hx = highWord(xIn)
+  const lx = lowWord(xIn)
+  const ix = hx & 0x7fffffff
+  if ((ix | ((lx | ((-lx) >>> 0)) >>> 31)) > 0x3ff00000) return (xIn - xIn) / (xIn - xIn) // |x| > 1 or NaN
+  if (ix === 0x3ff00000) return xIn / 0 // ±Infinity
+  if (ix < 0x3e300000) return xIn // |x| < 2^-28
+  const x = Math.abs(xIn)
+  let t: number
+  if (ix < 0x3fe00000) {
+    // |x| < 0.5
+    t = x + x
+    t = 0.5 * log1p(t + t * x / (1 - x))
+  } else {
+    t = 0.5 * log1p((x + x) / (1 - x))
+  }
+  return hx >= 0 ? t : -t
+}
+
+// ---------------------------------------------------------------------------
+// Cube root
+
+const B1 = 715094163 // (1023 - 1023/3 - 0.03306235651)·2^20
+const B2 = 696219795 // (1023 - 1023/3 - 54/3 - 0.03306235651)·2^20
+const CP0 = 1.87595182427177009643
+const CP1 = -1.88497979543377169875
+const CP2 = 1.621429720105354466140
+const CP3 = -0.758397934778766047437
+const CP4 = 0.145996192886612446982
+
+export const cbrt = (x: number): number => {
+  const high = highWord(x)
+  const sign = high & 0x80000000
+  let hx = high & 0x7fffffff
+  if (hx >= 0x7ff00000) return x + x // Infinity or NaN
+  // Rough cube root to 5 bits.
+  if (hx < 0x00100000) {
+    // zero or subnormal
+    hx = highWord(x * TWO_54) & 0x7fffffff
+    if (hx === 0) return x // ±0
+    hx = Math.floor(hx / 3) + B2
+  } else {
+    hx = Math.floor(hx / 3) + B1
+  }
+  let t = fromWords((sign | hx) >>> 0, 0)
+  // New cube root to 23 bits.
+  let r = (t * t) * (t / x)
+  t = t * ((CP0 + r * (CP1 + r * CP2)) + ((r * r) * r) * (CP3 + r * CP4))
+  // Round t away from zero to 23 bits.
+  const sum = lowWord(t) + 0x80000000
+  const carry = sum >= 0x100000000 ? 1 : 0
+  t = fromWords(((highWord(t) >>> 0) + carry) >>> 0, (sum & 0xc0000000) >>> 0)
+  // One Newton step to 53 bits, error < 0.667 ulp.
+  const s = t * t
+  r = x / s
+  const w = t + t
+  r = (r - t) / (w + r)
+  return t + t * r
 }

@@ -126,22 +126,23 @@ export const makeSimulation = (seed: number) => {
   // Random.seed always gives a valid state; the Result covers validated resources in general.
   if (!made.ok) throw new Error("the random state did not validate")
   const runtime = made.value
-  runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
+  const spawned = runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
+  if (!spawned.ok) throw new Error("spawning failed")
   const update = Game.Schedule(Chase, MoveShots, Game.Schedule.applyDeferred())
   return {
     runtime,
-    /** Fires a shot from `at` with `velocity` (units per second). */
+    /** Fires a shot from `at` with `velocity` (units per second); the tick's Result says whether it spawned. */
     fire: (at: Vec2.Vec2, velocity: Vec2.Vec2) => {
       const Fire = Game.System("Algorithms/Fire", {
         commands: Game.System.commands(Game.System.spawns(Position, Shot))
       }, ({ commands }) => {
         commands.spawn(Game.Command.spawn([Position, at], [Shot, { velocity, radius: 3 }]))
       })
-      runtime.tick(Game.Schedule(Fire, Game.Schedule.applyDeferred()))
+      return runtime.tick(Game.Schedule(Fire, Game.Schedule.applyDeferred()))
     },
     step: (dt: number) => {
       frame.dt = dt
-      runtime.tick(update)
+      return runtime.tick(update)
     }
   }
 }

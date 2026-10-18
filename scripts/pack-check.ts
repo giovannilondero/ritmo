@@ -10,17 +10,18 @@
  * 4. Type-checks a consumer file with `skipLibCheck: false` under
  *    `moduleResolution: nodenext` with TypeScript 7 and 6, runs it with
  *    plain Node, and checks that `internal/*` paths are not exported.
+ * 5. Runs oxlint with the published plugin over a file that breaks its rules.
  *
  *   pnpm pack:check
  */
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
-const packages = ["core", "math", "browser", "render", "pixi", "devtools"] as const
+const packages = ["core", "math", "browser", "render", "pixi", "devtools", "oxlint-plugin"] as const
 
 const run = (command: string, args: ReadonlyArray<string>, cwd: string): string =>
   execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })
@@ -179,6 +180,19 @@ step("run the published devtools CLI")
 writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value, schedules: { update: Game.Schedule() } });\n`)
 const lintOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["lint", "lint.mjs"], consumer)
 if (!lintOutput.includes("0 warnings")) throw new Error(`published lint CLI failed: ${lintOutput}`)
+
+step("run the published oxlint plugin")
+writeFileSync(path.join(consumer, ".oxlintrc.json"), JSON.stringify({
+  jsPlugins: ["@typeonce/oxlint-plugin-ritmo"],
+  categories: { correctness: "off" },
+  rules: { "ritmo/use-random-for-randomness": "error", "ritmo/use-ops-for-math": "error", "ritmo/handle-tick-result": "error" }
+}))
+writeFileSync(path.join(consumer, "simulation.ts"), "export const roll = Math.random()\nexport const turn = Math.sin(roll)\ndeclare const runtime: { tick(s: unknown): unknown }\nruntime.tick(0)\n")
+const linted = spawnSync(path.join(consumer, "node_modules", ".bin", "oxlint"), ["--format", "unix", "simulation.ts"], { cwd: consumer, encoding: "utf8" })
+for (const rule of ["use-random-for-randomness", "use-ops-for-math", "handle-tick-result"]) {
+  if (!linted.stdout.includes(`ritmo(${rule})`)) throw new Error(`published plugin did not report ritmo/${rule}:\n${linted.stdout}${linted.stderr}`)
+}
+console.log(linted.stdout.split("\n").filter((line) => line.includes("ritmo(")).map((line) => line.replace(/: .*\[/, " [")).join("\n"))
 
 step("internal modules are not exported")
 writeFileSync(path.join(consumer, "internal.mjs"), `import("@typeonce/ritmo/internal/world").then(() => process.exit(1), (error) => { if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") process.exit(2) })\n`)

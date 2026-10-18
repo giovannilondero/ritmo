@@ -1,3 +1,4 @@
+import { Ops } from "@typeonce/ritmo-math"
 import { Entity } from "@typeonce/ritmo"
 import { FOOD_ENERGY } from "./constants.ts"
 import { clamp, lerp, normalizeXYOrZero } from "./math.ts"
@@ -378,8 +379,8 @@ export const spawnAgentDraft = (
     [Behavior, {
       wanderAngle,
       wanderTimer: 0,
-      intentMemoryX: Math.cos(wanderAngle),
-      intentMemoryY: Math.sin(wanderAngle)
+      intentMemoryX: Ops.cos(wanderAngle),
+      intentMemoryY: Ops.sin(wanderAngle)
     }],
     [Intent, {
       kind: "wander",

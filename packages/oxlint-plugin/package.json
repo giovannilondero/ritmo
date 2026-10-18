@@ -1,0 +1,63 @@
+{
+  "name": "@typeonce/oxlint-plugin-ritmo",
+  "version": "0.8.0",
+  "description": "Oxlint rules for Ritmo games: deterministic, headless simulation code and checked runtime results",
+  "author": "Sandro Maglione",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/typeonce-dev/ritmo.git",
+    "directory": "packages/oxlint-plugin"
+  },
+  "bugs": {
+    "url": "https://github.com/typeonce-dev/ritmo/issues"
+  },
+  "homepage": "https://github.com/typeonce-dev/ritmo/tree/main/packages/oxlint-plugin#readme",
+  "keywords": [
+    "ecs",
+    "gamedev",
+    "ritmo",
+    "oxlint",
+    "oxlint-plugin",
+    "determinism"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "src/**/*.ts",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json --pretty false",
+    "check": "tsc -b tsconfig.json --pretty false"
+  },
+  "dependencies": {
+    "@oxlint/plugins": "^1.86.0"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.86.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

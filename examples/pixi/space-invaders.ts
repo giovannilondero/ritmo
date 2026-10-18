@@ -4,6 +4,7 @@ import * as Matter from "matter-js"
 import { Keyboard } from "@typeonce/ritmo-browser"
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
 import { NodeRegistry, RenderSync } from "@typeonce/ritmo-render"
+import { Random } from "@typeonce/ritmo-math"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
 
 interface BrowserExampleHandle {
@@ -67,6 +68,7 @@ const DeltaMilliseconds = Descriptor.Resource<number>()("SpaceInvaders/DeltaMill
 const ElapsedFrames = Descriptor.Resource<number>()("SpaceInvaders/ElapsedFrames")
 const EnemySpawnProgress = Descriptor.Resource<number>()("SpaceInvaders/EnemySpawnProgress")
 const ShootCooldown = Descriptor.Resource<number>()("SpaceInvaders/ShootCooldown")
+const Rng = Descriptor.ConstructedResource(Random)("SpaceInvaders/Rng")
 
 const DestroyEnemy = Descriptor.Event<{
   bullet: Entity.Handle<typeof Root, typeof Bullet>
@@ -102,7 +104,8 @@ const Game = Schema.bind(
       DeltaMilliseconds,
       ElapsedFrames,
       EnemySpawnProgress,
-      ShootCooldown
+      ShootCooldown,
+      Rng
     },
     events: {
       DestroyEnemy
@@ -277,19 +280,19 @@ const DescentPatterns = {
   })
 } as const
 
-const randomEnemyPattern = (): DescentPatternValue => {
-  const roll = Math.random()
+const randomEnemyPattern = (random: Random.Random): DescentPatternValue => {
+  const roll = random.next()
   if (roll < 0.15) {
     return DescentPatterns.zigZag
   }
   if (roll < 0.3) {
-    return DescentPatterns.sin(Math.random() * 2 + 2, 0.1, 0.5)
+    return DescentPatterns.sin(random.range(2, 4), 0.1, 0.5)
   }
   if (roll < 0.45) {
-    return DescentPatterns.oscillatingArc(Math.random() * 2 + 2, 0.05, 0.25)
+    return DescentPatterns.oscillatingArc(random.range(2, 4), 0.05, 0.25)
   }
   if (roll < 0.6) {
-    return DescentPatterns.spiral(Math.random() * 2 + 2, 0.05, 0.25)
+    return DescentPatterns.spiral(random.range(2, 4), 0.05, 0.25)
   }
   return DescentPatterns.fastDown
 }
@@ -522,7 +525,8 @@ const EnemySpawnSystem = Game.System(
   {
     resources: {
       frameDelta: Game.System.readResource(FrameDelta),
-      enemySpawnProgress: Game.System.writeResource(EnemySpawnProgress)
+      enemySpawnProgress: Game.System.writeResource(EnemySpawnProgress),
+      rng: Game.System.writeResource(Rng)
     },
     commands: Game.System.commands(Game.System.spawns(Enemy))
   },
@@ -534,13 +538,14 @@ const EnemySpawnSystem = Game.System(
       }
 
       resources.enemySpawnProgress.set(0)
+      const random = Random.draw(resources.rng)
       commands.spawn(
         makeEnemyDraft(
           {
-            x: Math.random() * (MAX_WIDTH - 100),
+            x: random.range(0, MAX_WIDTH - 100),
             y: 0
           },
-          randomEnemyPattern()
+          randomEnemyPattern(random)
         )
       )
     }
@@ -907,7 +912,7 @@ export const startSpaceInvadersExample = async (
     bodies: new Map<number, Matter.Body>()
   }
 
-  const runtime = Game.Runtime.make({
+  const made = Game.Runtime.make({
     services: Game.Runtime.services(
       Game.Runtime.service(InputManager, {
         isHeld(action) {
@@ -923,17 +928,22 @@ export const startSpaceInvadersExample = async (
       DeltaMilliseconds: pixiHost.clock.deltaMilliseconds,
       ElapsedFrames: 0,
       EnemySpawnProgress: ENEMY_SPAWN_COOLDOWN,
-      ShootCooldown: 0
+      ShootCooldown: 0,
+      Rng: Random.seed(Date.now())
     }
-  }).value
+  })
+  if (!made.ok) throw new Error(`invalid resources: ${JSON.stringify(made.error)}`)
+  const runtime = made.value
 
-  runtime.tick(setupSchedule)
+  const setup = runtime.tick(setupSchedule)
+  if (!setup.ok) throw new Error(`setup failed: ${JSON.stringify(setup.error)}`)
 
   const tick = (ticker: { readonly deltaMS: number }) => {
     pixiHost.clock.deltaMilliseconds = ticker.deltaMS
     pixiHost.clock.deltaFrames = ticker.deltaMS / (1000 / 60)
     input = keyboard.snapshot()
-    runtime.tick(updateSchedule)
+    const ran = runtime.tick(updateSchedule)
+    if (!ran.ok) console.error("update failed", ran.error)
   }
 
   application.ticker.add(tick)

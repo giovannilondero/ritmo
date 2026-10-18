@@ -1,3 +1,5 @@
+import { Ops } from "@typeonce/ritmo-math"
+
 export const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max)
 
@@ -9,7 +11,7 @@ export const normalizeXYOrZero = (x: number, y: number): {
   readonly y: number
   readonly length: number
 } => {
-  const magnitude = Math.hypot(x, y)
+  const magnitude = Ops.hypot(x, y)
   if (magnitude <= 0.0001) {
     return {
       x: 0,

@@ -161,7 +161,10 @@ export const runConcepts = (frames: number): { readonly log: ReadonlyArray<strin
   }
   const runtime = made.value
 
-  runtime.tick(setup)
+  const ready = runtime.tick(setup)
+  if (!ready.ok) {
+    return { log, failure: "setup failed" }
+  }
   for (let frame = 0; frame < frames; frame++) {
     const result = runtime.tick(update)
     if (!result.ok) {

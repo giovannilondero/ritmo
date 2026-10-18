@@ -31,9 +31,9 @@ export const runRecipes = () => {
   const runtime = made.value
   const update = Game.Schedule(AdvanceTime, Roll)
   const before = runtime.snapshot()
-  runtime.tick(update)
+  if (!runtime.tick(update).ok) throw new Error("the update failed")
   const after = runtime.snapshot()
-  runtime.restore(before)
-  runtime.tick(update)
+  if (!runtime.restore(before).ok) throw new Error("the snapshot did not restore")
+  if (!runtime.tick(update).ok) throw new Error("the replayed update failed")
   return { after, replay: runtime.snapshot() }
 }
