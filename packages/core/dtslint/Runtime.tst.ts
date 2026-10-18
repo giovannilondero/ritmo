@@ -95,7 +95,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    })
+    }).value
 
     expect(runtime).type.toBeAssignableTo<Runtime.Runtime<
       typeof schema,
@@ -157,6 +157,17 @@ describe("Runtime", () => {
     })
   })
 
+  it("returns a Success when nothing provided can fail, and a Result to check otherwise", () => {
+    const plain = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Counter: 0 } })
+    expect(plain.ok).type.toBe<true>()
+    expect(plain.value.tick).type.not.toBe<never>()
+    const maybe: { readonly Viewport?: { readonly width: number; readonly height: number } } = {}
+    const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: maybe })
+    expect(made.ok).type.toBe<boolean>()
+    // @ts-expect-error Property 'value' does not exist on type
+    made.value
+  })
+
   it("rejects an unknown resource key next to known ones, naming it", () => {
     Runtime.make({
       schema,
@@ -166,7 +177,7 @@ describe("Runtime", () => {
         // @ts-expect-error Countr is not a resource key of this schema
         Countr: 0
       }
-    })
+    }).value
     Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: {
@@ -174,7 +185,7 @@ describe("Runtime", () => {
         // @ts-expect-error DeltaTim is not a resource key of this schema
         DeltaTim: 1 / 60
       }
-    })
+    }).value
     // A value typed as the resources record is accepted as it is.
     const resources: Runtime.RuntimeResources<typeof schema> = { DeltaTime: 1 / 60 }
     expect(Game.Runtime.make({ services: Game.Runtime.services(), resources })).type.not.toRaiseError()
@@ -200,7 +211,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    })
+    }).value
 
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "Logger"
     runtime.tick(serviceSchedule)
@@ -210,7 +221,7 @@ describe("Runtime", () => {
     const runtime = Runtime.make({
       schema,
       services: Runtime.services()
-    })
+    }).value
 
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "Time"
     runtime.tick(resourceSchedule)
@@ -224,7 +235,7 @@ describe("Runtime", () => {
         DeltaTime: 1 / 60,
         Counter: 0
       }
-    })
+    }).value
 
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "Phase"
     runtime.tick(stateSchedule)
@@ -239,7 +250,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    })
+    }).value
 
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "Logger"
     runtime.tick(serviceSchedule)
@@ -260,7 +271,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    })
+    }).value
 
     runtime.tick(resourceSchedule, stateSchedule, serviceSchedule)
   })
@@ -280,7 +291,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    })
+    }).value
 
     runtime.tick(prefixedServiceSchedule)
   })
@@ -294,7 +305,7 @@ describe("Runtime", () => {
           log(_message: string) {}
         }
       }
-    })
+    }).value
   })
 
   it("rejects non-service descriptors in Runtime.services", () => {
@@ -325,12 +336,12 @@ describe("Runtime snapshots", () => {
 
   it("exposes snapshot and restore only when every value can be validated on load", () => {
     const Valid = Schema.bind(Schema.fragment({ components: { Place, Sprite }, resources: { Frame } }), Root)
-    const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } })
+    const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } }).value
     expect(valid.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
     expect(valid.restore(null)).type.toBe<Result.Result<void, import("@typeonce/ritmo/Snapshot").RestoreError>>()
 
     const Invalid = Schema.bind(Schema.fragment({ components: { Place, Label }, resources: { Score } }), Root)
-    const invalid = Invalid.Runtime.make({ services: Invalid.Runtime.services(), resources: { Score: 0 } })
+    const invalid = Invalid.Runtime.make({ services: Invalid.Runtime.services(), resources: { Score: 0 } }).value
     expect(invalid.snapshot).type.toBe<{
       readonly "SnapshotTypes/Label needs a validator": "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)"
       readonly "SnapshotTypes/Score needs a validator": "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)"
@@ -350,11 +361,11 @@ describe("Runtime snapshots", () => {
     const Decoded = Descriptor.ConstructedComponent({ ...typedOnly, decode: (raw: unknown) => Result.failure(raw) })("SnapshotTypes/Decoded")
 
     const Loadable = Schema.bind(Schema.fragment({ components: { Unknown, Decoded, Place } }), Root)
-    const loadable = Loadable.Runtime.make({ services: Loadable.Runtime.services() })
+    const loadable = Loadable.Runtime.make({ services: Loadable.Runtime.services() }).value
     expect(loadable.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
 
     const Unloadable = Schema.bind(Schema.fragment({ components: { Typed } }), Root)
-    const unloadable = Unloadable.Runtime.make({ services: Unloadable.Runtime.services() })
+    const unloadable = Unloadable.Runtime.make({ services: Unloadable.Runtime.services() }).value
     // @ts-expect-error Type '{ readonly "SnapshotTypes/Typed needs a validator": "Use a Constructed* descriptor whose constructor
     unloadable.snapshot()
   })
@@ -385,7 +396,7 @@ describe("Decode", () => {
 
     const Root = Schema.defineRoot("DecodeTypes")
     const Game = Schema.bind(Schema.fragment({ components: { Stats, Team, Player } }), Root)
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     expect(runtime.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
   })
 })

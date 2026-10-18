@@ -154,11 +154,17 @@ export const zero: () => Vector2 = internal.zero
 /**
  * Returns the sum of two branded vectors.
  *
+ * Keeps the brands without re-validating: finite while the result stays
+ * within `±Number.MAX_VALUE` (see `Scalar.Finite`).
+ *
  * @category Operations
  */
 export const add: (left: Vector2, right: Vector2) => Vector2 = internal.add
 /**
  * Returns the component-wise difference between two branded vectors.
+ *
+ * Keeps the brands without re-validating: finite while the result stays
+ * within `±Number.MAX_VALUE` (see `Scalar.Finite`).
  *
  * @category Operations
  */
@@ -166,11 +172,17 @@ export const subtract: (left: Vector2, right: Vector2) => Vector2 = internal.sub
 /**
  * Scales one vector by one validated finite scalar.
  *
+ * Keeps the brands without re-validating: finite while the result stays
+ * within `±Number.MAX_VALUE` (see `Scalar.Finite`).
+ *
  * @category Operations
  */
 export const scale: (vector: Vector2, scalar: Scalar.Finite) => Vector2 = internal.scale
 /**
  * Returns the squared length of one vector.
+ *
+ * Keeps the brands without re-validating: finite while the result stays
+ * within `±Number.MAX_VALUE` (see `Scalar.Finite`).
  *
  * @category Operations
  */

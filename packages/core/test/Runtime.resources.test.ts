@@ -48,6 +48,17 @@ const makeRuntime = () => {
 }
 
 describe("Runtime resources", () => {
+  it("always returns a Result from make, whatever resources the value turns out to hold", () => {
+    const plain = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Counter: 0 } })
+    expect(plain.ok).toBe(true)
+    // Typed as possibly holding a constructed resource, holding none at runtime.
+    const maybe: { readonly Viewport?: { readonly width: number; readonly height: number } } = {}
+    const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: maybe })
+    expect(made.ok).toBe(true)
+    if (!made.ok) throw new Error("expected a runtime")
+    expect(typeof made.value.tick).toBe("function")
+  })
+
   it("reads initial resource seeding on the first update", () => {
     const runtime = makeRuntime()
 
@@ -176,7 +187,7 @@ describe("Runtime resources", () => {
         DeltaTime: 0.75,
         Counter: 2
       }
-    })
+    }).value
 
     expect(readResourceValue(runtime, schema, Counter)).toBe(2)
   })

@@ -63,38 +63,64 @@ const withTransition = (cell: WriteCellBase<unknown>, component: string) => Obje
   }
 })
 
+/**
+ * A required slot is empty only when its match outlived the run that produced
+ * it: the entity was despawned, or lost the component. Reading would hand out
+ * the internal marker as a value, and writing would put the component back
+ * without the insert path, so both fail loudly instead.
+ */
+const staleMatch = (record: EntityRecord, ordinal: number): Error =>
+  new Error(
+    `${record.nameAt(ordinal)} was used through a query match after ${record.alive ? "its entity lost it" : "its entity was despawned"}: `
+    + "a match is valid during the system run that produced it; keep the entity id or a handle and resolve it again with queries.x.get(id) or queries.x.getHandle(handle)"
+  )
+
+
+/** Kept out of `get` so the hot read stays small enough to inline. */
+const staleRead = (record: EntityRecord, ordinal: number): never => {
+  throw staleMatch(record, ordinal)
+}
+
 class ComponentReadCell {
-  readonly record: EntityRecord
+  // The record's values array, held directly: one load per read instead of
+  // two pays for the stale check. Records never replace their array.
+  readonly values: Array<unknown>
   readonly ordinal: number
+  readonly record: EntityRecord
 
   constructor(record: EntityRecord, ordinal: number) {
-    this.record = record
+    this.values = record.values
     this.ordinal = ordinal
+    this.record = record
   }
 
   get(): unknown {
-    return this.record.values[this.ordinal]
+    const value = this.values[this.ordinal]
+    return value === ABSENT ? staleRead(this.record, this.ordinal) : value
   }
 }
 
 class ComponentWriteCell extends WriteCellBase<unknown> {
-  readonly record: EntityRecord
+  readonly values: Array<unknown>
   readonly ordinal: number
+  readonly record: EntityRecord
   readonly world: World
 
   constructor(record: EntityRecord, ordinal: number, world: World) {
     super()
-    this.record = record
+    this.values = record.values
     this.ordinal = ordinal
+    this.record = record
     this.world = world
   }
 
   get(): unknown {
-    return this.record.values[this.ordinal]
+    const value = this.values[this.ordinal]
+    return value === ABSENT ? staleRead(this.record, this.ordinal) : value
   }
 
   set(value: unknown): void {
-    this.world.setComponentValue(this.record, this.ordinal, value)
+    if (!this.world.setComponentValue(this.record, this.ordinal, value)) staleRead(this.record, this.ordinal)
   }
 }
 

@@ -13,7 +13,7 @@ const update = Game.Schedule(Tick)
 
 const make = () => {
   const hostClock = HostClock.test()
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } })
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
   return { runtime, hostClock }
 }
 

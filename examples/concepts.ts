@@ -132,7 +132,7 @@ export const runLookups = () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
-  })
+  }).value
   made.tick(setup)
   let found = false
   let only = false

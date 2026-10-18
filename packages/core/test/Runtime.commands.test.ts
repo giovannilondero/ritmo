@@ -41,7 +41,7 @@ const makeRuntime = () =>
       Count: 0,
       LastX: -1
     }
-  })
+  }).value
 
 describe("Runtime commands", () => {
   it("insertMany applies entries in order with last-write-wins semantics", () => {

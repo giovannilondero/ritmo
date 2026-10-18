@@ -149,7 +149,7 @@ const runtime = Game.Runtime.make({
   machines: Game.Runtime.machines(
     Game.Runtime.machine(Phase, "Running")
   )
-})
+}).value
 
 export const createSmokeExample = () => {
   runtime.tick(bootstrap)

@@ -257,7 +257,7 @@ const runtime = Game.Runtime.make({
   services: Game.Runtime.services(Game.Runtime.service(Log, { write: console.log })),
   resources: { DeltaTime: 1 / 60, Score: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
-})
+}).value
 
 runtime.tick(setup)
 runtime.tick(update)                 // once per frame, e.g. from FixedLoop

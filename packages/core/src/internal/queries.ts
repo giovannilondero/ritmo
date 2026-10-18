@@ -14,6 +14,7 @@
  * Matches are always returned in ascending entity id order, which is spawn
  * order, so iteration is deterministic.
  */
+import type { Descriptor } from "../Descriptor.ts"
 import * as DescriptorModule from "../Descriptor.ts"
 import type * as Entity from "../Entity.ts"
 import * as Query from "../Query.ts"
@@ -124,6 +125,31 @@ export const makeQueryEngine = (world: World) => {
   const states = new WeakMap<AnyQuery, QueryState>()
   let nextOrdinal = 0
 
+  /**
+   * The ordinal of a selected component, checking that the descriptor the
+   * query names behaves like the one the schema registers under that name:
+   * identity is (kind, name), so a look-alike built elsewhere must not add
+   * or drop behaviour (entity-state transitions, a constructor, immutability,
+   * transience) the schema does not declare.
+   */
+  const registeredOrdinal = (descriptor: Descriptor.Any): number => {
+    const ordinal = world.ordinalOf(descriptor as never)
+    const registered = world.descriptorAt(ordinal) as Descriptor.Any
+    if (registered === descriptor) return ordinal
+    const traits = (candidate: Descriptor.Any) => [
+      DescriptorModule.isEntityState(candidate as never) ? "an entity state" : undefined,
+      DescriptorModule.hasConstructor(candidate) ? "constructed" : undefined,
+      DescriptorModule.isImmutable(candidate) ? "immutable" : undefined,
+      DescriptorModule.isTransient(candidate) ? "transient" : undefined
+    ].filter((trait) => trait !== undefined).join(", ") || "plain"
+    const expected = traits(registered)
+    const actual = traits(descriptor)
+    if (expected !== actual) {
+      throw new Error(`${descriptor.name} is ${expected} in this schema, but this query names a descriptor that is ${actual}: use the descriptor the schema registers`)
+    }
+    return ordinal
+  }
+
   const compile = (query: AnyQuery): QueryState => {
     const required: Array<number> = query.with.map((descriptor) => world.ordinalOf(descriptor))
     const withRelations: Array<Relation.Relation.Any> = [...query.withRelations]
@@ -136,7 +162,7 @@ export const makeQueryEngine = (world: World) => {
       switch (access.mode) {
         case "read":
         case "write": {
-          const ordinal = world.ordinalOf(access.descriptor)
+          const ordinal = registeredOrdinal(access.descriptor)
           required.push(ordinal)
           proofSlots.push([slot, ordinal])
           if (access.mode === "write") {
@@ -154,7 +180,7 @@ export const makeQueryEngine = (world: World) => {
           break
         }
         case "optional":
-          slots.push({ slot, mode: "optional", ordinal: world.ordinalOf(access.descriptor) })
+          slots.push({ slot, mode: "optional", ordinal: registeredOrdinal(access.descriptor) })
           break
         case "readRelation":
           withRelations.push(access.descriptor)

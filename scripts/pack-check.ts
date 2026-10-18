@@ -121,7 +121,7 @@ const Spawn = Game.System("Consumer/Spawn", { commands: Game.System.commands(Gam
   if (draft.ok) commands.spawn(draft.value)
 })
 const hostClock = HostClock.test()
-const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } })
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
 const session = Session.make(runtime, { hostClock, schedules: { setup: Game.Schedule(Spawn, Game.Schedule.applyDeferred()) } })
 const ran = session.run("setup")
 const keyboard = Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }])
@@ -159,7 +159,7 @@ if (output !== expected) throw new Error(`consumer printed ${output}, expected $
 console.log(output)
 
 step("run the published devtools CLI")
-writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }), schedules: { update: Game.Schedule() } });\n`)
+writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value, schedules: { update: Game.Schedule() } });\n`)
 const lintOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["lint", "lint.mjs"], consumer)
 if (!lintOutput.includes("0 warnings")) throw new Error(`published lint CLI failed: ${lintOutput}`)
 

@@ -29,7 +29,7 @@ const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Score: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
-})
+}).value
 
 describe("Game.System.thisTick", () => {
   it("marks a read and keeps its context view", () => {
@@ -57,6 +57,16 @@ describe("Game.System.thisTick", () => {
     runtime.tick(Game.Schedule(Apply, Deal))
     // @ts-expect-error ThisTick/Show needs ThisTick/Score from this tick, but its writer ThisTick/Count runs after it
     runtime.tick(Game.Schedule(Show), Game.Schedule(Count))
+  })
+
+  it("checks a writer that shares the reader's display name", () => {
+    // Two systems may share a display name; a writer named like its reader is still a writer.
+    const Twin = Game.System("ThisTick/Apply", { events: { damage: Game.System.writeEvent(Damage) } }, ({ events }) => {
+      events.damage.emit({ amount: 2 })
+    })
+    // @ts-expect-error ThisTick/Apply needs ThisTick/Damage from this tick, but its writer ThisTick/Apply runs after it
+    runtime.tick(Game.Schedule(Apply, Twin))
+    runtime.tick(Game.Schedule(Twin, Apply))
   })
 
   it("counts gated groups by position", () => {
@@ -95,7 +105,7 @@ describe("Game.System.thisTick", () => {
     }, () => {})
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "ThisTick/Clock"
     runtime.tick(Game.Schedule(Deal, Timed))
-    const bare = Game.Runtime.make({ services: Game.Runtime.services() })
+    const bare = Game.Runtime.make({ services: Game.Runtime.services() }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "ThisTick/Score"
     bare.tick(Game.Schedule(Count, Show))
   })

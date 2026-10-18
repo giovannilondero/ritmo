@@ -72,7 +72,7 @@ const Move = Game.System("Move", {
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { DeltaTime: 1 / 60 }
-})
+}).value
 runtime.tick(Game.Schedule(Move))
 ```
 

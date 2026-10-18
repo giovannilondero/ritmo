@@ -14,7 +14,7 @@ const ReadPhases = Game.Inspector("State/ReadPhases", {
 }, ({ queries }) => queries.phases.each().map((match) => match.data.phase.get()))
 
 const makeRuntime = () => {
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services() })
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
   const Spawn = Game.System("State/Spawn", {
     commands: Game.System.commands(Game.System.spawns(Phase, Mode))
   }, ({ commands }) => {

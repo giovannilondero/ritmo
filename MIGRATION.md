@@ -5,6 +5,28 @@
 0.9.0 rejects several calls that compiled before but were always wrong.
 Fix each error where it is reported; the messages name the fix.
 
+- **`Runtime.make` always returns a `Result`.** When nothing provided can
+  fail, its type is `Success`: read `.value`. When a constructed resource
+  may be provided, check it as before.
+
+  ```diff
+  -const runtime = Game.Runtime.make({ services, resources: { Score: 0 } })
+  +const runtime = Game.Runtime.make({ services, resources: { Score: 0 } }).value
+  ```
+
+- **A query match is valid only during its run.** Keeping a match in
+  `local` and reading or writing it later throws once its entity was
+  despawned or lost the component. Keep the entity id or a handle, and
+  resolve it with `queries.x.get(id)` / `getHandle(handle)`.
+- **A look-alike descriptor must behave like the registered one.** A
+  descriptor built elsewhere with the same kind and name but different
+  behaviour (an entity state, a constructor, `immutable`, transient) throws
+  when its query first runs; use the descriptor the schema registers.
+- **New lint `next-state-replaced`.** On a debug runtime, two systems
+  queuing different next states for one machine before the same marker are
+  reported. Decide in one system, or check `nextMachines.x.getPending()`
+  before setting.
+
 - **Draft relations need `relates`.** A system that spawns a draft built
   with `Game.Command.relate(...)` declares the relation:
 

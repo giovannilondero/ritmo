@@ -12,7 +12,7 @@ const Game = Schema.bind(Schema.fragment({
   requires: [Schema.requires(Player, Position, Velocity), Schema.requires(Ghost, Trail)]
 }))
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } })
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
 
 const Movers = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Velocity], without: [Player] })
 

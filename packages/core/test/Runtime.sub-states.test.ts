@@ -15,7 +15,7 @@ const makeRuntime = (session: "Menu" | "Playing") => Game.Runtime.make({
     Game.Runtime.machine(Phase, "Setup"),
     Game.Runtime.machine(Turn, "Mine")
   )
-})
+}).value
 
 const log: Array<string> = []
 const note = (label: string) => Game.System(`SubStates/${label}`, {}, () => { log.push(label) })
@@ -178,7 +178,7 @@ describe("sub-states", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Session, "Menu"), Game.Runtime.machine(Phase, "Setup"), Game.Runtime.machine(Turn, "Mine"))
-    })
+    }).value
     runtime.tick(Game.Schedule(setSession("Playing"), Game.Schedule.applyStateTransitions(bundle)))
     // The sub-state enters together with its parent, before the parent's onEnter, so the spawn survives.
     expect(runtime.inspect(Names)).toBe(1)
@@ -224,7 +224,7 @@ describe("sub-states", () => {
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Session, "Menu"), Game.Runtime.machine(Phase, "Setup")),
       debug: { hostClock: HostClock.test() }
-    })
+    }).value
     runtime.debug.nameSchedules({ update: Game.Schedule(setSession("Playing"), Game.Schedule.applyStateTransitions(transitions)) })
     const description = runtime.debug.describe()
     expect(description.machines.map(({ name, current, provided, within }) => ({ name, current, provided, within }))).toEqual([

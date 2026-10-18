@@ -50,7 +50,7 @@ const makeRuntime = () =>
       LastError: "",
       StoredHandle: null
     }
-  })
+  }).value
 
 describe("Runtime query and lookup", () => {
   it("each returns zero matches when nothing satisfies the query", () => {
@@ -670,7 +670,7 @@ describe("Runtime query and lookup", () => {
         LastError: "",
         StoredHandle: null
       }
-    })
+    }).value
 
     runtime.tick(
       Game.Schedule(spawn, Game.Schedule.applyDeferred()),
@@ -804,7 +804,7 @@ describe("Runtime query and lookup", () => {
         LastError: "",
         StoredHandle: null
       }
-    })
+    }).value
 
     runtime.tick(
       Game.Schedule(spawn, Game.Schedule.applyDeferred(), observe)

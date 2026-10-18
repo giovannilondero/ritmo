@@ -36,10 +36,10 @@ describe("@typeonce/ritmo-render", () => {
 
     const withRegistry = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
-    })
+    }).value
     expect(withRegistry.tick(Game.Schedule(render))).type.toBe<Result.Result<void, never>>()
 
-    const withoutRegistry = Game.Runtime.make({ services: Game.Runtime.services() })
+    const withoutRegistry = Game.Runtime.make({ services: Game.Runtime.services() }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "RenderTypes/Nodes"
     withoutRegistry.tick(Game.Schedule(render))
   })
@@ -65,7 +65,7 @@ describe("@typeonce/ritmo-render", () => {
 
     const withoutScale = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
-    })
+    }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "RenderTypes/Scale"
     withoutScale.tick(Game.Schedule(render))
   })
@@ -161,7 +161,7 @@ describe("@typeonce/ritmo-render", () => {
     })
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
-    })
+    }).value
     expect(runtime.tick(Game.Schedule(render)).ok).type.toBe<boolean>()
   })
 
@@ -186,7 +186,7 @@ describe("@typeonce/ritmo-render", () => {
 
     const withoutClock = Planet.Runtime.make({
       services: Planet.Runtime.services(Planet.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
-    })
+    }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "RenderTypes/Clock"
     withoutClock.tick(Planet.Schedule(interpolate))
 

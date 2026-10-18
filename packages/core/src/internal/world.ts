@@ -48,6 +48,8 @@ export interface EntityRecord {
    * Cached query matches by query ordinal, reused while the entity matches.
    */
   readonly matches: Array<unknown>
+  /** The name of the component at an ordinal, for error messages (shared by the world's records). */
+  readonly nameAt: (ordinal: number) => string
   alive: boolean
 }
 
@@ -238,6 +240,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /** Suppresses per-component and relation hooks inside spawns and despawns. */
   let hookDepth = 0
 
+  const nameAt = (ordinal: number): string => descriptors[ordinal]?.name ?? `component #${ordinal}`
+
   const ordinalOf = (descriptor: ComponentDescriptor): number => {
     const known = ordinals.get(descriptor.key)
     if (known !== undefined) {
@@ -337,6 +341,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         values,
         marks,
         matches: [],
+        nameAt,
         alive: true
       }
       records.set(record.id, record)
@@ -363,14 +368,19 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /**
    * Writes an existing component value in place and records the change.
    */
-  const setComponentValue = (record: EntityRecord, ordinal: number, value: unknown): void => {
-    if (!record.alive) {
-      return
+  /**
+   * Writes a component the entity holds. Returns `false`, writing nothing,
+   * when it does not (despawned records hold nothing): only a stale query
+   * cell gets here, and it reports the misuse.
+   */
+  const setComponentValue = (record: EntityRecord, ordinal: number, value: unknown): boolean => {
+    if (record.values[ordinal] === ABSENT) {
+      return false
     }
     if (!inTransaction) {
       record.values[ordinal] = value
       markChanged(record, ordinal)
-      return
+      return true
     }
     const slot = ordinal * MARK_STRIDE + JOURNALED
     if (record.marks[slot] !== transaction) {
@@ -380,6 +390,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       journalValues.push(record.values[ordinal])
     }
     record.values[ordinal] = value
+    return true
   }
 
   const clearJournal = (): void => {
@@ -779,6 +790,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     records,
     relationDefinitions,
     ordinalOf,
+    nameAt,
     has,
     entityIdOf,
     allocateEntity,

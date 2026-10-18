@@ -160,7 +160,7 @@ const gameplay = Game.Schedule(Move, SpendHealth)
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { DeltaTime: 1 / 60 }
-})
+}).value
 
 const update = runtime.tick(gameplay)
 if (!update.ok) {
@@ -314,7 +314,7 @@ and answers questions as text:
 
 ```ts
 const hostClock = HostClock.test()
-const runtime = Game.Runtime.make({ services, resources, debug: { hostClock } })
+const runtime = Game.Runtime.make({ services, resources, debug: { hostClock } }).value
 const session = Session.make(runtime, { hostClock, schedules: { setup, update }, invariants: [HealthNeverNegative] })
 
 session.run("setup")
@@ -398,7 +398,7 @@ const keyboard = Keyboard.actions(window, bindings)
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, keyboard)),
   resources: { Input: Keyboard.idle(bindings) }
-})
+}).value
 const update = Game.Schedule(CaptureInput, Jump)
 
 keyboard.dispose() // on teardown
@@ -481,7 +481,7 @@ const runtime = Game.Runtime.make({
       detach: (node) => scene.remove(node)
     }))
   )
-})
+}).value
 
 const update = Game.Schedule(Gameplay, Game.Schedule.applyDeferred(), render)
 ```

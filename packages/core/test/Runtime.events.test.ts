@@ -5,7 +5,7 @@ import * as Runtime from "@typeonce/ritmo/Runtime"
 const Ping = Descriptor.Event<{ value: number }>()("Ping")
 const Game = Schema.bind(Schema.fragment({ events: { Ping } }))
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() })
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
 
 const emitter = (name: string, values: ReadonlyArray<number>) =>
   Game.System(name, { events: { ping: Game.System.writeEvent(Ping) } }, ({ events }) => {
@@ -159,7 +159,7 @@ describe("Runtime events", () => {
     const runtime = Local.Runtime.make({
       services: Local.Runtime.services(),
       machines: Local.Runtime.machines(Local.Runtime.machine(Mode, "On"))
-    })
+    }).value
     runtime.tick(Local.Schedule(gated))
     runtime.tick(Local.Schedule(toggle("Off"), Local.Schedule.applyStateTransitions()))
     runtime.tick(Local.Schedule(emit, gated))

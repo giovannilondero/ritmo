@@ -9,10 +9,10 @@ const OtherGame = Schema.bind(Schema.fragment({ components: { Other } }))
 
 describe("Runtime debug option", () => {
   it("adds the debug handle only when enabled", () => {
-    const plain = Game.Runtime.make({ services: Game.Runtime.services() })
+    const plain = Game.Runtime.make({ services: Game.Runtime.services() }).value
     expect(plain).type.not.toHaveProperty("debug")
 
-    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } })
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
     expect(debugged).type.toHaveProperty("debug")
     expect(debugged.debug.describe()).type.toBe<Debug.Description>()
   })
@@ -28,30 +28,30 @@ describe("Runtime debug option", () => {
 
   it("types the handle as optional when the option may be undefined (a dev build)", () => {
     const dev: boolean = Math.random() > 2
-    const maybe = Game.Runtime.make({ services: Game.Runtime.services(), debug: dev ? { hostClock: HostClock.standard } : undefined })
+    const maybe = Game.Runtime.make({ services: Game.Runtime.services(), debug: dev ? { hostClock: HostClock.standard } : undefined }).value
     expect(maybe.debug).type.toBe<Debug.Handle<typeof Game.schema, typeof Game.schema> | undefined>()
     // @ts-expect-error 'maybe.debug' is possibly 'undefined'.
     maybe.debug.describe()
-    const off = Game.Runtime.make({ services: Game.Runtime.services(), debug: undefined })
+    const off = Game.Runtime.make({ services: Game.Runtime.services(), debug: undefined }).value
     expect(off).type.not.toHaveProperty("debug")
   })
 
   it("rejects the removed boolean form and a debug option without a host clock", () => {
     // @ts-expect-error Type 'boolean' is not assignable to type 'Option'.
-    Game.Runtime.make({ services: Game.Runtime.services(), debug: true })
+    Game.Runtime.make({ services: Game.Runtime.services(), debug: true }).value
     // @ts-expect-error Property 'hostClock' is missing
-    Game.Runtime.make({ services: Game.Runtime.services(), debug: {} })
+    Game.Runtime.make({ services: Game.Runtime.services(), debug: {} }).value
   })
 
   it("filters dumps by the runtime's own components", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
     expect(runtime.debug.dump).type.toBeCallableWith({ with: [Position] })
     expect(runtime.debug.dump).type.not.toBeCallableWith({ with: [Other] })
     expect(OtherGame.schema.components.Other).type.toBe<typeof Other>()
   })
 
   it("names only schedules of the runtime's schema", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
     const own = Game.Schedule(Game.System("DebugTypes/Own", {}, () => {}))
     const foreign = OtherGame.Schedule(OtherGame.System("DebugTypes/Foreign", {}, () => {}))
     expect(runtime.debug.nameSchedules).type.toBeCallableWith({ own })

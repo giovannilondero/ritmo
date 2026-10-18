@@ -38,5 +38,5 @@ export const createGeneticsRuntime = (browser: BrowserHostValue, nodes: Genetics
     machines: Game.Runtime.machines(
       Game.Runtime.machine(SimulationPhase, "Running")
     )
-  })
+  }).value
 }

@@ -35,7 +35,7 @@
  *
  * @example
  * ```ts
- * const runtime = Game.Runtime.make({ services, resources, debug: { hostClock: HostClock.standard } })
+ * const runtime = Game.Runtime.make({ services, resources, debug: { hostClock: HostClock.standard } }).value
  * runtime.debug.nameSchedules({ setup: setupSchedule, update: updateSchedule })
  *
  * const stop = runtime.debug.observe((event) => {
@@ -247,7 +247,9 @@ export interface ScheduleDescription {
  * `relation-failure-never-read` fires for a relation that applied commands
  * have tried to relate or reorder (which can fail) while no described system
  * reads its failures, and `requirement-violated` lists commands skipped
- * because they would have broken a `Schema.requires` requirement, so
+ * because they would have broken a `Schema.requires` requirement,
+ * `next-state-replaced` lists next states one system queued and another
+ * replaced with a different value before the marker (the last wins), so
  * describe after the game has run for a while. `scope-trigger-never-applied`
  * also reads which machines the runtime provides.
  */
@@ -264,6 +266,7 @@ export interface Lint {
     | "this-tick-order"
     | "command-permission-unused"
     | "requirement-violated"
+    | "next-state-replaced"
     | "scope-trigger-never-applied"
   readonly message: string
   readonly subject: string
@@ -434,6 +437,19 @@ export type Effect =
       readonly component: string
       readonly missing: string
     }
+
+/**
+ * A next state one system queued and another replaced with a different value
+ * before the same `applyStateTransitions(...)`: the `next-state-replaced`
+ * lint. Only the last value is committed.
+ */
+export interface NextStateReplacement {
+  readonly machine: string
+  readonly replaced: { readonly system: string; readonly value: Machine.StateValue }
+  readonly by: { readonly system: string; readonly value: Machine.StateValue }
+  /** How many times it happened. */
+  readonly count: number
+}
 
 /**
  * Commands of one system skipped because applying them would have left a

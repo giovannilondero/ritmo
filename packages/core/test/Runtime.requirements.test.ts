@@ -21,7 +21,7 @@ describe("Runtime dynamic requirements", () => {
     const schedule = Game.Schedule(run)
     const incomplete = Game.Runtime.make({
       services: Game.Runtime.services()
-    })
+    }).value
 
     expect(incomplete.tryTick(schedule)).toEqual({
       ok: false,
@@ -44,7 +44,7 @@ describe("Runtime dynamic requirements", () => {
       machines: Game.Runtime.machines(
         Game.Runtime.machine(Phase, "Ready")
       )
-    })
+    }).value
 
     expect(complete.tryTick(schedule)).toEqual({ ok: true, value: undefined })
     expect(logged).toEqual([1])
