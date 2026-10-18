@@ -1,109 +1,75 @@
 import { describe, expect, it } from "vitest"
 
-import { FixedLoop, packageTag } from "@typeonce/ritmo-browser"
-import { Clock, Result } from "@typeonce/ritmo"
+import { BrowserTickSource, packageTag } from "@typeonce/ritmo-browser"
 
 describe("@typeonce/ritmo-browser", () => {
   it("resolves through the workspace package entrypoint", () => {
     expect(packageTag).toBe("browser")
   })
+})
 
-  it("advances deterministic fixed updates and exposes interpolation", () => {
-    let tick: ((value: FixedLoop.Tick) => void) | undefined
-    let stopped = false
-    const frames: Array<FixedLoop.Frame> = []
-    const steps: Array<number> = []
-
-    const driver = FixedLoop.start({
-      source: FixedLoop.source((onTick) => {
-        tick = onTick
-        return { stop: () => { stopped = true } }
-      }),
-      step: Clock.hz(100),
-      maxFrameSeconds: 0.1,
-      maxStepsPerFrame: 3,
-      update: (step) => {
-        steps.push(step)
-        return Result.success(undefined)
+describe("BrowserTickSource.make", () => {
+  const fakeWindow = () => {
+    const pending = new Map<number, (timestamp: number) => void>()
+    let next = 0
+    return {
+      pending,
+      host: {
+        requestAnimationFrame: (callback: (timestamp: number) => void) => {
+          next += 1
+          pending.set(next, callback)
+          return next
+        },
+        cancelAnimationFrame: (handle: number) => {
+          pending.delete(handle)
+        }
       },
-      render: (frame) => frames.push(frame),
-      onFailure: () => {
-        throw new Error("unexpected loop failure")
+      frame(timestamp: number) {
+        const callbacks = [...pending.values()]
+        pending.clear()
+        for (const callback of callbacks) callback(timestamp)
       }
-    })
+    }
+  }
 
-    expect(driver.ok).toBe(true)
-    tick?.({ deltaMS: 25 })
-    tick?.({ deltaMS: 10 })
+  it("reports zero for the first frame, then the time since the previous one", () => {
+    const browser = fakeWindow()
+    const deltas: Array<number> = []
+    BrowserTickSource.make(browser.host).subscribe((tick) => deltas.push(tick.deltaMS))
 
-    expect(steps).toEqual([0.01, 0.01, 0.01])
-    expect(frames).toHaveLength(2)
-    expect(frames[0]).toMatchObject({ fixedSteps: 2, droppedSeconds: 0 })
-    expect(frames[0]?.alpha).toBeCloseTo(0.5)
-    expect(frames[1]).toMatchObject({ fixedSteps: 1, droppedSeconds: 0 })
-    expect(frames[1]?.alpha).toBeCloseTo(0.5)
-    expect(stopped).toBe(false)
+    browser.frame(1000)
+    browser.frame(1016)
+    browser.frame(1050)
+
+    expect(deltas).toEqual([0, 16, 34])
   })
 
-  it("bounds catch-up work and reports expected update failures", () => {
-    let tick: ((value: FixedLoop.Tick) => void) | undefined
-    let stopCount = 0
-    const frames: Array<FixedLoop.Frame> = []
-    const failures: Array<FixedLoop.Failure<"Paused">> = []
-    let updates = 0
+  it("cancels the pending frame on stop and ignores a second stop", () => {
+    const browser = fakeWindow()
+    const deltas: Array<number> = []
+    const subscription = BrowserTickSource.make(browser.host).subscribe((tick) => deltas.push(tick.deltaMS))
 
-    const driver = FixedLoop.start({
-      source: FixedLoop.source((onTick) => {
-        tick = onTick
-        return { stop: () => { stopCount += 1 } }
-      }),
-      step: Clock.hz(100),
-      maxFrameSeconds: 0.1,
-      maxStepsPerFrame: 3,
-      update: () => {
-        updates += 1
-        return updates === 4 ? Result.failure("Paused" as const) : Result.success(undefined)
-      },
-      render: (frame) => frames.push(frame),
-      onFailure: (failure) => failures.push(failure)
-    })
+    browser.frame(0)
+    subscription.stop()
+    subscription.stop()
+    browser.frame(16)
 
-    expect(driver.ok).toBe(true)
-    tick?.({ deltaMS: 100 })
-    expect(updates).toBe(3)
-    expect(frames[0]?.fixedSteps).toBe(3)
-    expect(frames[0]?.droppedSeconds).toBeCloseTo(0.07)
-
-    tick?.({ deltaMS: 10 })
-    expect(failures).toEqual([{ kind: "UpdateFailure", error: "Paused" }])
-    expect(stopCount).toBe(1)
-    expect(frames).toHaveLength(1)
+    expect(browser.pending.size).toBe(0)
+    expect(deltas).toEqual([0])
   })
 
-  it("rejects invalid timing before subscribing", () => {
-    let subscribed = false
-    const result = FixedLoop.start({
-      source: FixedLoop.source(() => {
-        subscribed = true
-        return { stop() {} }
-      }),
-      step: Clock.hz(60),
-      maxFrameSeconds: 0,
-      maxStepsPerFrame: 3,
-      update: () => Result.success(undefined),
-      render: () => {},
-      onFailure: () => {}
+  it("schedules no further frame when stopped from inside a tick", () => {
+    const browser = fakeWindow()
+    let ticks = 0
+    const subscription = BrowserTickSource.make(browser.host).subscribe(() => {
+      ticks += 1
+      subscription.stop()
     })
 
-    expect(result).toEqual({
-      ok: false,
-      error: {
-        kind: "InvalidFixedLoopOptions",
-        field: "maxFrameSeconds",
-        reason: "mustBeFiniteAndPositive",
-        value: 0
-      }
-    })
-    expect(subscribed).toBe(false)
+    browser.frame(0)
+    browser.frame(16)
+
+    expect(ticks).toBe(1)
+    expect(browser.pending.size).toBe(0)
   })
 })

@@ -37,9 +37,9 @@ version from 5.9 up, and the packages build with TypeScript 7.
 
 | Package | Contents |
 |---|---|
-| `@typeonce/ritmo` | The ECS runtime |
+| `@typeonce/ritmo` | The ECS runtime and the fixed-step loop |
 | `@typeonce/ritmo-math` | Validated vectors, sizes, and bounding boxes; swept collision, spatial grid, flow field, deterministic random |
-| `@typeonce/ritmo-browser` | Fixed-step loop, keyboard, pointer, and touch input, input capture |
+| `@typeonce/ritmo-browser` | Animation-frame tick source, keyboard, pointer, and touch input, input capture |
 | `@typeonce/ritmo-render` | Entity to renderer node sync, for any renderer |
 | `@typeonce/ritmo-pixi` | Pixi container adapter (`PixiNodeRegistry.make`) |
 | `@typeonce/ritmo-devtools` | Headless debug sessions and trace reports ([README](./packages/devtools/README.md)) |

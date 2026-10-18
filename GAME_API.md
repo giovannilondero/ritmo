@@ -334,12 +334,15 @@ and feed input through `Keyboard.scripted(...)`. See
 
 ## 6. Drive fixed updates from any renderer
 
-`@typeonce/ritmo-browser` supplies timing policy without owning the ECS or renderer.
+`FixedLoop` in `@typeonce/ritmo` supplies timing policy without owning the
+ECS, the renderer, or the platform. Frames come from a `TickSource` the host
+passes in; `@typeonce/ritmo-browser` provides one over `requestAnimationFrame`.
 
 ```ts
-import { FixedLoop } from "@typeonce/ritmo-browser"
+import { Clock, FixedLoop } from "@typeonce/ritmo"
+import { BrowserTickSource } from "@typeonce/ritmo-browser"
 
-const source = FixedLoop.animationFrames(window)
+const source = BrowserTickSource.make(window)
 const loop = FixedLoop.start({
   source,
   step: Clock.hz(60),
@@ -371,8 +374,9 @@ if (!loop.ok) {
 loop.value.stop()
 ```
 
-Pixi, Three, Canvas, DOM, tests, and server simulations can provide another
-`TickSource`. The gameplay schedules do not change.
+Pixi, Three, Canvas, native shells, tests, and server simulations can provide
+another `TickSource`, usually by wrapping their own ticker with
+`FixedLoop.source(...)`. The gameplay schedules do not change.
 
 Keyboard input is exposed the same way: bind named actions once, and let
 `InputCapture` copy one snapshot per update into a resource that gameplay

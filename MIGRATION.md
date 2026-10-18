@@ -99,6 +99,18 @@ Fix each error where it is reported; the messages name the fix.
   a wall and moves into it. A game that fingerprints its simulation
   re-records the fingerprints with the upgrade.
 
+- **`FixedLoop` moved to `@typeonce/ritmo`.** Import it from core. The
+  browser's animation-frame source is now `BrowserTickSource.make(window)`;
+  a source wrapped with `FixedLoop.source(...)` is unchanged.
+
+  ```diff
+  -import { FixedLoop } from "@typeonce/ritmo-browser"
+  -const source = FixedLoop.animationFrames(window)
+  +import { FixedLoop } from "@typeonce/ritmo"
+  +import { BrowserTickSource } from "@typeonce/ritmo-browser"
+  +const source = BrowserTickSource.make(window)
+  ```
+
 ## Upgrading to 0.8.0
 
 0.8.0 adds component requirements (`Schema.requires`) and changes how

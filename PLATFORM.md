@@ -14,7 +14,7 @@ A plugin is a function `(Game, options) => System | Schedule`. It takes the game
 
 Own browser-specific infrastructure:
 
-- browser loop and ticker ownership
+- browser tick sources for the core `FixedLoop` (`BrowserTickSource.make(window)`) and the browser host clock
 - mount lifecycle and teardown helpers
 - viewport and frame-time capture
 - browser input source helpers that produce caller-defined snapshots

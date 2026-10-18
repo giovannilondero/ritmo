@@ -17,6 +17,7 @@
     "noEmit": true,
     "erasableSyntaxOnly": false,
     "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": {
       "@typeonce/ritmo": ["./packages/core/src/index.ts"],
       "@typeonce/ritmo/*": ["./packages/core/src/*.ts"],

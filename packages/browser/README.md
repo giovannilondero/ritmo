@@ -2,7 +2,7 @@
 
 Migrating from bevy-ts? See the [package migration guide](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md).
 
-Browser integrations for ritmo: a fixed-step game loop (`FixedLoop`), keyboard actions with press/release edges, bound by character or by physical key (`Keyboard`), mouse and pen position and button edges over an element (`Pointer`), on-screen touch controls with a floating stick and drag-to-aim buttons (`Touch`), scripted and recorded keyboard and pointer timelines for tests and replays, and a system that copies input into a resource (`InputCapture`).
+Browser integrations for ritmo: animation frames as a tick source for the core fixed-step loop (`BrowserTickSource`), keyboard actions with press/release edges, bound by character or by physical key (`Keyboard`), mouse and pen position and button edges over an element (`Pointer`), on-screen touch controls with a floating stick and drag-to-aim buttons (`Touch`), scripted and recorded keyboard and pointer timelines for tests and replays, and a system that copies input into a resource (`InputCapture`).
 
 ```sh
 pnpm add @typeonce/ritmo-browser @typeonce/ritmo
