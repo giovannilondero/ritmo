@@ -41,7 +41,11 @@ import type * as Result from "@typeonce/ritmo/Result"
  * Finite number brand.
  *
  * Values of this type are guaranteed not to be `NaN`, `Infinity`, or
- * `-Infinity`.
+ * `-Infinity` when they come from a validator (`result`, `decode`). The
+ * arithmetic helpers here and in `Vector2` keep the brand without
+ * re-validating, so their results are finite only while they stay within
+ * `±Number.MAX_VALUE`: game-sized values never come close, but validate
+ * again with `result` when inputs may be that large.
  *
  * @category Scalar Types
  */
@@ -112,7 +116,8 @@ export const clamp: (value: Finite, min: Finite, max: Finite) => Finite = intern
  * Interpolates between two finite values by one finite amount.
  *
  * The amount is not clamped. This stays a pure interpolation primitive rather
- * than mixing interpolation with policy.
+ * than mixing interpolation with policy. The result keeps the `Finite` brand
+ * without re-validating (see `Finite`).
  *
  * @category Operations
  */
