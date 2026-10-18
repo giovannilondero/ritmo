@@ -281,6 +281,22 @@ const makeConstructedDescriptor = <
   }) as ConstructedDescriptor<Kind, Name, Value, Raw, Error>
 
 /**
+ * The message naming why `Value` cannot be the value of a descriptor of
+ * `Kind`, or `never` when it can. `any` turns off every check on the
+ * descriptor's reads and writes, and `never` erases the fragment it is listed in.
+ */
+type Article<Kind extends string> = Kind extends "event" ? "an" : "a"
+
+type ValueRejection<Kind extends string, Value> = 0 extends 1 & Value
+  ? `${Article<Kind>} ${Kind} value cannot be \`any\`: give it a type (use \`unknown\` for a value you never read)`
+  : [Value] extends [never] ? `${Article<Kind>} ${Kind} value cannot be \`never\`: give it a type (use \`{}\` for a marker)`
+  : never
+
+/** `Make`, or, when `Value` is rejected, a function whose only parameter is the message. */
+type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Value>] extends [never] ? Make
+  : (name: ValueRejection<Kind, Value>) => never
+
+/**
  * Defines a component descriptor.
  *
  * Use this when declaring per-entity data that should participate in queries
@@ -289,6 +305,10 @@ const makeConstructedDescriptor = <
  * Components are the only descriptor kind that can be queried directly with
  * `Game.Query.read(...)`, `write(...)`, or `optional(...)`.
  *
+ * The value is a real type: `any` and `never` do not compile (here and in
+ * every other descriptor constructor). Use `unknown` for a value no system
+ * reads, and `Descriptor.Tag` for a marker.
+ *
  * @example
  * ```ts
  * const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
@@ -296,11 +316,11 @@ const makeConstructedDescriptor = <
  * const EnemyKind = Descriptor.Component<"grunt" | "boss">()("EnemyKind", { immutable: true })
  * ```
  */
-export const Component = <Value>() => <const Name extends string, const Options extends ComponentOptions = {}>(
+export const Component = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options
-): WithComponentOptions<Descriptor<"component", Name, Value>, Options> =>
-  applyComponentOptions(makeDescriptor("component", name), options) as WithComponentOptions<Descriptor<"component", Name, Value>, Options>
+) => WithComponentOptions<Descriptor<"component", Name, Value>, Options>> =>
+  ((name: string, options?: ComponentOptions) => applyComponentOptions(makeDescriptor("component", name), options)) as never
 
 /**
  * Defines a component descriptor that also knows how to validate raw values.
@@ -334,11 +354,11 @@ export const ConstructedComponent = <Value, Raw, Error, Constructor extends {} =
  * const SpriteRef = Descriptor.TransientComponent<{ frame: number }>()("SpriteRef")
  * ```
  */
-export const TransientComponent = <Value>() => <const Name extends string, const Options extends ComponentOptions = {}>(
+export const TransientComponent = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options
-): WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options> =>
-  applyComponentOptions(makeTransientDescriptor("component", name), options) as WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>
+) => WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>> =>
+  ((name: string, options?: ComponentOptions) => applyComponentOptions(makeTransientDescriptor("component", name), options)) as never
 
 /**
  * Defines a marker component: no data, only presence (`[Player, {}]`).
@@ -446,9 +466,9 @@ export const isEntityState = (
  * const Score = Descriptor.Resource<number>()("Score")
  * ```
  */
-export const Resource = <Value>() => <const Name extends string>(
+export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name extends string>(
   name: Name
-): Descriptor<"resource", Name, Value> => makeDescriptor("resource", name)
+) => Descriptor<"resource", Name, Value>> => ((name: string) => makeDescriptor("resource", name)) as never
 
 /**
  * Defines a resource descriptor that also knows how to validate raw values.
@@ -469,9 +489,9 @@ export const ConstructedResource = <Value, Raw, Error, Constructor extends {} = 
  * const DeltaTime = Descriptor.TransientResource<number>()("DeltaTime")
  * ```
  */
-export const TransientResource = <Value>() => <const Name extends string>(
+export const TransientResource = <Value>(): CheckedValue<"resource", Value, <const Name extends string>(
   name: Name
-): TransientDescriptor<"resource", Name, Value> => makeTransientDescriptor("resource", name)
+) => TransientDescriptor<"resource", Name, Value>> => ((name: string) => makeTransientDescriptor("resource", name)) as never
 
 /**
  * Defines an event descriptor.
@@ -491,9 +511,9 @@ export const TransientResource = <Value>() => <const Name extends string>(
  * const Hit = Descriptor.Event<{ target: number; amount: number }>()("Hit")
  * ```
  */
-export const Event = <Value>() => <const Name extends string>(
+export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends string>(
   name: Name
-): Descriptor<"event", Name, Value> => makeDescriptor("event", name)
+) => Descriptor<"event", Name, Value>> => ((name: string) => makeDescriptor("event", name)) as never
 
 /**
  * Defines a service descriptor.
@@ -512,9 +532,9 @@ export const Event = <Value>() => <const Name extends string>(
  * const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Logger")
  * ```
  */
-export const Service = <Value>() => <const Name extends string>(
+export const Service = <Value>(): CheckedValue<"service", Value, <const Name extends string>(
   name: Name
-): Descriptor<"service", Name, Value> => makeDescriptor("service", name)
+) => Descriptor<"service", Name, Value>> => ((name: string) => makeDescriptor("service", name)) as never
 
 /**
  * Checks whether one descriptor is transient (skipped by snapshots).
