@@ -116,6 +116,12 @@ describe("Keyboard timelines", () => {
     expect(input.frames()).toBe(4)
   })
 
+  it("does not report a press of an action already held as a new press", () => {
+    const input = Keyboard.scripted(bindings, [{ frame: 0, press: ["jump"] }, { frame: 1, press: ["jump"] }])
+    expect(input.snapshot().jump).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().jump).toEqual({ held: true, pressed: false, released: false })
+  })
+
   it("records a live session that replays to the same snapshots", () => {
     const fake = makeHost()
     const recorder = Keyboard.recording(Keyboard.actions(fake.host, bindings))

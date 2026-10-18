@@ -95,6 +95,20 @@ describe("Touch.track", () => {
     expect(touch.view().stick?.origin).toEqual({ x: 100, y: 200 })
   })
 
+  it("releases what a pointer id held when it comes down again without an up", () => {
+    const fake = makeTarget()
+    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    fake.down(1, 700, 300)
+    expect(touch.snapshot().buttons.attack.held).toBe(true)
+    // The up was lost; the same id now lands in the stick region.
+    fake.down(1, 100, 200)
+    const after = touch.snapshot()
+    expect(after.buttons.attack).toMatchObject({ held: false, released: true, cancelled: true })
+    expect(after.stick.active).toBe(true)
+    fake.up(1, 100, 200)
+    expect(touch.snapshot().stick.active).toBe(false)
+  })
+
   it("aims by dragging from the button and reports the aim on the release, even for a tap shorter than a frame", () => {
     const fake = makeTarget()
     const touch = Touch.track(fake.target, fake.blurHost, layout)

@@ -304,7 +304,7 @@ export interface Scripted<B extends Bindings> extends Actions<B> {
 /**
  * Plays `timeline`: before the snapshot at index `frame`, every entry for
  * that frame is applied. Actions stay held from their press until their
- * release, like keys.
+ * release, like keys; pressing an action already held is not a new press.
  */
 export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeline<B>): Scripted<B> => {
   const names = Object.keys(bindings) as Array<keyof B & string>
@@ -322,8 +322,10 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
       const released = new Set<keyof B>()
       for (const entry of byFrame.get(frame) ?? []) {
         for (const name of entry.press ?? []) {
+          // A press of a held action is not a new press, as with a live
+          // keyboard's auto-repeat.
+          if (!held.has(name)) pressed.add(name)
           held.add(name)
-          pressed.add(name)
         }
         for (const name of entry.release ?? []) {
           if (held.delete(name)) released.add(name)
