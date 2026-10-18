@@ -58,3 +58,26 @@ describe("Random", () => {
     expect(random.state).toBe(state)
   })
 })
+
+describe("Random preconditions", () => {
+  it("throws on bounds that leave nothing to draw, and accepts equal range bounds", () => {
+    const random = Random.make(1)
+    expect(() => random.integer(5, 2)).toThrow("Random.integer needs whole bounds with min below maxExclusive, got [5, 2)")
+    expect(() => random.integer(3, 3)).toThrow("Random.integer needs whole bounds")
+    expect(() => random.integer(0, 2.5)).toThrow("Random.integer needs whole bounds")
+    expect(() => random.range(2, 1)).toThrow("Random.range needs finite bounds with min <= max, got [2, 1)")
+    expect(() => random.range(0, Infinity)).toThrow("Random.range needs finite bounds")
+    expect(random.range(4, 4)).toBe(4)
+  })
+
+  it("calls weight once per item", () => {
+    const calls: Array<string> = []
+    const pick = Random.make(3).weighted(["a", "b", "c"], (item) => {
+      calls.push(item)
+      return 1
+    })
+    expect(calls).toEqual(["a", "b", "c"])
+    expect(["a", "b", "c"]).toContain(pick)
+  })
+})
+

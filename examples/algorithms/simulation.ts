@@ -34,13 +34,12 @@ const Spawn = Game.System("Algorithms/Spawn", {
   resources: { rng: Game.System.writeResource(Rng) },
   commands: Game.System.commands(Game.System.spawns(Position, Body, Player, Chaser))
 }, ({ resources, commands }) => {
-  const random = Random.make(resources.rng.get().state)
+  const random = Random.draw(resources.rng)
   commands.spawn(Game.Command.spawn([Position, { x: 450, y: 100 }], [Body, { radius: 12, speed: 0 }], [Player, {}]))
   for (let index = 0; index < 8; index++) {
     const at = { x: random.range(40, 250), y: random.range(40, 300) }
     commands.spawn(Game.Command.spawn([Position, at], [Body, chaser], [Chaser, {}]))
   }
-  resources.rng.set({ state: random.state })
 })
 
 const Chase = Game.System("Algorithms/Chase", {
@@ -120,10 +119,13 @@ const MoveShots = Game.System("Algorithms/MoveShots", {
 /** The world after `seed`'s spawn, ready to step. */
 export const makeSimulation = (seed: number) => {
   const frame = { dt: 0 }
-  const runtime = Game.Runtime.make({
-    resources: { Rng: { state: seed }, Walls: room, Hits: [] },
+  const made = Game.Runtime.make({
+    resources: { Rng: Random.seed(seed), Walls: room, Hits: [] },
     services: Game.Runtime.services(Game.Runtime.service(Frame, frame))
-  }).value
+  })
+  // Random.seed always gives a valid state; the Result covers validated resources in general.
+  if (!made.ok) throw new Error("the random state did not validate")
+  const runtime = made.value
   runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
   const update = Game.Schedule(Chase, MoveShots, Game.Schedule.applyDeferred())
   return {
@@ -154,5 +156,5 @@ export const ReadWorld = Game.Inspector("Algorithms/ReadWorld", {
   chasers: queries.chasers.each().map(({ data }) => data.position.get()),
   player: queries.player.each()[0]!.data.position.get(),
   hits: resources.hits.get(),
-  rng: resources.rng.get().state
+  rng: resources.rng.get()
 }))

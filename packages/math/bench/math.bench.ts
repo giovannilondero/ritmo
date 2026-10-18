@@ -7,6 +7,7 @@
  * their results into a checked sum so the work cannot be optimized away.
  */
 import type { BenchCase } from "../../core/bench/harness.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Aabb, Box2, Collide2, FlowField, InputAxis, Random, Scalar, SpatialGrid, Vector2 } from "@typeonce/ritmo-math"
 
 const N = 10_000
@@ -227,6 +228,25 @@ const randomNext: BenchCase = {
   }
 }
 
+const randomDraw: BenchCase = {
+  name: "math/random-draw-resource-100k",
+  description: "Draw 100,000 random numbers from a resource in one system",
+  setup: () => {
+    const Rng = Descriptor.ConstructedResource(Random)("Bench/Rng")
+    const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
+    const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(1) } })
+    if (!made.ok) throw new Error("bench runtime")
+    const runtime = made.value
+    const schedule = Game.Schedule(Game.System("Bench/Draw", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
+      const random = Random.draw(resources.rng)
+      let total = 0
+      for (let draw = 0; draw < 100_000; draw++) total += random.next()
+      check(total)
+    }))
+    return { run: () => { runtime.tick(schedule) } }
+  }
+}
+
 export const cases: ReadonlyArray<BenchCase> = [
   vectorOps,
   vectorValidate,
@@ -237,5 +257,6 @@ export const cases: ReadonlyArray<BenchCase> = [
   flowFieldSearch,
   flowFieldWay,
   moveCircle,
-  randomNext
+  randomNext,
+  randomDraw
 ]

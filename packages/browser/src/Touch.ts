@@ -295,6 +295,9 @@ export const track = <const B extends string>(
   const onDown = (event: TouchEventLike): void => {
     if (!tracked(event)) return
     event.preventDefault()
+    // A pointer id that comes down again without an up in between (the up
+    // was lost) releases what it held first, as a cancel.
+    end(event, true)
     touched = true
     current = layout(sizeOf())
     const at = locate(event)

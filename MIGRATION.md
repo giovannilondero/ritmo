@@ -97,6 +97,12 @@ Fix each error where it is reported; the messages name the fix.
   `gameVersion: 0`. To change a game's save format, pass
   `saves: Snapshot.migrations(...)` to `Game.Runtime.make` instead of editing
   raw saves before `restore`.
+- **Keep random state with `Random.draw`.** Declare the resource with
+  `Descriptor.ConstructedResource(Random)`, start it with `Random.seed(n)`
+  (the runtime is then made as a `Result`), and draw with
+  `Random.draw(resources.rng)` instead of `Random.make(state)` plus a `set`.
+  `Random.integer` / `range` now throw on bounds with nothing to draw, and
+  `SpatialGrid` on non-finite input.
 - **New lints `stale-target` and `stream-loss-unread`** on debug runtimes.
   For the second, check `lagged()` where a missed entry matters and rebuild
   from queries when it is true.
