@@ -59,6 +59,8 @@ export interface Streams<T> {
    * reader has read, then enforces the capacity.
    */
   trim(windowBoundary: number): void
+  /** Drops every batch stamped after `tick` (what a rolled-back phase published). */
+  retract(tick: number): void
   /** Clears simulation messages; unread host messages survive world restore. */
   clear(): void
   /** Every key with retained entries or registered readers. */
@@ -149,6 +151,15 @@ export const make = <T>(capacity: number): Streams<T> => {
           overflow++
         }
         dropFront(log, overflow)
+      }
+    },
+    retract(tick) {
+      for (const log of logs.values()) {
+        const start = firstAfter(log.ticks, tick)
+        for (let index = start; index < log.batches.length; index++) log.size -= log.batches[index]!.length
+        log.ticks.length = start
+        log.batches.length = start
+        log.surviveRestore.length = start
       }
     },
     clear() {

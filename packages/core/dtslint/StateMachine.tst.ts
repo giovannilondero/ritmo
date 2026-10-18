@@ -336,6 +336,14 @@ describe("StateMachine", () => {
     ])
   })
 
+  it("rejects applyDeferred() in an exit phase, and allows it on enter", () => {
+    // @ts-expect-error onExit and onTransition schedules cannot contain applyDeferred()
+    Game.Schedule.onExit(AppState, "Paused", [TransitionSystem, Game.Schedule.applyDeferred()])
+    // @ts-expect-error onExit and onTransition schedules cannot contain applyDeferred()
+    Game.Schedule.onTransition(AppState, ["Menu", "Playing"], [TransitionSystem, Game.Schedule.applyDeferred()])
+    Game.Schedule.onEnter(AppState, "Playing", [TransitionSystem, Game.Schedule.applyDeferred()])
+  })
+
   it("requires the machine of every transition schedule in an applied bundle", () => {
     const bundle = Game.Schedule.transitions(Game.Schedule.onEnter(RoundState, "Live", []))
     const withMachine = Game.Runtime.make({

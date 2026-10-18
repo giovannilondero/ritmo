@@ -54,7 +54,7 @@ import type { ConstructedDescriptor, Descriptor } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import { buildSchema, emptySchema, mergeSchemas } from "./internal/fragments.ts"
-import { makeGame } from "./internal/game.ts"
+import { type exitApplyDeferredMessage, makeGame } from "./internal/game.ts"
 import type * as Condition from "./Condition.ts"
 import type * as Inspector from "./Inspector.ts"
 import type * as Machine from "./Machine.ts"
@@ -456,6 +456,16 @@ type BoundScheduleEntry<S extends Schema.Any, Root> =
 type BoundTransitionEntry<S extends Schema.Any, Root> =
   Exclude<BoundScheduleEntry<S, Root>, Schedule.ApplyStateTransitionsStep<any, Root>>
 
+/**
+ * Rejects `applyDeferred()` in an exit phase (`onExit`, `onTransition`): the
+ * phase rolls back as one when a system in it fails, which applied commands
+ * could not. Nested schedules are checked when the schedule is built.
+ */
+type NoApplyDeferredInExit<Entries extends ReadonlyArray<unknown>> =
+  [Extract<Entries[number], Schedule.ApplyDeferredStep>] extends [never]
+    ? unknown
+    : { readonly __fixTransition__: typeof exitApplyDeferredMessage }
+
 type BoundTransitionScheduleResult<
   S extends Schema.Any,
   Root,
@@ -854,15 +864,25 @@ export namespace Schema {
         state: Machine.StateMachine.Value<M>,
         plan: readonly [...Entries]
       ) => BoundTransitionScheduleResult<S, Root, M, Entries>
+      /**
+       * Systems run when `machine` leaves `state`. The exit phase of one
+       * transition (the exit schedules of the sub-states it ends, then of
+       * `state`, then `onTransition`) is one transaction: when a system in it
+       * fails, everything the phase did is undone (except `local`) and the
+       * transition stays queued, so the next attempt starts from the same
+       * state. Its commands are applied at the next `applyDeferred()` after
+       * the marker, so it cannot contain `applyDeferred()` itself.
+       */
       onExit: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,
         state: Machine.StateMachine.Value<M>,
-        plan: readonly [...Entries]
+        plan: readonly [...Entries] & NoApplyDeferredInExit<Entries>
       ) => BoundTransitionScheduleResult<S, Root, M, Entries>
+      /** Systems run on one `[from, to]` transition, last in its exit phase (see `onExit`). */
       onTransition: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,
         transition: readonly [Machine.StateMachine.Value<M>, Machine.StateMachine.Value<M>],
-        plan: readonly [...Entries]
+        plan: readonly [...Entries] & NoApplyDeferredInExit<Entries>
       ) => BoundTransitionScheduleResult<S, Root, M, Entries>
       /**
        * Builds a schedule whose systems run only while every condition

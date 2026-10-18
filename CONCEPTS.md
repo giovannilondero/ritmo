@@ -176,6 +176,7 @@ const Flow = Game.StateMachine("Concepts/Flow", ["Playing", "Won"])
 ```
 
 - Transitions are queued and committed at `applyStateTransitions(bundle)`. That step runs the bundle's `onExit` / `onTransition` / `onEnter` schedules.
+- The exit phase of a transition (`onExit`, then `onTransition`) is one transaction: when a system in it fails, the whole phase is undone and the transition stays queued, so the retry starts from the same state. Its commands are applied after the marker, so it cannot contain `applyDeferred()`.
 - `Game.Schedule.when(conditions, ...entries)` gates every system in a group (nested schedules included) without repeating `when` on each. Marker steps in the group still run, and the machines the conditions read are requirements of the schedule.
 - `Game.Condition.check(name, access, predicate)` gates on anything else with ordinary code. It declares its reads like a system (resources, machines, read-only queries), and they become requirements of what it gates. Reads that consume a per-reader cursor (events, `added`/`changed`, removed/despawned) and services are compile errors, so a check can run before every gated system without side effects. It sees writes made earlier in the same run.
 

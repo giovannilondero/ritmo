@@ -1234,6 +1234,32 @@ const makeValidatedRuntime = <
   const machineOriginals = new Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>()
   const emittedEvents = new Map<symbol, Array<unknown>>()
 
+  /**
+   * The open phase, or `undefined`. A transition's exit phase (the exit
+   * schedules of the sub-states it ends and of the state it leaves, then its
+   * `onTransition` schedules) commits or rolls back as one: when one of its
+   * systems fails, the writes, events, queued next states, queued commands,
+   * and stream positions of the systems that ran before it are undone too, so
+   * the retry at a later marker starts from the same state.
+   */
+  interface Phase {
+    readonly tick: number
+    readonly commands: number
+    readonly origins: number
+    readonly resources: Map<symbol, unknown>
+    readonly resourceChangedAt: Map<symbol, number | undefined>
+    readonly machines: Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>
+    readonly readers: Map<ReaderState, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number]>
+  }
+  let phase: Phase | undefined
+
+  /** Keeps a reader's position from before the phase, the first time the phase moves it. */
+  const journalReader = (reader: ReaderState): void => {
+    if (phase !== undefined && !phase.readers.has(reader)) {
+      phase.readers.set(reader, [reader.since, reader.lastRun, reader.streamSince, reader.streamLastRun])
+    }
+  }
+
   const journalStoreWrite = (store: Map<symbol, unknown>, originals: Map<symbol, unknown>) =>
     (key: symbol, value: unknown): void => {
       if (!originals.has(key)) {
@@ -1264,10 +1290,19 @@ const makeValidatedRuntime = <
 
   const commitSystemTransaction = (): void => {
     world.commitTransaction()
+    if (phase !== undefined) {
+      for (const [key, before] of resourceOriginals) {
+        if (!phase.resources.has(key)) phase.resources.set(key, before)
+      }
+      for (const [key, before] of machineOriginals) {
+        if (!phase.machines.has(key)) phase.machines.set(key, before)
+      }
+    }
     if (watchedResources.size > 0) {
       for (const [key, before] of resourceOriginals) {
         if (!watchedResources.has(key)) continue
         if (before === absentValue || !sameValue(before, resources.get(key))) {
+          if (phase !== undefined && !phase.resourceChangedAt.has(key)) phase.resourceChangedAt.set(key, resourceChangedAt.get(key))
           resourceChangedAt.set(key, world.currentTick())
         }
       }
@@ -1306,6 +1341,54 @@ const makeValidatedRuntime = <
     }
     machineOriginals.clear()
     emittedEvents.clear()
+  }
+
+  /**
+   * Runs `run` as one phase: on failure, or a thrown defect, everything the
+   * systems in it committed is undone.
+   */
+  const runAsPhase = (run: () => Result.Result<void, SystemFailure>): Result.Result<void, SystemFailure> => {
+    const opened: Phase = {
+      tick: world.currentTick(),
+      commands: pendingCommands.length,
+      origins: pendingOrigins.length,
+      resources: new Map(),
+      resourceChangedAt: new Map(),
+      machines: new Map(),
+      readers: new Map()
+    }
+    phase = opened
+    world.beginPhase()
+    let result: Result.Result<void, SystemFailure> | undefined
+    try {
+      result = run()
+    } finally {
+      phase = undefined
+      if (result?.ok === true) {
+        world.commitPhase()
+      } else {
+        world.rollbackPhase()
+        restoreStore(resources, opened.resources)
+        for (const [key, value] of opened.machines) {
+          if (value === absentValue) pendingMachines.delete(key)
+          else pendingMachines.set(key, value)
+        }
+        for (const [key, tick] of opened.resourceChangedAt) {
+          if (tick === undefined) resourceChangedAt.delete(key)
+          else resourceChangedAt.set(key, tick)
+        }
+        for (const [reader, [since, lastRun, streamSince, streamLastRun]] of opened.readers) {
+          reader.since = since
+          reader.lastRun = lastRun
+          reader.streamSince = streamSince
+          reader.streamLastRun = streamLastRun
+        }
+        events.retract(opened.tick)
+        pendingCommands.length = opened.commands
+        pendingOrigins.length = opened.origins
+      }
+    }
+    return result
   }
 
   const makeResourceWriteView = (
@@ -1699,6 +1782,7 @@ const makeValidatedRuntime = <
         // neither holds them nor receives a backlog when it runs again.
         const skipped = slotOf(system, true)
         if (tracing) traceSkipped(system, condition, skipped.reader, false)
+        journalReader(skipped.reader)
         skipped.reader.streamLastRun = world.currentTick()
         return succeeded
       }
@@ -1718,6 +1802,7 @@ const makeValidatedRuntime = <
       ranSystems.add(system.name)
       runningSystem = system.name
     }
+    journalReader(reader)
     // Changes stamped after the previous completed run are visible to this run.
     reader.since = reader.lastRun
     reader.streamSince = reader.streamLastRun
@@ -1917,44 +2002,35 @@ const makeValidatedRuntime = <
       // Sub-states that exist in the state being left exit first, deepest
       // first: their exit schedules run before the parent's, while they
       // still have their values, and they lose them at the parent's commit.
+      // The exit phase is one transaction: a failure undoes all of it, and
+      // the transition stays queued for a later attempt.
       const leaving = activeSubStatesIn(machineKey, snapshot.from)
-      for (const sub of leaving) {
-        const value = currentMachines.get(sub.key)
-        const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
-        if (!result.ok) {
-          requeue()
-          if (tracing) traceTransition(machineKey, snapshot, "failed")
-          return result
+      const exited = runAsPhase(() => {
+        for (const sub of leaving) {
+          const value = currentMachines.get(sub.key)
+          const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
+          if (!result.ok) return result
         }
-      }
-
-      for (const schedule of schedules) {
-        const transition = schedule.transition
-        if (transition.phase === "exit" && transition.machine.key === machineKey && transition.state === snapshot.from) {
-          const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
-            // The transition did not happen; keep it queued for a later attempt.
-            requeue()
-            if (tracing) traceTransition(machineKey, snapshot, "failed")
-            return result
+        const left = runPhase(machineKey, "exit", snapshot.from, snapshot, schedules)
+        if (!left.ok) return left
+        for (const schedule of schedules) {
+          const transition = schedule.transition
+          if (
+            transition.phase === "transition"
+            && transition.machine.key === machineKey
+            && transition.from === snapshot.from
+            && transition.to === snapshot.to
+          ) {
+            const result = runTransitionSchedule(schedule, snapshot)
+            if (!result.ok) return result
           }
         }
-      }
-      for (const schedule of schedules) {
-        const transition = schedule.transition
-        if (
-          transition.phase === "transition"
-          && transition.machine.key === machineKey
-          && transition.from === snapshot.from
-          && transition.to === snapshot.to
-        ) {
-          const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
-            requeue()
-            if (tracing) traceTransition(machineKey, snapshot, "failed")
-            return result
-          }
-        }
+        return succeeded
+      })
+      if (!exited.ok) {
+        requeue()
+        if (tracing) traceTransition(machineKey, snapshot, "failed")
+        return exited
       }
 
       for (const sub of leaving) commitMachine(sub.key, currentMachines.get(sub.key), undefined)
