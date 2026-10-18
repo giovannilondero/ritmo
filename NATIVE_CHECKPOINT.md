@@ -1,15 +1,17 @@
 # Native MVP checkpoint
 
-Work is paused at the user's request until GitHub repository write access is
-available. Everything remains on `codex/native-runtime`, based on PR #47's head
+The stable checkpoint is published in
+[draft PR #48](https://github.com/typeonce-dev/ritmo/pull/48).
+Everything remains on `codex/native-runtime`, based on PR #47's head
 `05f177d07959c9cf1a72ce73d27196e98cdd3f02`. The implementation commit is
 `ea7d0be`; subsequent checkpoint commits contain only stabilization and handoff
-updates. No remote branch or PR was created, and nothing was merged into `main`.
+updates. The branch is pushed to `origin/codex/native-runtime`. Nothing has been
+merged into `main`, and auto-merge is disabled.
 
-GitHub rejected both git push and connected-app branch creation with
-`403: Resource not accessible by integration`. After access is restored, resume
-this branch and open one owned, unmerged PR containing all the work. Do not merge
-#47 or the implementation PR. Keep `PLAN.md` until its remaining gates are met.
+GitHub initially rejected writes with `403: Resource not accessible by integration`.
+The user installed the connection for the `typeonce-dev` organization, restoring
+write access. All implementation work stays in #48. Do not merge #47 or #48.
+Keep `PLAN.md` until its remaining gates are met.
 
 ## Working scope
 
@@ -56,7 +58,8 @@ vendored QuickJS-ng 0.12.0. Successful checks include:
 - Native benchmark results in `packages/native/bench/results.md` meet the
   5,000-entity target (0.0817 ms/frame versus Node JIT 0.2712 ms/frame).
 
-The configured GitHub Actions matrix has not run for this local branch. A local
+The configured GitHub Actions matrix started when #48 was opened. The results
+above record local verification; check the PR for current CI results. A local
 check is not evidence that the corresponding mobile or other desktop job passes.
 
 ## Reproduce locally

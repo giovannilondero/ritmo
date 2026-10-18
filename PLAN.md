@@ -2,8 +2,9 @@
 
 Implementation status (single PR, per the user's instruction; do not merge):
 
-Paused at the user's request while GitHub write access is unavailable. The local
-handoff and exact resume commands are in [NATIVE_CHECKPOINT.md](NATIVE_CHECKPOINT.md).
+The stable checkpoint is published in [draft PR #48](https://github.com/typeonce-dev/ritmo/pull/48).
+The verified scope, remaining gates and reproduction commands are in
+[NATIVE_CHECKPOINT.md](NATIVE_CHECKPOINT.md). Keep the PR open and unmerged.
 
 - Linux top-down and inkline-town run natively and pass 600-frame Node oracles.
 - Private numeric columns/query views/transaction hooks and a conservative C

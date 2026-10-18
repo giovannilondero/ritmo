@@ -77,6 +77,8 @@ jobs:
       - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - run: sdkmanager 'platforms;android-35' 'ndk;27.2.12479018' 'cmake;3.31.6'
       - run: pnpm install --frozen-lockfile
       - run: cmake -DRN_CACHE="${{ github.workspace }}/.ritmo-native/sdl" -P scripts/native-dependencies.cmake
