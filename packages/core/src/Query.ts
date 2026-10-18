@@ -298,7 +298,8 @@ export const added = <D extends ComponentDescriptor>(descriptor: D): AddedFilter
  *
  * Any write through a write cell counts, even when the value is equal to the
  * previous one. Writes from a system whose run failed are rolled back and do
- * not count.
+ * not count. A system never sees its own writes as changes on its next run
+ * (it does see the events it emitted).
  *
  * @example
  * ```ts
