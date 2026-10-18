@@ -2796,6 +2796,39 @@ export const make = <
   return Result.success(runtime) as never
 }
 
+/** Names listed more than once in `Names` (a tuple), in order of their second listing. */
+type RepeatedNames<Names extends ReadonlyArray<string>, Seen extends string = never> =
+  Names extends readonly [infer Head extends string, ...infer Tail extends ReadonlyArray<string>]
+    ? (string extends Head ? never : Head extends Seen ? Head : never) | RepeatedNames<Tail, Seen | Head>
+    : never
+
+type ProvidedServiceNames<Entries extends ReadonlyArray<ServiceProvision>> = {
+  readonly [K in keyof Entries]: Entries[K] extends ServiceProvision<infer D> ? D["name"] : string
+}
+type ProvidedMachineNames<Entries extends ReadonlyArray<MachineProvision>> = {
+  readonly [K in keyof Entries]: Entries[K] extends MachineProvision<infer M> ? M["name"] : string
+}
+
+/** Rejects a service provided twice: only the last would be used. */
+type UniqueServices<Entries extends ReadonlyArray<ServiceProvision>> =
+  [RepeatedNames<ProvidedServiceNames<Entries>>] extends [never] ? unknown : {
+    readonly __fixServices__: `${RepeatedNames<ProvidedServiceNames<Entries>>} is provided twice: keep one Game.Runtime.service(...) for it`
+  }
+
+/** Rejects a machine started twice: only the last initial value would be used. */
+type UniqueMachines<Entries extends ReadonlyArray<MachineProvision>> =
+  [RepeatedNames<ProvidedMachineNames<Entries>>] extends [never] ? unknown : {
+    readonly __fixMachines__: `${RepeatedNames<ProvidedMachineNames<Entries>>} is provided twice: keep one Game.Runtime.machine(...) for it`
+  }
+
+const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine"): void => {
+  const seen = new Set<string>()
+  for (const name of names) {
+    if (seen.has(name)) throw new Error(`${name} is provided twice: keep one Game.Runtime.${kind}(...) for it`)
+    seen.add(name)
+  }
+}
+
 /**
  * Builds the descriptor-backed runtime service environment.
  *
@@ -2805,6 +2838,8 @@ export const make = <
  *
  * The helper keeps the runtime map keyed by service descriptors instead of
  * ad hoc strings, so the provision site cannot drift from the declaration site.
+ * Each service is provided once: a second provision of the same one does not
+ * compile.
  *
  * @example
  * ```ts
@@ -2817,7 +2852,8 @@ export const make = <
  */
 export const services = <
   const Entries extends ReadonlyArray<ServiceProvision>
->(...entries: Entries): RuntimeServices<ServiceEntriesToRecord<Entries>> => {
+>(...entries: Entries & UniqueServices<Entries>): RuntimeServices<ServiceEntriesToRecord<Entries>> => {
+  rejectRepeated(entries.map((entry) => entry.descriptor.name), "service")
   const provided: Record<string, unknown> = {}
   for (const { descriptor, implementation } of entries) {
     provided[descriptor.name] = implementation
@@ -2847,11 +2883,14 @@ export const service = <
  * Builds the machine initialization environment from machine definitions.
  *
  * Use this when gameplay phases need a known committed starting state before
- * any schedule runs, for example `"Boot"`, `"Menu"`, or `"Playing"`.
+ * any schedule runs, for example `"Boot"`, `"Menu"`, or `"Playing"`. Each
+ * machine is provided once: a second provision of the same one does not
+ * compile.
  */
 export const machines = <
   const Entries extends ReadonlyArray<MachineProvision>
->(...entries: Entries): RuntimeMachines<MachineEntriesToRecord<Entries>> => {
+>(...entries: Entries & UniqueMachines<Entries>): RuntimeMachines<MachineEntriesToRecord<Entries>> => {
+  rejectRepeated(entries.map((entry) => entry.machine.name), "machine")
   const provided: Record<string, unknown> = {}
   for (const { machine, initial } of entries) {
     provided[machine.name] = initial
