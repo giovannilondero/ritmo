@@ -68,10 +68,9 @@ const lastCell = (first: number, last: number): number => Math.min(last, first +
 const coveredBy = (coordinate: number, first: number, last: number): boolean =>
   (((coordinate - first) % AXIS_CELLS) + AXIS_CELLS) % AXIS_CELLS <= last - first
 
-const requireFinite = (operation: string, values: ReadonlyArray<number>): void => {
-  for (const value of values) {
-    if (!Number.isFinite(value)) throw new Error(`SpatialGrid.${operation} needs finite numbers, got ${value}`)
-  }
+const notFinite = (operation: string, ...values: ReadonlyArray<number>): never => {
+  const value = values.find((value) => !Number.isFinite(value))
+  throw new Error(`SpatialGrid.${operation} needs finite numbers, got ${value}`)
 }
 
 class Grid implements SpatialGrid {
@@ -92,7 +91,8 @@ class Grid implements SpatialGrid {
   }
 
   insert(index: number, x: number, y: number, r: number): void {
-    requireFinite("insert", [x, y, r])
+    // `x - x === 0` is false only for NaN and ±Infinity, without a call per number.
+    if (x - x !== 0 || y - y !== 0 || r - r !== 0) notFinite("insert", x, y, r)
     const size = this.cellSize
     const minX = Math.floor((x - r) / size)
     const maxX = lastCell(minX, Math.floor((x + r) / size))
@@ -118,7 +118,7 @@ class Grid implements SpatialGrid {
   }
 
   forEachIn(minX: number, minY: number, maxX: number, maxY: number, visit: (index: number) => void): void {
-    requireFinite("forEachIn", [minX, minY, maxX, maxY])
+    if (minX - minX !== 0 || minY - minY !== 0 || maxX - maxX !== 0 || maxY - maxY !== 0) notFinite("forEachIn", minX, minY, maxX, maxY)
     const size = this.cellSize
     // Start the marks over before the counter leaves the stamps' range (after
     // about two billion queries), so old marks never match a new query.
