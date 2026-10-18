@@ -131,7 +131,7 @@ export namespace Handle {
  * Drafts exist before the command queue is flushed. This is the place where the
  * API can safely carry exact structural information.
  */
-export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof, Root = unknown> {
+export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof, Root = unknown, out Relates = never> {
   /**
    * Runtime tag for debugging and pattern matching.
    */
@@ -156,6 +156,11 @@ export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof,
    * Staged relationship edges attached to the entity before spawn.
    */
   readonly relations: ReadonlyArray<StagedRelation<S, Root>>
+  /**
+   * The relations `Game.Command.relate(...)` staged on this draft: spawning
+   * it needs them in the system's `Game.System.relates(...)`. Type-level only.
+   */
+  readonly __relates?: (_: never) => Relates
 }
 
 /**
@@ -168,7 +173,7 @@ export type StagedComponent = readonly [Descriptor<"component", string, any>, un
  *
  * Query execution is the main source of `EntityRef` values.
  */
-export interface EntityRef<S extends Schema.Any, out P extends ComponentProof, Root = unknown, out Proves = unknown, out Lacks = never> {
+export interface EntityRef<S extends Schema.Any, out P extends ComponentProof, Root = unknown, in Proves = never, in Lacks = never> {
   /**
    * Runtime tag for debugging and pattern matching.
    */
@@ -176,15 +181,17 @@ export interface EntityRef<S extends Schema.Any, out P extends ComponentProof, R
   /**
    * The component descriptors the query that produced this ref proves (its
    * required slots and `with`): what `commands.despawn`, `insert`, and
-   * `remove` check. Type-level only.
+   * `remove` check. Type-level only. Contravariant on purpose: a ref proving
+   * more is a subtype, so a union of refs (`cond ? a.entity : b.entity`)
+   * keeps only what both prove.
    */
-  readonly __proves?: (_: never) => Proves
+  readonly __proves?: (_: Proves) => void
   /**
    * The component descriptors the producing query proves absent (its
    * `without`): what `commands.remove` checks against `Schema.requires`.
    * Type-level only.
    */
-  readonly __lacks?: (_: never) => Lacks
+  readonly __lacks?: (_: Lacks) => void
   /**
    * The schema-bound entity identity.
    */
@@ -207,17 +214,17 @@ export interface EntityMut<
   out P extends ComponentProof,
   out W extends ComponentProof,
   Root = unknown,
-  out Proves = unknown,
-  out Lacks = never
+  in Proves = never,
+  in Lacks = never
 > {
   /**
    * Runtime tag for debugging and pattern matching.
    */
   readonly kind: "EntityMut"
   /** The component descriptors the producing query proves; see `EntityRef`. */
-  readonly __proves?: (_: never) => Proves
+  readonly __proves?: (_: Proves) => void
   /** The component descriptors the producing query proves absent; see `EntityRef`. */
-  readonly __lacks?: (_: never) => Lacks
+  readonly __lacks?: (_: Lacks) => void
   /**
    * The schema-bound entity identity.
    */

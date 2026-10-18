@@ -96,6 +96,24 @@ describe("commands.spawn with requirements", () => {
     })
   })
 
+  it("checks a component the draft may hold, conditional or spread, against what it surely holds", () => {
+    Game.System("Req/SpawnMaybeRequirer", { commands: Game.System.commands(Game.System.spawns(Player, Noise, A)) }, ({ commands }) => {
+      const maybe = Math.random() > 0.5
+      // A conditional requirer whose requirements are all there.
+      commands.spawn(Game.Command.spawn([Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }], maybe ? [Player, {}] : [Noise, 1]))
+      // A conditional requirer whose requirement is not.
+      // @ts-expect-error Req/A requires Req/B
+      commands.spawn(Game.Command.spawn([Noise, 1], maybe ? [A, {}] : [Noise, 2]))
+      // Spread entries: each one may be there.
+      const players: Array<readonly [typeof Player, {}]> = [[Player, {}]]
+      // @ts-expect-error Req/Player requires Req/Body
+      commands.spawn(Game.Command.spawn(...players))
+      commands.spawn(Game.Command.spawn([Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }], ...players))
+      const noises: Array<readonly [typeof Noise, number]> = [[Noise, 1]]
+      commands.spawn(Game.Command.spawn(...noises))
+    })
+  })
+
   it("returns the id with what the draft holds", () => {
     Game.System("Req/SpawnId", { commands: Game.System.commands(Game.System.spawns(Player)) }, ({ commands }) => {
       const id = commands.spawn(Game.Command.spawn([Player, {}], [Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }]))
@@ -128,6 +146,23 @@ describe("commands.insert with requirements", () => {
         // optional(Body) does not prove Body
         // @ts-expect-error Req/Player requires Req/Body
         commands.insert(match.entity, [Player, {}], [Velocity, { x: 0 }])
+      }
+    })
+  })
+
+  it("counts spread entries as maybe inserted", () => {
+    Game.System("Req/InsertSpread", {
+      queries: { bodies: Bodies },
+      commands: Game.System.commands(Game.System.inserts(Player, Velocity, Noise))
+    }, ({ queries, commands }) => {
+      const parts: Array<readonly [typeof Player, {}] | readonly [typeof Velocity, { readonly x: number }]> = [[Player, {}]]
+      const noises: Array<readonly [typeof Noise, number]> = [[Noise, 1]]
+      for (const match of queries.bodies.each()) {
+        // Velocity may be among the parts, or not.
+        // @ts-expect-error Req/Player requires Req/Velocity
+        commands.insert(match.entity, ...parts)
+        commands.insert(match.entity, [Velocity, { x: 0 }], ...parts)
+        commands.insert(match.entity.id, ...noises)
       }
     })
   })
@@ -180,6 +215,55 @@ describe("commands.remove with requirements", () => {
       // the entity may gain Player before this applies: only a query's without proves it absent
       // @ts-expect-error Req/Velocity is required by Req/Player
       commands.remove(spawned, Velocity)
+    })
+  })
+})
+
+declare const either: boolean
+
+describe("command targets chosen from several queries", () => {
+  it("checks every possible target, not just one of them", () => {
+    Game.System("Req/UnionTargets", {
+      queries: {
+        bodies: Bodies,
+        players: Players,
+        moving: Game.Query({ selection: { velocity: Game.Query.read(Velocity) } }),
+        notPlayers: Game.Query({ selection: { velocity: Game.Query.read(Velocity) }, without: [Player] }),
+        alsoNotPlayers: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Velocity], without: [Player] }),
+        noisy: Game.Query({ selection: { noise: Game.Query.read(Noise) } }),
+        alsoNoisy: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Noise] })
+      },
+      commands: Game.System.commands(Game.System.inserts(Player, Velocity), Game.System.removes(Velocity), Game.System.despawns(Noise))
+    }, ({ queries, commands }) => {
+      const body = queries.bodies.each()[0]!
+      const player = queries.players.each()[0]!
+      const moving = queries.moving.each()[0]!
+      const notPlayer = queries.notPlayers.each()[0]!
+      const alsoNotPlayer = queries.alsoNotPlayers.each()[0]!
+      const noisy = queries.noisy.each()[0]!
+      const alsoNoisy = queries.alsoNoisy.each()[0]!
+
+      // insert: only what every target proves counts.
+      commands.insert(either ? body.entity : player.entity, [Player, {}], [Velocity, { x: 0 }])
+      // @ts-expect-error Req/Player requires Req/Body
+      commands.insert(either ? body.entity : moving.entity, [Player, {}], [Velocity, { x: 0 }])
+      // players proves Velocity, bodies does not: a weaker proof is not absorbed by a stronger one.
+      // @ts-expect-error Req/Player requires Req/Velocity
+      commands.insert(either ? body.entity : player.entity, [Player, {}])
+
+      // despawn: every target must prove a despawns component, and none may be a raw id.
+      commands.despawn(either ? noisy.entity : alsoNoisy.entity)
+      // @ts-expect-error despawn needs an entity from a query proving Req/Noise (declared in despawns)
+      commands.despawn(either ? noisy.entity : moving.entity)
+      // @ts-expect-error not a raw id: pass match.entity
+      commands.despawn(either ? noisy.entity : noisy.entity.id)
+
+      // remove: only what every target's query excludes counts as absent, and none may be a raw id.
+      commands.remove(either ? notPlayer.entity : alsoNotPlayer.entity, Velocity)
+      // @ts-expect-error Req/Velocity is required by Req/Player
+      commands.remove(either ? notPlayer.entity : moving.entity, Velocity)
+      // @ts-expect-error remove needs an entity from a query (pass match.entity) or the id spawn returned in this run, not a raw id
+      commands.remove(either ? notPlayer.entity : notPlayer.entity.id, Velocity)
     })
   })
 })

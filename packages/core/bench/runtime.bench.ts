@@ -415,7 +415,7 @@ const hierarchy: BenchCase = {
       }
     })
     const SpawnChildren = Game.System("Bench/SpawnChildren", {
-      commands: Game.System.commands(Game.System.spawns(Health))
+      commands: Game.System.commands(Game.System.spawns(Health), Game.System.relates(ChildOf))
     }, ({ commands }) => {
       for (const root of roots) {
         for (let index = 0; index < 100; index++) {

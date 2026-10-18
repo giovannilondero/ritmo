@@ -157,6 +157,17 @@ export type RuntimeResources<S extends Schema.Any> = Partial<{
       : Schema.ResourceValue<S, K>
 }>
 
+/**
+ * Rejects keys of `Provided` that are not resource keys of the schema, naming
+ * each one. A misspelled key next to known ones would otherwise compile and
+ * be dropped.
+ */
+export type ExactResources<S extends Schema.Any, Provided> = {
+  readonly [K in Exclude<keyof Provided, keyof Schema.Resources<S>>]: {
+    readonly __fixResources__: `${K & string} is not a resource key of this schema: use a key of the fragment's resources: { ... }`
+  }
+}
+
 type ConstructedKeys<S extends Schema.Any, Provided> = {
   readonly [K in keyof Provided]: K extends keyof Schema.Resources<S>
     ? Schema.Resources<S>[K] extends DescriptorModule.ConstructedDescriptor<"resource", string, any, any, any> ? K : never
@@ -2642,7 +2653,7 @@ export const make = <
 >(options: {
   readonly schema: S
   readonly services: ProvidedServices
-  readonly resources?: Resources
+  readonly resources?: Resources & ExactResources<S, Resources>
   readonly machines?: ProvidedMachines
   readonly machineDefinitions?: ReadonlyArray<Machine.StateMachine.Any>
   /** Scopes whose members a committed state change despawns; `Game.Runtime.make` passes every `Game.EntityScope`. */

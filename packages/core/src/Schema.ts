@@ -73,6 +73,24 @@ import type * as System from "./System.ts"
  */
 export type Registry = Record<string, Descriptor.Any>
 
+type Article<Kind extends string> = Kind extends "event" ? "an" : "a"
+
+/**
+ * Rejects descriptors of another kind in a fragment's `components`,
+ * `resources`, or `events`, naming where each belongs.
+ */
+type RegistryOfKind<R, Expected extends string> = {
+  readonly [K in keyof R]: R[K] extends { readonly kind: Expected }
+    ? unknown
+    : R[K] extends { readonly kind: infer Actual extends string }
+      ? {
+        readonly __fixSchema__: Actual extends "service"
+          ? `${K & string} is a service, not ${Article<Expected>} ${Expected}: provide services to Game.Runtime.make({ services }) instead of registering them`
+          : `${K & string} is ${Article<Actual>} ${Actual}, not ${Article<Expected>} ${Expected}: move it to ${Actual}s: { ... }`
+      }
+      : unknown
+}
+
 /**
  * A closed schema: the components, resources, events, and relations a world
  * may contain, and the component requirements (`Schema.requires`) every
@@ -316,9 +334,9 @@ export const fragment = <
   const Relations extends Record<string, Relation.Relation.Any> = {},
   const Requires extends ReadonlyArray<ComponentRequirement> = readonly []
 >(definition: {
-  readonly components?: Components
-  readonly resources?: Resources
-  readonly events?: Events
+  readonly components?: Components & RegistryOfKind<Components, "component">
+  readonly resources?: Resources & RegistryOfKind<Resources, "resource">
+  readonly events?: Events & RegistryOfKind<Events, "event">
   readonly relations?: Relations
   readonly requires?: Requires
 } & ValidateFragments<[SchemaDefinition<Components, Resources, Events, Relations>]>): SchemaDefinition<Components, Resources, Events, Relations, PairsOf<Requires[number]>> =>
@@ -428,7 +446,8 @@ type BoundTransitionScheduleResult<
 > = Machine.TransitionScheduleDefinition<
   S,
   M,
-  Schedule.CompositionExactRequirements<Entries>,
+  // The machine itself: a transition schedule on a machine the runtime does not provide could never run.
+  Schedule.CompositionExactRequirements<Entries> | M,
   Root,
   Schedule.CompositionFailure<Entries>,
   Schedule.CompositionOrder<Entries>
@@ -624,7 +643,7 @@ export namespace Schema {
       >(spec: {
         readonly selection: Selection
         readonly with?: With
-        readonly without?: Without
+        readonly without?: Without & QueryModule.ExclusionsPossible<Selection, With, Without, Filters>
         readonly filters?: Filters
         readonly withRelations?: WithRelations
         readonly withoutRelations?: WithoutRelations
@@ -658,20 +677,25 @@ export namespace Schema {
        * Adds entries to a draft (a value not yet spawned). Use
        * `commands.insert` for an entity that already exists.
        */
-      extend: <P extends Entity.ComponentProof, const Entries extends ReadonlyArray<Command.SpawnEntry<S>>>(
-        draft: Entity.EntityDraft<S, P, Root>,
+      extend: <P extends Entity.ComponentProof, const Entries extends ReadonlyArray<Command.SpawnEntry<S>>, Relates = never>(
+        draft: Entity.EntityDraft<S, P, Root, Relates>,
         ...entries: Entries
-      ) => Command.DraftFor<S, Entries, P, Root>
+      ) => Command.DraftFor<S, Entries, P, Root, Relates>
       entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: Descriptor.Value<D>) => Command.Entry<D>
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>
       ) => Result.Result<Command.Entry<D>, Descriptor.ConstructionError<D>>
-      relate: <P extends Entity.ComponentProof, R extends RelationDescriptor<S>>(
-        draft: Entity.EntityDraft<S, P, Root>,
+      /**
+       * Stages a relation on a draft, created with the spawn. Spawning the
+       * draft needs the relation in `Game.System.relates(...)`, like
+       * `commands.relate`.
+       */
+      relate: <P extends Entity.ComponentProof, R extends RelationDescriptor<S>, Relates = never>(
+        draft: Entity.EntityDraft<S, P, Root, Relates>,
         relation: R,
         target: Entity.EntityId<S, Root>
-      ) => Entity.EntityDraft<S, P, Root>
+      ) => Entity.EntityDraft<S, P, Root, Relates | R>
     }
     /**
      * Declares one game-wide mode (menu, playing, paused): queued with
@@ -790,7 +814,10 @@ export namespace Schema {
       despawns: <const Components extends ReadonlyArray<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"despawns", Components[number]>
       /** Allows `despawnScope` of this scope. */
       despawnsScope: <const Scope extends EntityScope.EntityScope<string, Root>>(scope: Scope) => Command.Permission<"despawnsScope", Scope>
-      /** Allows `relate`, `unrelate`, and `reorderChildren` of these relations. */
+      /**
+       * Allows `relate`, `unrelate`, and `reorderChildren` of these relations,
+       * and spawning drafts that stage them with `Game.Command.relate(...)`.
+       */
       relates: <const Relations extends ReadonlyArray<RelationDescriptor<S>>>(...relations: Relations) => Command.Permission<"relates", Relations[number]>
     }
     readonly Schedule: {
@@ -864,7 +891,7 @@ export namespace Schema {
         const Enabled extends Debug.Option | undefined = undefined
       >(options: {
         readonly services: ProvidedServices
-        readonly resources?: Resources
+        readonly resources?: Resources & Runtime.ExactResources<S, Resources>
         readonly machines?: ProvidedMachines
         /** Attaches a `debug` handle to the runtime; see the `Debug` module. */
         readonly debug?: Enabled

@@ -691,7 +691,7 @@ export interface QueryHandle<S extends Schema.Any, Q extends Query.Any> {
       ? H
       : Query.ProvesComponent<Q, Entity.Handle.Intent<H> & Descriptor<"component", string, any>> extends true
         ? H
-        : "this query does not prove the handle's intent component: select it, or add it to with"
+        : "this query does not prove the handle's intent component: select it, or add it to with (an added or changed filter on it proves it too)"
   ): Result.Result<QueryMatch<S, Q>, Query.LookupError>
   /**
    * The direct children of one hierarchy parent that match this query, in the

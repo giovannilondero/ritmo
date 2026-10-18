@@ -47,7 +47,7 @@ const populate = (runtime: ReturnType<typeof makeRuntime>) => {
   const Setup = Game.System("Snapshot/Setup", {
     nextMachines: { flow: Game.System.nextState(Flow) },
     resources: { score: Game.System.writeResource(Score) },
-    commands: Game.System.commands(Game.System.spawns(Name, Position, Sprite, Target))
+    commands: Game.System.commands(Game.System.spawns(Name, Position, Sprite, Target), Game.System.relates(ChildOf))
   }, ({ commands, nextMachines, resources }) => {
     const parentDraft = Game.Command.spawn([Name, "parent"], Game.Command.entryRaw(Position, { x: 1, y: 2 }))
     if (!parentDraft.ok) throw new Error("invalid fixture")

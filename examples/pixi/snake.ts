@@ -351,7 +351,7 @@ const ResetGameSystem = Game.System(
       pendingGrowth: Game.System.writeResource(PendingGrowth),
       reason: Game.System.writeResource(GameOverReason)
     },
-    commands: Game.System.commands(Game.System.spawns(SnakeHead, SnakeBody))
+    commands: Game.System.commands(Game.System.spawns(SnakeHead, SnakeBody), Game.System.relates(ChildOf))
   },
   ({ resources, commands }) =>
     {
@@ -581,7 +581,7 @@ const GrowSnakeSystem = Game.System(
     resources: {
       pendingGrowth: Game.System.writeResource(PendingGrowth)
     },
-    commands: Game.System.commands(Game.System.spawns(SnakeBody))
+    commands: Game.System.commands(Game.System.spawns(SnakeBody), Game.System.relates(ChildOf))
   },
   ({ queries, resources, commands }) =>
     {

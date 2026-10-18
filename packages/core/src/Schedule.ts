@@ -170,7 +170,11 @@ type DescriptorKind<D> = D extends { readonly kind: infer Kind } ? Kind : never
 
 type Names<D> = D extends { readonly name: infer Name extends string } ? Name : never
 
-type DescriptorsOf<Access> = Access extends { readonly descriptor: infer D } ? D : never
+type DescriptorsOf<Access> =
+  Access extends { readonly descriptor: infer D } ? D
+  // A Query.anyOf filter names the components of its member filters.
+  : Access extends { readonly kind: "anyOf"; readonly filters: ReadonlyArray<infer Member> } ? DescriptorsOf<Member>
+  : never
 
 /** Every system an entry runs, nested schedules and transition bundles included, as a union. */
 type SystemsIn<Entry> =

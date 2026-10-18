@@ -80,6 +80,33 @@ describe("Schema", () => {
     >>()
   })
 
+  it("rejects a descriptor in the registry of another kind, naming where it belongs", () => {
+    const Hit = Descriptor.Event<number>()("Schema/RegistryHit")
+    Schema.fragment({
+      components: {
+        Position,
+        // @ts-expect-error Time is a resource, not a component: move it to resources: { ... }
+        Time
+      }
+    })
+    Schema.fragment({
+      resources: {
+        Time,
+        // @ts-expect-error Position is a component, not a resource: move it to components: { ... }
+        Position
+      }
+    })
+    Schema.fragment({
+      // @ts-expect-error Hit is an event, not a component: move it to events: { ... }
+      components: { Hit },
+      events: {
+        // @ts-expect-error Phase is a resource, not an event: move it to resources: { ... }
+        Phase
+      }
+    })
+    expect(Schema.fragment({ components: { Position }, resources: { Time }, events: { Hit } })).type.not.toRaiseError()
+  })
+
   it("rejects duplicate schema keys", () => {
     const left = Schema.fragment({
       resources: {
@@ -661,7 +688,7 @@ describe("Schema", () => {
             queries.wrong.getHandle(current)
             // @ts-expect-error this query does not prove the handle's intent component: select it, or add it to with
             queries.optionalOnly.getHandle(current)
-            // @ts-expect-error this query does not prove the handle's intent component: select it, or add it to with
+            // A changed(Position) filter proves Position: a match holds it (the lookup still fails when nothing changed).
             queries.lifecycleOnly.getHandle(current)
             // @ts-expect-error Property 'getHandle' does not exist on type 'LookupApi
             lookup.getHandle(current, PositionQuery)

@@ -36,3 +36,11 @@ describe("Schema.requires", () => {
     expect(() => Schema.bind(erased)).toThrow("Requires/Position is named in Schema.requires(...) but no fragment registers it")
   })
 })
+
+describe("fragments from erased types", () => {
+  it("throw on a descriptor in the registry of another kind, naming where it belongs", () => {
+    const Score = Descriptor.Resource<number>()("Erased/Score")
+    const erased = Schema.fragment as (definition: Record<string, unknown>) => unknown
+    expect(() => erased({ components: { Score } })).toThrow("Score is a resource, not a component: move it to resources: { ... }")
+  })
+})
