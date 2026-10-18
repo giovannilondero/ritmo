@@ -657,6 +657,13 @@ export namespace Schema {
         target: Entity.HandleTarget<S, Root>,
         intent?: D
       ) => Entity.Handle<Root, D>
+      /**
+       * The entity id a handle names, to compare with ids or pass where an id
+       * is expected (`queries.x.get(id)`), instead of storing the id beside
+       * the handle. Like the handle, it proves nothing about liveness:
+       * resolve it through a query. Two handles of the same entity are `===`.
+       */
+      id: (handle: Entity.Handle<Root, ComponentDescriptor<S> | undefined>) => Entity.EntityId<S, Root>
     }
     readonly Query: {
       <

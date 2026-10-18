@@ -47,3 +47,22 @@ describe("descriptor identity", () => {
     expect(Game.Schedule(First, Second).kind).type.toBe<"schedule">()
   })
 })
+
+describe("Game.Entity.id", () => {
+  const Root = Schema.defineRoot("Identity/Handles")
+  const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
+  const OtherRoot = Schema.defineRoot("Identity/Other")
+  const Other = Schema.bind(Schema.fragment({ components: { Health } }), OtherRoot)
+
+  it("returns the entity id a handle names, with or without an intent", () => {
+    const Healths = Game.Query({ selection: { health: Game.Query.read(Health) } })
+    Game.System("Identity/Ids", { queries: { healths: Healths } }, ({ queries }) => {
+      for (const match of queries.healths.each()) {
+        expect(Game.Entity.id(Game.Entity.handle(match.entity))).type.toBe<typeof match.entity.id>()
+        expect(Game.Entity.id(Game.Entity.handle(match.entity, Health))).type.toBe<typeof match.entity.id>()
+        // @ts-expect-error is not assignable to parameter of type
+        Other.Entity.id(Game.Entity.handle(match.entity))
+      }
+    })
+  })
+})

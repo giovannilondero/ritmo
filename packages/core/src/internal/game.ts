@@ -97,7 +97,8 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
     Inspector: (name: string, spec: object, read: (context: any) => unknown) =>
       Inspector.make(name, { schema, ...spec } as never, read),
     Entity: {
-      handle: Entity.handle
+      handle: Entity.handle,
+      id: (handle: number) => Entity.makeEntityId(handle)
     },
     Query: Object.assign((spec: never) => QueryModule.Query(spec), {
       read: QueryModule.read,
