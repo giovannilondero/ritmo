@@ -97,7 +97,7 @@ pnpm bench:check    # compare with packages/core/bench/baseline.json (exit 1 on 
 pnpm bench:update   # record a new baseline
 ```
 
-CI measures every pull request against its base commit on the same runner and fails on runtime regressions over 25%, or type-checker growth over 5%.
+CI measures every pull request against its base commit on the same runner and fails on runtime regressions over 25%. Type-checker growth over 5% produces a warning without blocking merges. Local `pnpm bench:check` still fails on both kinds of regression.
 
 ## Naming note
 
