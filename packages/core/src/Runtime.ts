@@ -949,6 +949,30 @@ const makeValidatedRuntime = <
       requirementViolations.set(key, { system: commandOrigin, command, component, missing, entity, count: (seen?.count ?? 0) + 1 })
     }
   }
+  const streamLosses = new Map<string, Debug.StreamLoss>()
+  const watchStreamLoss = <V extends { all(): unknown; lagged(): boolean }>(view: V, system: string, stream: string, paused: boolean): V => {
+    const key = `${system}/${stream}`
+    const entry = (): { -readonly [K in keyof Debug.StreamLoss]: Debug.StreamLoss[K] } => {
+      let found = streamLosses.get(key)
+      if (found === undefined) {
+        found = { system, stream, lostRuns: 0, checksLagged: false, paused }
+        streamLosses.set(key, found)
+      }
+      return found as { -readonly [K in keyof Debug.StreamLoss]: Debug.StreamLoss[K] }
+    }
+    return {
+      ...view,
+      all: () => {
+        const status = entry()
+        if (view.lagged()) status.lostRuns += 1
+        return view.all()
+      },
+      lagged: () => {
+        entry().checksLagged = true
+        return view.lagged()
+      }
+    }
+  }
   const staleTargets = new Map<string, Debug.StaleTarget>()
   const reportStaleTarget = (command: Debug.StaleTarget["command"], entity: number): void => {
     if (tracing) recordEffect({ kind: "staleTarget", entity, command })
@@ -1568,6 +1592,10 @@ const makeValidatedRuntime = <
   const makeContext = (system: SystemDefinition<any, any, any>, reader: ReaderState, queue: Command.CommandQueue<S, Root>): SystemContext<any> => {
     const spec = system.spec
     const lookup = makeLookup(reader)
+    const paused = (spec.pauseWhen as ReadonlyArray<unknown>).length > 0
+    /** On a debug runtime, records reads after a loss and calls of `lagged()`, for the `stream-loss-unread` lint. */
+    const watch = <V extends { all(): unknown; lagged(): boolean }>(view: V, stream: string): V =>
+      debugEnabled ? watchStreamLoss(view, system.name, stream, paused) : view
     return {
       local: (spec.local as (() => unknown) | undefined)?.(),
       // A filtered query hands out the same object; its type hides the lookups.
@@ -1581,15 +1609,15 @@ const makeValidatedRuntime = <
             : makeResourceWriteView(access.descriptor, resources, writeResource)),
       events: mapRecord(spec.events as Record<string, any>, (access) =>
         access.mode === "read"
-          ? makeEventReadView(access.descriptor.key, reader)
+          ? watch(makeEventReadView(access.descriptor.key, reader), `events ${access.descriptor.name}`)
           : makeEventWriteView(access.descriptor.key)),
       machines: mapRecord(spec.machines as Record<string, any>, (access) => makeMachineReadView(access.machine)),
       nextMachines: mapRecord(spec.nextMachines as Record<string, any>, (access) => makeNextMachineWriteView(access.machine)),
-      transitionEvents: mapRecord(spec.transitionEvents as Record<string, any>, (access) => makeTransitionEventReadView(access.machine, reader)),
+      transitionEvents: mapRecord(spec.transitionEvents as Record<string, any>, (access) => watch(makeTransitionEventReadView(access.machine, reader), `transition events ${access.machine.name}`)),
       transitions: mapRecord(spec.transitions as Record<string, any>, (access) => makeTransitionReadView(access.machine)),
-      removed: mapRecord(spec.removed as Record<string, any>, (access) => makeRemovedReadView(access.descriptor, reader)),
-      despawned: mapRecord(spec.despawned as Record<string, any>, () => makeDespawnedReadView(reader)),
-      relationFailures: mapRecord(spec.relationFailures as Record<string, any>, (access) => makeRelationFailureReadView(access.relation, reader)),
+      removed: mapRecord(spec.removed as Record<string, any>, (access) => watch(makeRemovedReadView(access.descriptor, reader), `removed ${access.descriptor.name}`)),
+      despawned: mapRecord(spec.despawned as Record<string, any>, () => watch(makeDespawnedReadView(reader), "despawned")),
+      relationFailures: mapRecord(spec.relationFailures as Record<string, any>, (access) => watch(makeRelationFailureReadView(access.relation, reader), `relation failures ${access.relation.name}`)),
       services: mapRecord(spec.services as Record<string, any>, (access) =>
         providedServices[access.descriptor.name as keyof Services]),
       // The queue serves every declared permission set; the spec's types narrow it.
@@ -2704,6 +2732,7 @@ const makeValidatedRuntime = <
       requirementViolations: [...requirementViolations.values()],
       nextStateReplacements: [...nextStateReplacements.values()],
       staleTargets: [...staleTargets.values()],
+      streamLosses: [...streamLosses.values()],
       hasResource: (descriptor) => resources.has(descriptor.key),
       schedules: [...scheduleNames].map(([schedule, name]) => [name, schedule as ExecutableScheduleDefinition<S>] as const)
     }),

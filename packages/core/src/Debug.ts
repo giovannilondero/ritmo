@@ -251,7 +251,8 @@ export interface ScheduleDescription {
  * `next-state-replaced` lists next states one system queued and another
  * replaced with a different value before the marker (the last wins),
  * `stale-target` lists `despawn` / `remove` commands given a `SpawnedId`
- * kept from an earlier run (skipped), so
+ * kept from an earlier run (skipped), `stream-loss-unread` lists stream
+ * readers that never check `lagged()` and lost entries (or are paused), so
  * describe after the game has run for a while. `scope-trigger-never-applied`
  * also reads which machines the runtime provides.
  */
@@ -270,6 +271,7 @@ export interface Lint {
     | "requirement-violated"
     | "next-state-replaced"
     | "stale-target"
+    | "stream-loss-unread"
     | "scope-trigger-never-applied"
   readonly message: string
   readonly subject: string
@@ -486,6 +488,23 @@ export interface StaleTarget {
   readonly entity: number
   /** How many commands were skipped this way. */
   readonly count: number
+}
+
+/**
+ * One system's reads of one stream (events, transition events, removed,
+ * despawned, relation failures) on a debug runtime: the
+ * `stream-loss-unread` lint.
+ */
+export interface StreamLoss {
+  readonly system: string
+  /** The stream, as `events Hit`, `removed Sprite`, `despawned`, ... */
+  readonly stream: string
+  /** Runs that read it after entries were dropped before they were read. */
+  readonly lostRuns: number
+  /** Whether the system called `lagged()` on it. */
+  readonly checksLagged: boolean
+  /** Whether the system has `pauseWhen` conditions (a long pause can drop entries). */
+  readonly paused: boolean
 }
 
 export interface AppliedCommand {
