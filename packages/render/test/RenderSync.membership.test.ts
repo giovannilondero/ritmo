@@ -40,7 +40,7 @@ const setup = (withSelect = false) => {
   const render = withSelect
     ? RenderSync.system(Game, { ...options, select: { visible: Game.Query.read(Visible) } })
     : RenderSync.system(Game, options)
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) })
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) }).value
   const ids: Array<Id> = []
   const step = (run: (context: Parameters<typeof Step.run>[0]) => void) =>
     runtime.tick(Game.Schedule(Game.System("Membership/Step", stepAccess, run), Game.Schedule.applyDeferred(), render))

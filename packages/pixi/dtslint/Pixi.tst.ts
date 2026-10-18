@@ -39,10 +39,10 @@ describe("@typeonce/ritmo-pixi", () => {
     const layer = { addChild(_child: Node) {}, removeChild(_child: Node) {} }
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, PixiNodeRegistry.make(layer)))
-    })
+    }).value
     expect(runtime.tick(Game.Schedule(render))).type.toBe<Result.Result<void, never>>()
 
-    const missing = Game.Runtime.make({ services: Game.Runtime.services() })
+    const missing = Game.Runtime.make({ services: Game.Runtime.services() }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "PixiTypes/Nodes"
     missing.tick(Game.Schedule(render))
   })

@@ -12,6 +12,6 @@ const Emit = Game.System("LintFixture/Emit", { events: { noise: Game.System.writ
 const Hear = Game.System("LintFixture/Hear", { events: { noise: Game.System.readEvent(Noise) } }, () => {})
 
 export const lintTarget = () => ({
-  runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }),
+  runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value,
   schedules: { update: process.env["LINT_QUIET"] === "1" ? Game.Schedule(Emit, Hear) : Game.Schedule(Emit) }
 })

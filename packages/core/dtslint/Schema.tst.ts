@@ -167,7 +167,7 @@ describe("Schema", () => {
         DeltaTime: 1 / 60,
         CurrentPhase: "Running"
       }
-    })
+    }).value
 
     expect(update).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
     runtime.tick(update)
@@ -214,7 +214,7 @@ describe("Schema", () => {
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services()
-    })
+    }).value
 
     expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
   })
@@ -264,7 +264,7 @@ describe("Schema", () => {
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services()
-    })
+    }).value
 
     expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
   })
@@ -350,7 +350,7 @@ describe("Schema", () => {
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services()
-    })
+    }).value
 
     const schedule = Game.Schedule(ObserveLifecycleSystem)
 
@@ -431,7 +431,7 @@ describe("Schema", () => {
       resources: {
         DeltaTime: 1 / 60
       }
-    })
+    }).value
 
     const scheduleB = GameB.Schedule(SystemB)
 

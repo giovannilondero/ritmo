@@ -18,7 +18,7 @@ type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Log: [] }
-})
+}).value
 
 const Positions = Game.Query({ selection: { position: Game.Query.write(Position) } })
 const Tagged = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Tag] })

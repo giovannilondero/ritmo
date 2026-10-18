@@ -53,7 +53,7 @@ const traced = (clock: HostClock.TestHostClock, step: number) => {
   const runtime = Game.Runtime.make({
     services: Game.Runtime.services(Game.Runtime.service(Tick, { clock, step })),
     debug: { hostClock: clock }
-  })
+  }).value
   const update = Game.Schedule(Advance, Idle)
   runtime.debug.nameSchedules({ update })
   const events: Array<Debug.TraceEvent> = []

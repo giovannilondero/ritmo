@@ -925,7 +925,7 @@ export const startSpaceInvadersExample = async (
       EnemySpawnProgress: ENEMY_SPAWN_COOLDOWN,
       ShootCooldown: 0
     }
-  })
+  }).value
 
   runtime.tick(setupSchedule)
 

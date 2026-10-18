@@ -123,7 +123,7 @@ export const makeSimulation = (seed: number) => {
   const runtime = Game.Runtime.make({
     resources: { Rng: { state: seed }, Walls: room, Hits: [] },
     services: Game.Runtime.services(Game.Runtime.service(Frame, frame))
-  })
+  }).value
   runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
   const update = Game.Schedule(Chase, MoveShots, Game.Schedule.applyDeferred())
   return {

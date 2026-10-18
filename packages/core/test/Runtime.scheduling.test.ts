@@ -24,7 +24,7 @@ const makeRuntime = () =>
       Counter: 0,
       Log: []
     }
-  })
+  }).value
 
 describe("Runtime scheduling", () => {
   it("runSchedule executes only the provided schedule", () => {

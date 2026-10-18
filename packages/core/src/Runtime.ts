@@ -23,7 +23,8 @@
  *   Game.Runtime.service(Random, { next: Math.random })
  * )
  *
- * // Viewport is a constructed resource, so the runtime comes back as a Result.
+ * // make always returns a Result. Viewport is a constructed resource, so
+ * // validating it can fail and the Result must be checked.
  * const runtime = Game.Runtime.make({
  *   services,
  *   resources: {
@@ -118,7 +119,7 @@ import type {
  *   services: Game.Runtime.services(
  *     Game.Runtime.service(Logger, { log: console.log })
  *   )
- * })
+ * }).value
  *
  * runtime.tick(updateSchedule)
  * ```
@@ -204,8 +205,9 @@ export type WithDebug<R, Enabled, S extends Schema.Any, Root> =
   : R & Partial<Debug.Member<S, Root>>
 
 /**
- * The runtime returned by `make`, wrapped in a `Result` exactly when a
- * provided resource goes through a constructor and can therefore fail.
+ * What `make` returns: always a `Result`. It is a `Success` when nothing
+ * provided can fail, so `.value` is the runtime; when a provided resource
+ * goes through a constructor, it may be a `Failure` and must be checked.
  */
 export type MakeRuntimeResult<
   S extends Schema.Any,
@@ -215,7 +217,7 @@ export type MakeRuntimeResult<
   Machines extends Record<string, unknown>,
   Enabled = undefined
 > = [ConstructedKeys<S, Provided>] extends [never]
-  ? WithDebug<Runtime<S, Services, ProvidedResources<S, Provided>, Root, Machines>, Enabled, S, Root>
+  ? Result.Success<WithDebug<Runtime<S, Services, ProvidedResources<S, Provided>, Root, Machines>, Enabled, S, Root>>
   : Result.Result<
       WithDebug<Runtime<S, Services, ProvidedResources<S, Provided>, Root, Machines>, Enabled, S, Root>,
       RuntimeConstructionError<S, Provided>
@@ -699,7 +701,7 @@ export interface Runtime<
  *   resources: {
  *     score: 0
  *   }
- * })
+ * }).value
  * ```
  */
 /**
@@ -2626,8 +2628,9 @@ const makeValidatedRuntime = <
  * Creates a runtime for a fully built schema and a set of external services.
  *
  * Resources owned by constructed descriptors take raw input and are validated
- * here; when any are provided the runtime comes back as a `Result`. Otherwise
- * the runtime is returned directly.
+ * here. The runtime always comes back as a `Result`: typed `Success` when
+ * nothing provided can fail (read `.value`), and a `Result` to check when a
+ * constructed resource is provided.
  *
  * The runtime does not own the outer frame loop. It only owns ECS state plus
  * the host-provided services that systems are allowed to depend on.
@@ -2640,7 +2643,7 @@ const makeValidatedRuntime = <
  *   ),
  *   resources: { Score: 0 },
  *   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
- * })
+ * }).value
  * ```
  */
 export const make = <
@@ -2661,11 +2664,6 @@ export const make = <
   /** Attaches a `debug` handle to the runtime, timed by `hostClock`; see the `Debug` module. */
   readonly debug?: Enabled
 }): MakeRuntimeResult<S, Simplify<RuntimeServicesOf<ProvidedServices>>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled> => {
-  const fallible = Object.entries(options.schema.resources).some(([key, descriptor]) =>
-    options.resources !== undefined
-    && (options.resources as Record<string, unknown>)[key] !== undefined
-    && DescriptorModule.hasConstructor(descriptor)
-  )
   const validated = collectConstructedRegistryValues(options.schema.resources, options.resources)
   if (!validated.ok) {
     return Result.failure({ resources: validated.error }) as never
@@ -2679,7 +2677,7 @@ export const make = <
     scopeDefinitions: options.scopeDefinitions ?? [],
     debug: options.debug
   })
-  return (fallible ? Result.success(runtime) : runtime) as never
+  return Result.success(runtime) as never
 }
 
 /**

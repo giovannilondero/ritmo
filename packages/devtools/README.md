@@ -38,7 +38,7 @@ A dev-only debug handle in a browser game:
 const runtime = Game.Runtime.make({
   services,
   debug: import.meta.env.DEV ? { hostClock: BrowserHostClock.make(window) } : undefined
-})
+}).value
 if (runtime.debug !== undefined) Monitor.attach({ debug: runtime.debug }, { schedules, host: window })
 ```
 
@@ -90,7 +90,7 @@ const keyboard = Keyboard.scripted(bindings, [
   { frame: 32, press: ["jump"], release: ["jump"] } // a tap within one frame
 ])
 const hostClock = HostClock.test()           // every timing 0: identical text on every run
-const runtime = Game.Runtime.make({ services, resources, machines, debug: { hostClock } })
+const runtime = Game.Runtime.make({ services, resources, machines, debug: { hostClock } }).value
 // An invariant is a typed, read-only Inspector that returns a violation
 // message, or undefined while it holds. It declares its reads like a system:
 // Session.make rejects at compile time one that reads a resource, service,

@@ -13,7 +13,7 @@
  *
  * @example
  * ```ts
- * const runtime = Game.Runtime.make({ services, debug: { hostClock: HostClock.standard } })
+ * const runtime = Game.Runtime.make({ services, debug: { hostClock: HostClock.standard } }).value
  * ```
  *
  * @module HostClock

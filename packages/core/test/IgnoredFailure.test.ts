@@ -13,7 +13,7 @@ const Decorate = Game.System("Ignored/Decorate", {}, () => {})
 const setup = Game.Schedule(Place, Load, Decorate, Count)
 const update = Game.Schedule(Count)
 
-const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.test() } })
+const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.test() } }).value
 
 const ignoredEvents = (runtime: ReturnType<typeof makeDebug>) => {
   const seen: Array<Debug.FailureIgnoredEvent> = []
@@ -73,7 +73,7 @@ describe("ignored tick failures (debug only)", () => {
   })
 
   it("reports a tryTick that ran nothing (missing requirements), with every system skipped", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
     const seen: Array<Debug.FailureIgnoredEvent> = []
     runtime.debug.observeHost((event) => {
       if (event.type === "failure.ignored") seen.push(event)
@@ -84,7 +84,7 @@ describe("ignored tick failures (debug only)", () => {
   })
 
   it("tracks nothing with debug off: the result is the plain failure", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } }).value
     const result = runtime.tick(setup)
     expect(Object.getOwnPropertyDescriptor(result, "ok")?.get).toBeUndefined()
     expect(result).toEqual({ ok: false, error: { kind: "SystemFailure", system: "Ignored/Load", error: "level file missing" } })

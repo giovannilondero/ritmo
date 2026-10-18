@@ -27,7 +27,7 @@ const makeRuntime = () =>
     resources: {
       Summary: ""
     }
-  })
+  }).value
 
 describe("Runtime relationships", () => {
   it("supports relation-aware queries and hierarchy traversal", () => {

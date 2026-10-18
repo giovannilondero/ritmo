@@ -25,7 +25,7 @@ const makeRuntime = () => Game.Runtime.make({
   resources: { Score: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu")),
   debug: { hostClock }
-})
+}).value
 
 const Moving = Game.Query({ selection: { position: Game.Query.write(Position) } })
 
@@ -61,7 +61,7 @@ describe("Runtime debug handle", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Clock, { now: () => 0 })),
       resources: { Score: 0 }
-    })
+    }).value
     expect("debug" in runtime).toBe(false)
   })
 

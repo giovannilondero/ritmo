@@ -28,7 +28,7 @@
  * const runtime = Game.Runtime.make({
  *   services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.actions(window, bindings))),
  *   resources: { Input: Keyboard.idle(bindings) }
- * })
+ * }).value
  * ```
  */
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"

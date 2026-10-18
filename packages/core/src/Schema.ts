@@ -881,8 +881,9 @@ export namespace Schema {
     }
     readonly Runtime: {
       /**
-       * Builds a runtime. Returns a `Result` exactly when a provided resource
-       * goes through a constructed descriptor and can fail validation.
+       * Builds a runtime. Always returns a `Result`: a `Success` (read
+       * `.value`) when nothing provided can fail, and a `Result` to check
+       * when a provided resource goes through a constructed descriptor.
        */
       make: <
         const ProvidedServices extends Runtime.RuntimeServices<any>,

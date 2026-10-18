@@ -9,7 +9,7 @@ const step = Game.Schedule(Fail)
 
 describe("ignored tick failures through FixedLoop", () => {
   it("does not report a failure FixedLoop handled (it reads ok and stops)", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
     const seen: Array<Debug.FailureIgnoredEvent> = []
     runtime.debug.observe((event) => {
       if (event.type === "failure.ignored") seen.push(event)

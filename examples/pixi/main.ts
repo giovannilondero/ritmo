@@ -303,7 +303,7 @@ export const startPixiExample = async (
         height: application.screen.height,
       },
     },
-  });
+  }).value;
   runtime.tick(setupSchedule);
   runtime.tick(updateSchedule);
 

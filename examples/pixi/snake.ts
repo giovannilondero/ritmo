@@ -837,7 +837,7 @@ export const createSnakeExample = () => {
     machines: Game.Runtime.machines(
       Game.Runtime.machine(GamePhase, "Playing")
     )
-  })
+  }).value
   runtime.tick(setupSchedule)
 
   return {
@@ -923,7 +923,7 @@ export const startSnakeExample = async (mount: HTMLElement): Promise<BrowserExam
     machines: Game.Runtime.machines(
       Game.Runtime.machine(GamePhase, "Playing")
     )
-  })
+  }).value
 
   runtime.tick(browserSetupSchedule)
 

@@ -426,7 +426,7 @@ export const createPokemonExample = (input: {
       },
       DeltaTime: 1 / 60
     }
-  })
+  }).value
   runtime.tick(setupSchedule)
 
   return {
@@ -520,7 +520,7 @@ export const startPokemonExample = async (mount: HTMLElement): Promise<BrowserEx
       },
       DeltaTime: host.clock.deltaSeconds
     }
-  })
+  }).value
   runtime.tick(browserSetupSchedule)
   runtime.tick(browserUpdateSchedule)
 

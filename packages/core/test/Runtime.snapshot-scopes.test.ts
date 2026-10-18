@@ -7,7 +7,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Name }, relations: { Ch
 const Level = Game.EntityScope("SnapshotScopes/Level")
 const Menu = Game.EntityScope("SnapshotScopes/Menu")
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() })
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
 type Runtime = ReturnType<typeof makeRuntime>
 
 const Names = Game.Inspector("SnapshotScopes/Names", {

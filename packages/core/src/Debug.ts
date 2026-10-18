@@ -35,7 +35,7 @@
  *
  * @example
  * ```ts
- * const runtime = Game.Runtime.make({ services, resources, debug: { hostClock: HostClock.standard } })
+ * const runtime = Game.Runtime.make({ services, resources, debug: { hostClock: HostClock.standard } }).value
  * runtime.debug.nameSchedules({ setup: setupSchedule, update: updateSchedule })
  *
  * const stop = runtime.debug.observe((event) => {

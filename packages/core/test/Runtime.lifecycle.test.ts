@@ -9,7 +9,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Position, Tag } }))
 
 type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() })
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
 
 const Added = Game.Query({ selection: { position: Game.Query.read(Position) }, filters: [Game.Query.added(Position)] })
 const Changed = Game.Query({ selection: { position: Game.Query.read(Position) }, filters: [Game.Query.changed(Position)] })
@@ -205,7 +205,7 @@ describe("Runtime change detection", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "On"))
-    })
+    }).value
     runtime.tick(Game.Schedule(spawner([1], ids), Game.Schedule.applyDeferred(), Reader))
     runtime.tick(Game.Schedule(Toggle, Game.Schedule.applyStateTransitions()))
     runtime.tick(Game.Schedule(Despawn, Game.Schedule.applyDeferred(), Reader))

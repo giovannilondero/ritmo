@@ -21,7 +21,7 @@ const schedule = Game.Schedule(Failing)
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Value: 0 }
-})
+}).value
 
 describe("stability types", () => {
   it("carries exact system failures through schedules and runtimes", () => {
@@ -162,7 +162,7 @@ describe("stability types", () => {
       services: Game.Runtime.services(),
       resources: { Value: 0 },
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Menu"))
-    })
+    }).value
 
     expect(transitionRuntime.tick(transitionSchedule)).type.toBe<
       Result.Result<void, System.SystemFailure<"StabilityTypes/LoadLevel", "LoadFailed">>

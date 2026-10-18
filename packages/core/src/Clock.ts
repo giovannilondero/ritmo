@@ -20,7 +20,7 @@
  * const Time = Clock.resource("Game/Time", step)
  * const Game = Schema.bind(Schema.fragment({ resources: { Time } }))
  * const AdvanceTime = Clock.system(Game, { name: "Game/AdvanceTime", resource: Time, hold: [paused] })
- * const runtime = Game.Runtime.make({ services, resources: { Time: Clock.start(step) } })
+ * const runtime = Game.Runtime.make({ services, resources: { Time: Clock.start(step) } }).value
  * ```
  *
  * @module Clock

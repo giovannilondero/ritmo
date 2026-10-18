@@ -77,7 +77,7 @@ describe("Runtime stabilization APIs", () => {
       services: Game.Runtime.services(),
       resources: { Count: 1 },
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Ready"))
-    })
+    }).value
 
     expect(runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))).toEqual({ ok: true, value: undefined })
     expect(runtime.tick(Game.Schedule(fail))).toEqual({
@@ -123,7 +123,7 @@ describe("Runtime stabilization APIs", () => {
       }
     )
 
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() })
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred(), clear, Game.Schedule.applyDeferred()))
     runtime.tick(Game.Schedule(observe))
 
@@ -162,7 +162,7 @@ describe("Runtime stabilization APIs", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Score: 7 }
-    })
+    }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
 
     expect(runtime.inspect(snapshot)).toEqual({ positions: [4], score: 7 })
@@ -193,7 +193,7 @@ describe("Runtime stabilization APIs", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Menu"))
-    })
+    }).value
 
     expect(runtime.tick(schedule)).toEqual({
       ok: false,

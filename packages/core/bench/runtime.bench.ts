@@ -41,7 +41,7 @@ type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Sum: 0 }
-})
+}).value
 
 type BenchRuntime = ReturnType<typeof makeRuntime>
 

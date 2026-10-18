@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * const runtime = Game.Runtime.make({ services, debug: { hostClock: BrowserHostClock.make(window) } })
+ * const runtime = Game.Runtime.make({ services, debug: { hostClock: BrowserHostClock.make(window) } }).value
  * ```
  *
  * @module BrowserHostClock
