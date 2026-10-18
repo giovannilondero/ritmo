@@ -948,6 +948,15 @@ const makeValidatedRuntime = <
       requirementViolations.set(key, { system: commandOrigin, command, component, missing, entity, count: (seen?.count ?? 0) + 1 })
     }
   }
+  const staleTargets = new Map<string, Debug.StaleTarget>()
+  const reportStaleTarget = (command: Debug.StaleTarget["command"], entity: number): void => {
+    if (tracing) recordEffect({ kind: "staleTarget", entity, command })
+    if (debugEnabled) {
+      const key = `${commandOrigin}/${command}`
+      const seen = staleTargets.get(key)
+      staleTargets.set(key, { system: commandOrigin, command, entity, count: (seen?.count ?? 0) + 1 })
+    }
+  }
   const holds = (id: number) => {
     const record = world.records.get(id)
     return (descriptor: Descriptor<"component", string, any>): boolean =>
@@ -1029,6 +1038,9 @@ const makeValidatedRuntime = <
         if (debugEnabled) noteCommand("inserts", descriptor.name)
         world.writeComponent(id, descriptor, value)
       }
+    },
+    reportStaleTarget(command, id) {
+      reportStaleTarget(command, id)
     },
     tryRelate(id, relation, target) {
       if (debugEnabled) {
@@ -2613,6 +2625,7 @@ const makeValidatedRuntime = <
       ranSystems,
       requirementViolations: [...requirementViolations.values()],
       nextStateReplacements: [...nextStateReplacements.values()],
+      staleTargets: [...staleTargets.values()],
       hasResource: (descriptor) => resources.has(descriptor.key),
       schedules: [...scheduleNames].map(([schedule, name]) => [name, schedule as ExecutableScheduleDefinition<S>] as const)
     }),

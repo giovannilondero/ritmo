@@ -281,6 +281,8 @@ const effect = (input: Debug.Effect, options: ValueOptions): string => {
       return `relation failure e${input.entity} ${input.relation}: ${input.error}`
     case "requirementViolated":
       return `skipped ${input.command} e${input.entity}: ${input.component} requires ${input.missing}`
+    case "staleTarget":
+      return `skipped ${input.command} e${input.entity}: id spawned in an earlier run`
   }
 }
 

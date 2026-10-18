@@ -249,7 +249,9 @@ export interface ScheduleDescription {
  * reads its failures, and `requirement-violated` lists commands skipped
  * because they would have broken a `Schema.requires` requirement,
  * `next-state-replaced` lists next states one system queued and another
- * replaced with a different value before the marker (the last wins), so
+ * replaced with a different value before the marker (the last wins),
+ * `stale-target` lists `despawn` / `remove` commands given a `SpawnedId`
+ * kept from an earlier run (skipped), so
  * describe after the game has run for a while. `scope-trigger-never-applied`
  * also reads which machines the runtime provides.
  */
@@ -267,6 +269,7 @@ export interface Lint {
     | "command-permission-unused"
     | "requirement-violated"
     | "next-state-replaced"
+    | "stale-target"
     | "scope-trigger-never-applied"
   readonly message: string
   readonly subject: string
@@ -437,6 +440,8 @@ export type Effect =
       readonly component: string
       readonly missing: string
     }
+  /** A `despawn` / `remove` skipped because it was given a `SpawnedId` from an earlier run. */
+  | { readonly kind: "staleTarget"; readonly entity: number; readonly command: StaleTarget["command"] }
 
 /**
  * A next state one system queued and another replaced with a different value
@@ -464,6 +469,20 @@ export interface RequirementViolation {
   /** The required component it would have lacked. */
   readonly missing: string
   /** The last entity it happened to. */
+  readonly entity: number
+  /** How many commands were skipped this way. */
+  readonly count: number
+}
+
+/**
+ * Commands of one system skipped because they were given a `SpawnedId` kept
+ * from an earlier run, whose entity may since have been despawned and its id
+ * reused: the `stale-target` lint.
+ */
+export interface StaleTarget {
+  readonly system: string
+  readonly command: "despawn" | "remove"
+  /** The last entity id it happened to. */
   readonly entity: number
   /** How many commands were skipped this way. */
   readonly count: number
