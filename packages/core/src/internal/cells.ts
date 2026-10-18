@@ -63,17 +63,33 @@ const withTransition = (cell: WriteCellBase<unknown>, component: string) => Obje
   }
 })
 
+/**
+ * A required slot is empty only when its match outlived the run that produced
+ * it: the entity was despawned, or lost the component. Reading would hand out
+ * the internal marker as a value, and writing would put the component back
+ * without the insert path, so both fail loudly instead.
+ */
+const staleMatch = (world: World, record: EntityRecord, ordinal: number): Error =>
+  new Error(
+    `${world.nameAt(ordinal)} was used through a query match after ${record.alive ? "its entity lost it" : "its entity was despawned"}: `
+    + "a match is valid during the system run that produced it; keep the entity id or a handle and resolve it again with queries.x.get(id) or queries.x.getHandle(handle)"
+  )
+
 class ComponentReadCell {
   readonly record: EntityRecord
   readonly ordinal: number
+  readonly world: World
 
-  constructor(record: EntityRecord, ordinal: number) {
+  constructor(record: EntityRecord, ordinal: number, world: World) {
     this.record = record
     this.ordinal = ordinal
+    this.world = world
   }
 
   get(): unknown {
-    return this.record.values[this.ordinal]
+    const value = this.record.values[this.ordinal]
+    if (value === ABSENT) throw staleMatch(this.world, this.record, this.ordinal)
+    return value
   }
 }
 
@@ -90,10 +106,13 @@ class ComponentWriteCell extends WriteCellBase<unknown> {
   }
 
   get(): unknown {
-    return this.record.values[this.ordinal]
+    const value = this.record.values[this.ordinal]
+    if (value === ABSENT) throw staleMatch(this.world, this.record, this.ordinal)
+    return value
   }
 
   set(value: unknown): void {
+    if (this.record.values[this.ordinal] === ABSENT) throw staleMatch(this.world, this.record, this.ordinal)
     this.world.setComponentValue(this.record, this.ordinal, value)
   }
 }
@@ -152,8 +171,8 @@ class StoreWriteCell extends WriteCellBase<unknown> {
   }
 }
 
-export const componentRead = (record: EntityRecord, ordinal: number): { get(): unknown } =>
-  new ComponentReadCell(record, ordinal)
+export const componentRead = (record: EntityRecord, ordinal: number, world: World): { get(): unknown } =>
+  new ComponentReadCell(record, ordinal, world)
 
 export const componentWrite = (
   record: EntityRecord,

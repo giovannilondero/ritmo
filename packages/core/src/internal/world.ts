@@ -779,6 +779,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     records,
     relationDefinitions,
     ordinalOf,
+    nameAt: (ordinal: number): string => descriptors[ordinal]?.name ?? `component #${ordinal}`,
     has,
     entityIdOf,
     allocateEntity,

@@ -277,7 +277,7 @@ export const makeQueryEngine = (world: World) => {
   const makeCell = (plan: SlotPlan, record: EntityRecord): unknown => {
     switch (plan.mode) {
       case "read":
-        return Cells.componentRead(record, plan.ordinal)
+        return Cells.componentRead(record, plan.ordinal, world)
       case "write":
         return Cells.componentWrite(record, plan.ordinal, world, plan.constructor, plan.entityState)
       case "optional":
