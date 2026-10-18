@@ -73,6 +73,9 @@ import type * as System from "./System.ts"
  */
 export type Registry = Record<string, Descriptor.Any>
 
+/** At least one: a permission that names nothing allows nothing. */
+type NonEmpty<T> = readonly [T, ...ReadonlyArray<T>]
+
 type Article<Kind extends string> = Kind extends "event" ? "an" : "a"
 
 /**
@@ -800,20 +803,20 @@ export namespace Schema {
        */
       commands: typeof Command.commands
       /** Allows spawning drafts whose components are all among these and what they require (`Schema.requires`); see `Command.spawns`. */
-      spawns: <const Components extends ReadonlyArray<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"spawns", Components[number] | Command.RequiredDescriptors<S, Components[number]["name"]>>
+      spawns: <const Components extends NonEmpty<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"spawns", Components[number] | Command.RequiredDescriptors<S, Components[number]["name"]>>
       /** Allows `insert` (add or replace at the next `applyDeferred()`) of these; see `Command.inserts`. */
-      inserts: <const Components extends ReadonlyArray<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"inserts", Components[number]>
+      inserts: <const Components extends NonEmpty<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"inserts", Components[number]>
       /** Allows `remove` of these. */
-      removes: <const Components extends ReadonlyArray<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"removes", Components[number]>
+      removes: <const Components extends NonEmpty<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"removes", Components[number]>
       /** Allows `despawn` of entities a query proves have one of these; see `Command.despawns`. */
-      despawns: <const Components extends ReadonlyArray<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"despawns", Components[number]>
+      despawns: <const Components extends NonEmpty<ComponentDescriptor<S>>>(...components: Components) => Command.Permission<"despawns", Components[number]>
       /** Allows `despawnScope` of this scope. */
       despawnsScope: <const Scope extends EntityScope.EntityScope<string, Root>>(scope: Scope) => Command.Permission<"despawnsScope", Scope>
       /**
        * Allows `relate`, `unrelate`, and `reorderChildren` of these relations,
        * and spawning drafts that stage them with `Game.Command.relate(...)`.
        */
-      relates: <const Relations extends ReadonlyArray<RelationDescriptor<S>>>(...relations: Relations) => Command.Permission<"relates", Relations[number]>
+      relates: <const Relations extends NonEmpty<RelationDescriptor<S>>>(...relations: Relations) => Command.Permission<"relates", Relations[number]>
     }
     readonly Schedule: {
       /**

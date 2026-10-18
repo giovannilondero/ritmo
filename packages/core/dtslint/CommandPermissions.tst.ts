@@ -190,6 +190,17 @@ describe("declared commands", () => {
     })
   })
 
+  it("needs at least one component or relation in a permission", () => {
+    // @ts-expect-error Expected at least 1 arguments, but got 0
+    Game.System.spawns()
+    // @ts-expect-error Expected at least 1 arguments, but got 0
+    Game.System.inserts()
+    // @ts-expect-error Expected at least 1 arguments, but got 0
+    Game.System.relates()
+    const Parts = [Position, Noise] as const
+    expect(Game.System.removes(...Parts)).type.toBe<Command.Permission<"removes", typeof Position | typeof Noise>>()
+  })
+
   it("accepts only the game's own components in permissions", () => {
     const Foreign = Descriptor.Component<number>()("Perms/Foreign")
     expect(Game.System.spawns).type.not.toBeCallableWith(Foreign)
