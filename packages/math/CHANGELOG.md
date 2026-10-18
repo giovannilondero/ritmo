@@ -1,5 +1,63 @@
 # @typeonce/ritmo-math
 
+## 0.9.0
+
+### Minor Changes
+
+- 003b902: **`Ops` covers every `Math` function engines approximate.** New: `Ops.expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `sinh`, `cosh`, `asinh`, `acosh`, and `atanh`, each a pure-JavaScript fdlibm port that returns the same bits on every engine and CPU (checked on V8 for macOS arm64, Linux x64, and Linux arm64, and on JavaScriptCore), within 1 ulp of the exact value. Simulation code no longer needs any `Math` function except the exact ones (`sqrt`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`).
+- 6cd9771: **`Ops`: math that returns the same bits on every engine.**
+
+  JavaScript engines may approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `tanh`, `pow`, `hypot`, and `a ** b`, and they do: V8 on macOS arm64 and on Linux x64, and JavaScriptCore (Safari, every iOS browser), return different last bits, and a simulation grows that bit into a different run. `Ops` from `@typeonce/ritmo-math` has the same functions as pure-JavaScript ports of fdlibm (musl libm), built only from operations every engine rounds exactly, so a run replays bit for bit on any device. Each is within 1 ulp of the exact value (`tanh` within 2, like the native one); `Ops.hypot` takes exactly two numbers and never overflows.
+
+  ```ts
+  import { Ops } from "@typeonce/ritmo-math";
+
+  const heading = Ops.atan2(dy, dx);
+  const step = { x: Ops.cos(heading) * speed, y: Ops.sin(heading) * speed };
+  ```
+
+  Use `Ops` in simulation code instead of those `Math` functions; `Math.abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `sqrt`, `+ - * /`, and `x ** 2` are already exact everywhere.
+
+  `Vec2.rotate`, `length`, `distance`, `normalizeOr`, `moveToward`, `clampLength`, `Collide2` corner normals, and `FlowField.way` now use `Ops`. Their results can differ from the previous version in the last bit, so a replay recorded on an earlier version may diverge. `Touch` (browser) measures stick and aim offsets with `Math.sqrt(x * x + y * y)` instead of `Math.hypot`, for the same reason.
+
+- 886ba39: **Support package fixes from a second review.**
+
+  - **Random state in a resource.** `Random` is now a validator for its own state (`Descriptor.ConstructedResource(Random)("Game/Rng")`, saved and checked like any constructed resource), `Random.seed(n)` is its starting value, and `Random.draw(resources.rng)` gives a generator over the system's write cell that writes every draw back, so a system no longer stores the state by hand and a failed run rolls its draws back. `Random.make(state)` stays for state kept outside the world.
+  - **Preconditions are checked.** `Random.integer` throws unless both bounds are whole with `min < maxExclusive` (it drew outside both bounds), and `Random.range` throws when `min > max` or a bound is not finite (equal bounds still return `min`). `SpatialGrid.insert` / `forEachIn` throw on non-finite numbers (an infinite box never returned), and a box covering more cells than are occupied scans the occupied cells. `Random.weighted` calls `weight` once per item.
+  - **Input edges.** `Touch`: a `pointerdown` for a pointer id still held (its up was lost) cancels what that id held first, instead of leaving a button held until blur. `Keyboard.scripted`: pressing an action that is already held is not a new press, as with a live keyboard.
+
+### Patch Changes
+
+- 9cca78b: **One shape for `Runtime.make`, and runtime guards from a review of 0.8.0.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+
+  - **Breaking: `Runtime.make` always returns a `Result`.** It returned the bare runtime or a `Result` depending on the resource values present at runtime, while its type decided from the keys of the provided type, so resources typed `{ Score?: ... }` produced a bare runtime the type called a `Result`. The type is now `Success<Runtime>` when nothing provided can fail (read `.value`), and a `Result` to check when a constructed resource may be provided.
+  - **`thisTick` checks a writer that shares its reader's display name.** Systems may share a display name; the static check skipped any writer named like the reader. It now tells the reader apart by its system type.
+  - **New lint `next-state-replaced`** (warning, debug runtimes): a next state one system queued and another replaced with a different value before the same `applyStateTransitions(...)`, naming both. Observed lints (this one and `requirement-violated`) no longer need `nameSchedules` to appear. `Debug.NextStateReplacement` describes an entry.
+  - **A query match used after its run throws a named error.** Reading through a match kept past its run (in `local`) returned the internal absent marker once the entity was despawned, and writing put a removed component back without the insert path.
+  - **A query descriptor that behaves unlike the registered one throws**: a look-alike (same kind and name) that adds or drops entity-state transitions, a constructor, immutability, or transience. Look-alikes that behave the same keep working.
+  - `Scalar.Finite` and the `Vector2` / `Scalar` arithmetic helpers document that results keep the brand without re-validating, finite while they stay within `±Number.MAX_VALUE`.
+
+- d47a4f9: **Runtime fixes from a review of 0.8.0.** No API changes; each fix restores what the docs already promised.
+
+  - **Sub-states enter with their parent.** A sub-state now gets its entry value at the parent's commit, before any `onEnter` schedule runs. A failing `onEnter` of the parent no longer leaves it without a value (`inState` false and `set` failing with `SubStateInactive` until the parent came back), and its `despawnOnEnter` scopes no longer despawn what the parent's `onEnter` just spawned. The `onEnter` schedules still run parents first.
+  - **A queued transition survives a transition schedule setting the same machine.** A value queued before `applyStateTransitions(...)` is committed there even when an `onEnter` / `onExit` of an earlier machine also calls `set` on it; that newer value waits for the next marker.
+  - **`snapshot` and `restore` throw while a schedule is running**, like `send`. A restore from a system let its queued spawns overwrite restored entities, and a snapshot captured writes a failing system then rolled back. `tryTick` now sets the same guard, so `send` inside `tryTick` throws too.
+  - **`restore` rejects an unknown scope name** with the new `UnknownScope` error, instead of putting entities in a scope nothing can name.
+  - **`describe()` counts reads inside `Query.anyOf`**, so `component-never-read` no longer fires for a component read only through `anyOf`, and `read-before-write` sees it. A system placed directly and under `Schedule.when` / `pauseWhen` is one entry with both placements and the conditions of each.
+  - **`Collide2` stops a circle that starts exactly touching a wall** and moves into it, instead of moving it through the wall: `sweepCircleBox` / `sweepCircleBoxes` now report a hit at time 0, and `moveCircle` blocks. This happens whenever a game places a body exactly at a wall without a skin (a snapped spawn point, or a projectile set to a sweep's contact point). Moving away from the wall or sliding along it is unchanged. A game that fingerprints its simulation will see fights that touched a wall this way play differently: re-record the fingerprints with the upgrade.
+  - **Replays carry input into their window.** A replay saved after unchanged input (holding a direction longer than `keep`) had no input on its first ticks and handed systems `undefined` when played.
+  - **`Session.run` stops with `invariant-threw`** when an invariant throws, naming the invariant and the error, instead of throwing out of `run` and losing the run's text.
+  - The `Snapshot` docs now say that unread `runtime.send` events survive a restore, as they always did.
+
+- Updated dependencies [c2c32e0]
+- Updated dependencies [9cca78b]
+- Updated dependencies [6c09482]
+- Updated dependencies [ecfd0f1]
+- Updated dependencies [d47a4f9]
+- Updated dependencies [330246e]
+- Updated dependencies [7f2b2dd]
+  - @typeonce/ritmo@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes
