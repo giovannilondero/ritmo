@@ -25,6 +25,8 @@
  *                                     compare against the committed baseline
  *
  * Flags: --filter <text> limits runtime cases, --json <path> writes raw results.
+ * --warn-types reports type metric regressions as warnings without failing the run.
+ * Type benchmark compilation errors still fail, as do runtime regressions.
  */
 import { execFileSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -93,6 +95,7 @@ const flagValue = (flag: string): string | undefined => {
 const filter = flagValue("--filter")
 const jsonPath = flagValue("--json")
 const comparePath = flagValue("--compare")
+const warnTypes = args.includes("--warn-types")
 const mode = args.includes("--check") || comparePath !== undefined
   ? "check"
   : args.includes("--update") ? "update" : "run"
@@ -262,7 +265,9 @@ const main = (): void => {
     console.log(`${name.padEnd(16)} ${String(value).padStart(10)}  baseline ${base ?? "-"}  ${base ? formatDelta(value, base) : ""}`)
     if (mode === "check" && base !== undefined && baseline?.types.typescript === tsVersion) {
       if (value > base * (1 + baseline.types.tolerance)) {
-        failures.push(`types ${name}: ${value} exceeds baseline ${base} by ${formatDelta(value, base)}`)
+        const message = `types ${name}: ${value} exceeds baseline ${base} by ${formatDelta(value, base)}`
+        if (warnTypes) console.warn(`::warning::${message}`)
+        else failures.push(message)
       }
     }
   }
@@ -308,7 +313,7 @@ const main = (): void => {
       console.error(`\nPerformance regressions:\n${failures.map((failure) => `  - ${failure}`).join("\n")}`)
       process.exit(1)
     }
-    console.log("\nNo performance regressions against the baseline.")
+    console.log("\nNo blocking performance regressions.")
   }
 }
 
