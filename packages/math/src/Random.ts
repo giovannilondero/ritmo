@@ -47,9 +47,9 @@ export interface Random {
   readonly state: number
   /** Uniform in [0, 1). */
   next(): number
-  /** Uniform in [min, max). */
+  /** Uniform in [min, max), or `min` when they are equal. Throws when `min > max` or a bound is not finite. */
   range(min: number, max: number): number
-  /** A uniform integer in [min, maxExclusive); both bounds are integers with min < maxExclusive. */
+  /** A uniform integer in [min, maxExclusive). Throws unless both bounds are integers with min < maxExclusive. */
   integer(min: number, maxExclusive: number): number
   /** A uniform element of `items`, or `undefined` when it is empty (no draw is made then). */
   pick<A>(items: ReadonlyArray<A>): A | undefined
@@ -59,7 +59,7 @@ export interface Random {
    * An element of `items` chosen with probability proportional to `weight`,
    * or `undefined` when no element has a positive finite weight (no draw is
    * made then). Elements with zero, negative, or non-finite weight are never
-   * chosen.
+   * chosen. `weight` is called once per element.
    */
   weighted<A>(items: ReadonlyArray<A>, weight: (item: A) => number): A | undefined
 }
@@ -82,10 +82,16 @@ class Mulberry32 implements Random {
   }
 
   range(min: number, max: number): number {
+    if (!(Number.isFinite(min) && Number.isFinite(max) && min <= max)) {
+      throw new Error(`Random.range needs finite bounds with min <= max, got [${min}, ${max})`)
+    }
     return min + (max - min) * this.next()
   }
 
   integer(min: number, maxExclusive: number): number {
+    if (!(Number.isSafeInteger(min) && Number.isSafeInteger(maxExclusive) && min < maxExclusive)) {
+      throw new Error(`Random.integer needs whole bounds with min below maxExclusive, got [${min}, ${maxExclusive})`)
+    }
     return min + Math.floor(this.next() * (maxExclusive - min))
   }
 
@@ -105,20 +111,21 @@ class Mulberry32 implements Random {
   }
 
   weighted<A>(items: ReadonlyArray<A>, weight: (item: A) => number): A | undefined {
+    // `weight` is called once per item: it may be costly or not pure.
+    const weights = items.map(weight)
     let total = 0
-    for (const item of items) {
-      const value = weight(item)
+    for (const value of weights) {
       if (usable(value)) total += value
     }
     if (!usable(total)) return undefined
     let roll = this.next() * total
     let last: A | undefined
-    for (const item of items) {
-      const value = weight(item)
+    for (let index = 0; index < items.length; index++) {
+      const value = weights[index]!
       if (!usable(value)) continue
-      last = item
+      last = items[index]
       roll -= value
-      if (roll < 0) return item
+      if (roll < 0) return items[index]
     }
     // Rounding can leave a sliver of the roll past the last bucket.
     return last

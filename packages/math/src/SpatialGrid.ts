@@ -45,16 +45,34 @@ export interface SpatialGrid {
   readonly cellSize: Scalar.Positive
   /** Removes every circle, keeping the storage for the next rebuild. */
   clear(): void
-  /** Adds circle `index` (a non-negative integer) covering `[x ± r] × [y ± r]`. */
+  /**
+   * Adds circle `index` (a non-negative integer) covering `[x ± r] × [y ± r]`.
+   * A non-finite coordinate or radius throws: it would cover no cell or all of them.
+   */
   insert(index: number, x: number, y: number, r: number): void
   /**
    * Calls `visit` once for every circle whose cells overlap the box, in no
-   * particular order. `visit` must not insert into or query this grid.
+   * particular order. `visit` must not insert into or query this grid. A
+   * non-finite bound throws (an unbounded box would never finish); a box
+   * covering more cells than are occupied scans the occupied cells instead.
    */
   forEachIn(minX: number, minY: number, maxX: number, maxY: number, visit: (index: number) => void): void
 }
 
 const key = (cx: number, cy: number): number => ((cx + 32768) << 16) | ((cy + 32768) & 0xffff)
+
+// Keys repeat every 65,536 cells, so a longer span visits nothing new.
+const AXIS_CELLS = 65_536
+const lastCell = (first: number, last: number): number => Math.min(last, first + AXIS_CELLS - 1)
+/** Whether a cell coordinate packed in a key falls in `[first, last]`, counting the keys' wrap-around. */
+const coveredBy = (coordinate: number, first: number, last: number): boolean =>
+  (((coordinate - first) % AXIS_CELLS) + AXIS_CELLS) % AXIS_CELLS <= last - first
+
+const requireFinite = (operation: string, values: ReadonlyArray<number>): void => {
+  for (const value of values) {
+    if (!Number.isFinite(value)) throw new Error(`SpatialGrid.${operation} needs finite numbers, got ${value}`)
+  }
+}
 
 class Grid implements SpatialGrid {
   readonly cellSize: Scalar.Positive
@@ -74,11 +92,12 @@ class Grid implements SpatialGrid {
   }
 
   insert(index: number, x: number, y: number, r: number): void {
+    requireFinite("insert", [x, y, r])
     const size = this.cellSize
     const minX = Math.floor((x - r) / size)
-    const maxX = Math.floor((x + r) / size)
+    const maxX = lastCell(minX, Math.floor((x + r) / size))
     const minY = Math.floor((y - r) / size)
-    const maxY = Math.floor((y + r) / size)
+    const maxY = lastCell(minY, Math.floor((y + r) / size))
     for (let cx = minX; cx <= maxX; cx++) {
       for (let cy = minY; cy <= maxY; cy++) {
         const cellKey = key(cx, cy)
@@ -99,6 +118,7 @@ class Grid implements SpatialGrid {
   }
 
   forEachIn(minX: number, minY: number, maxX: number, maxY: number, visit: (index: number) => void): void {
+    requireFinite("forEachIn", [minX, minY, maxX, maxY])
     const size = this.cellSize
     // Start the marks over before the counter leaves the stamps' range (after
     // about two billion queries), so old marks never match a new query.
@@ -110,9 +130,23 @@ class Grid implements SpatialGrid {
     const query = this.query
     const stamp = this.stamp
     const x0 = Math.floor(minX / size)
-    const x1 = Math.floor(maxX / size)
+    const x1 = lastCell(x0, Math.floor(maxX / size))
     const y0 = Math.floor(minY / size)
-    const y1 = Math.floor(maxY / size)
+    const y1 = lastCell(y0, Math.floor(maxY / size))
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > this.cells.size) {
+      // A box larger than the occupied area: scan the cells that exist.
+      for (const [cellKey, cell] of this.cells) {
+        if (cell.length === 0) continue
+        if (!coveredBy(((cellKey >> 16) & 0xffff) - 32768, x0, x1) || !coveredBy((cellKey & 0xffff) - 32768, y0, y1)) continue
+        for (let offset = 0; offset < cell.length; offset++) {
+          const index = cell[offset]!
+          if (stamp[index] === query) continue
+          stamp[index] = query
+          visit(index)
+        }
+      }
+      return
+    }
     for (let cx = x0; cx <= x1; cx++) {
       for (let cy = y0; cy <= y1; cy++) {
         const cell = this.cells.get(key(cx, cy))
