@@ -121,7 +121,7 @@ Set up Ritmo in this project by following
 https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
 ```
 
-[That file](./packages/core/SETUP.md) installs the packages and checks every
+[`SETUP.md`](./packages/core/SETUP.md) installs the packages and checks every
 Ritmo game uses and links the [Ritmo skill](./packages/core/skills/ritmo/SKILL.md)
 into the agent's skills folder. From then on, the agent follows the skill on
 every change: where the docs are and how to structure the game.
@@ -130,7 +130,7 @@ every change: where the docs are and how to structure the game.
 
 - [Inkline Town](https://github.com/SandroMaglione/inkline-town): a town
   simulation in isometric line art, rendered with Three.js.
-- [Spirit Call](https://github.com/SandroMaglione/top-down-team-shooter): a
+- [Spirit Call](https://github.com/SandroMaglione/spirit-call): a
   top-down action game for the phone, with teams of elemental spirits.
 
 ## Guarantees
