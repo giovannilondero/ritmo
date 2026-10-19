@@ -1,32 +1,11 @@
 ---
 name: ritmo
-description: "Apply when setting up @typeonce/ritmo in a project, or building or changing a game on it: gameplay, content, readouts, UI, saves, host integration, splitting modules, or upgrading Ritmo. Setup, where the Ritmo docs are, and principles for where code and state belong so changes stay local and mistakes fail early."
+description: "Apply on every change to a game built on @typeonce/ritmo: gameplay, content, readouts, UI, saves, host integration, splitting modules, or upgrading Ritmo. Where the Ritmo docs are, and principles for where code and state belong so changes stay local and mistakes fail early."
 ---
 
 # Ritmo games
 
 Follow the game's existing structure and conventions. These principles decide where something belongs; the game decides its folders, UI framework, renderer, timing, and design.
-
-## Setup
-
-Do this once per project, and again for any step a project is missing. Use the project's package manager.
-
-1. Install the runtime and the checks every Ritmo game uses:
-   ```sh
-   pnpm add @typeonce/ritmo @typeonce/ritmo-math
-   pnpm add -D @typeonce/ritmo-devtools @typeonce/oxlint-plugin-ritmo oxlint
-   ```
-2. Link this skill from the installed package into the folder your agent reads skills from (`.agents/skills`, `.claude/skills`, ...), so it updates with every Ritmo upgrade:
-   ```sh
-   mkdir -p .agents/skills
-   ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo .agents/skills/ritmo
-   ```
-3. Set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
-
-Add-ons, installed only when the game needs them:
-- `@typeonce/ritmo-browser`: a browser host (animation-frame loop, keyboard, pointer, touch).
-- `@typeonce/ritmo-render`: mirrors entities into any renderer's nodes.
-- `@typeonce/ritmo-pixi`: the Pixi adapter for `@typeonce/ritmo-render`.
 
 ## Where the docs are
 
@@ -61,7 +40,7 @@ Add-ons, installed only when the game needs them:
 **Make the next mistake fail loudly.**
 - When a rule can be a type, a lint, or a headless test, encode it there instead of in a comment.
 - Verify a gameplay change with a headless run that asserts the observable outcome. Reproduce a bug headless before fixing it, then keep the reproduction as a test.
-- Keep `oxlint` and `ritmo-devtools lint <entry>` in the game's check.
+- Keep the type check, `oxlint`, `ritmo-devtools lint <entry>`, and the tests in the game's check. If any is missing, add it as `node_modules/@typeonce/ritmo/SETUP.md` describes.
 - Test the simulation with `Determinism.check` from `@typeonce/ritmo-devtools`: it runs it twice and names the first value that differs, which catches hidden inputs and module state.
 
 ## Self-check

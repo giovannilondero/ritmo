@@ -18,7 +18,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Position } }))
 
 Modules are also importable by path, for example `@typeonce/ritmo/Result`.
 
-Agents: setup, where the docs are, and how to structure a game are in the skill at `skills/ritmo/SKILL.md`. Follow its Setup section in a new project.
+Agents: set up a project with `SETUP.md`, then follow the skill at `skills/ritmo/SKILL.md` on every change.
 
 Related packages, released together with the same version:
 

@@ -52,8 +52,10 @@ for (const directory of packages) {
   if (listing.some((file) => file.includes("/test/") || file.includes("tsbuildinfo"))) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
   }
-  if (directory === "core" && !listing.includes("package/skills/ritmo/SKILL.md")) {
-    throw new Error(`${manifest.name} tarball is missing the agent skill package/skills/ritmo/SKILL.md`)
+  if (directory === "core") {
+    for (const required of ["package/skills/ritmo/SKILL.md", "package/SETUP.md"]) {
+      if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
+    }
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
     throw new Error("Pixi tarball contains removed compatibility modules")

@@ -118,13 +118,13 @@ you want:
 
 ```text
 Set up Ritmo in this project by following
-https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/skills/ritmo/SKILL.md
+https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
 ```
 
-That file is the [Ritmo skill](./packages/core/skills/ritmo/SKILL.md). It
-installs the packages and checks every Ritmo game uses, links itself into the
-agent's skills folder so it updates with Ritmo, and tells the agent where the
-docs are and how to structure the game.
+[That file](./packages/core/SETUP.md) installs the packages and checks every
+Ritmo game uses and links the [Ritmo skill](./packages/core/skills/ritmo/SKILL.md)
+into the agent's skills folder. From then on, the agent follows the skill on
+every change: where the docs are and how to structure the game.
 
 ## Guarantees
 
