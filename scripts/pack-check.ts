@@ -46,11 +46,14 @@ for (const directory of packages) {
   if (created === undefined) throw new Error(`pnpm pack produced no tarball for ${manifest.name}`)
   tarballByName.set(manifest.name, path.join(tarballs, created))
   const listing = run("tar", ["-tzf", path.join(tarballs, created)], work).split("\n")
-  for (const required of ["package/LICENSE", "package/README.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]) {
+  for (const required of ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]) {
     if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
   }
   if (listing.some((file) => file.includes("/test/") || file.includes("tsbuildinfo"))) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
+  }
+  if (directory === "core" && !listing.includes("package/skills/ritmo/SKILL.md")) {
+    throw new Error(`${manifest.name} tarball is missing the agent skill package/skills/ritmo/SKILL.md`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
     throw new Error("Pixi tarball contains removed compatibility modules")

@@ -1,7 +1,5 @@
 # `@typeonce/ritmo-devtools`
 
-Migrating from bevy-ts? See the [package migration guide](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md).
-
 `Determinism.check` compares the same scripted simulation twice, including
 transient components that snapshots omit:
 
@@ -44,12 +42,13 @@ if (runtime.debug !== undefined) Monitor.attach({ debug: runtime.debug }, { sche
 
 ## The debugging loop
 
-1. **Get a headless runtime.** Build the game's simulation schedules on a
-   runtime that needs no renderer, with `debug: { hostClock: HostClock.test() }`
-   and scripted input. The
-   top-down example's [`simulation.ts`](../../examples/top-down/simulation.ts)
-   is the reference; its [`debug.ts`](../../examples/top-down/debug.ts) is a
-   script to copy.
+1. **Get a headless runtime.** Keep the game's simulation (schema, systems,
+   and the schedules ticked at the fixed step) in modules that import no
+   renderer or page API. Build those schedules on a runtime made with
+   `debug: { hostClock: HostClock.test() }`, and feed input from
+   `Keyboard.scripted(bindings, timeline)` (from `@typeonce/ritmo-browser`)
+   instead of the page. Put that in a script that makes the runtime, the
+   `Session`, and the run (see the cheat sheet below), and run it with Node.
 2. **Read the lints, then orient.** `session.describe()` starts with lints
    (events nobody reads, next states no marker applies, relations whose
    failures nobody reads, ...); a warning there is often the whole answer. Then it lists every schedule step, each
@@ -75,7 +74,7 @@ if (runtime.debug !== undefined) Monitor.attach({ debug: runtime.debug }, { sche
    to the game so the bug stays fixed.
 
 ```sh
-node --import tsx examples/top-down/debug.ts
+node --import tsx debug.ts
 ```
 
 ## Cheat sheet
@@ -205,6 +204,31 @@ data without DOM, for a custom UI.
 | `population-growing` | A component's count rose through every quarter of a run of 60+ frames: its lowest count in each quarter was higher than in the quarter before. Bursts that are cleaned up do not trigger it; entities that are never despawned do. `run()` returns the counts in `growing`. |
 
 The report also starts with the static lints from `describe()`.
+
+## Lint from the command line
+
+`ritmo-devtools lint <entry>` is the pass/fail check for a game's `check`
+script. `<entry>` exports `lintTarget` (see the `Lint` module): it prints
+every lint of the schedules with its fix and exits with 1 on a warning.
+
+```sh
+ritmo-devtools lint src/simulation.ts
+```
+
+It also checks that the oxlint simulation rules from
+`@typeonce/oxlint-plugin-ritmo` cover the simulation. Every module that
+importing `<entry>` loads, inside the directory of the `.oxlintrc.json` in the
+working directory and outside `node_modules`, must have
+`ritmo/keep-simulation-headless` on there (overrides apply in order, the last
+match wins; `ignorePatterns` matches are uncovered). Modules imported inside
+`lintTarget` or later (render schedules passed to `describe`) are host code
+and are not checked, nor are type-only imports. A missing config, one with
+`extends`, or one that never turns the rule on prints why the check was
+skipped and does not fail. The check needs Node 22.15 or later.
+
+| Code | Meaning |
+|---|---|
+| `uncovered-simulation-module` | The simulation loads this file, but no simulation override in `.oxlintrc.json` covers it, so oxlint never checks it for platform, time, randomness, or math calls. Add it to the override's `files`, or stop importing values from it. Exits with 1. |
 
 The trace shows what systems wrote, not what they read. When a system writes
 a wrong value from correct inputs, the journal narrows the bug to that

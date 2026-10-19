@@ -1,7 +1,5 @@
 # `@typeonce/ritmo`
 
-Migrating from bevy-ts? See the [package migration guide](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md).
-
 The agent-first type safe ECS runtime
 
 Closed schemas, declared system access, explicit schedule boundaries, typed
@@ -19,6 +17,8 @@ const Game = Schema.bind(Schema.fragment({ components: { Position } }))
 ```
 
 Modules are also importable by path, for example `@typeonce/ritmo/Result`.
+
+The API reference is the JSDoc in `src/`: each module's header says what it is for and which neighbouring API to use instead. Upgrade notes are in `CHANGELOG.md`; breaking entries name the fix. The agent skill for building games ships in `skills/ritmo/SKILL.md`; link it into the game with `ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo .claude/skills/ritmo` (Codex: `.agents/skills/`).
 
 Related packages, released together with the same version:
 

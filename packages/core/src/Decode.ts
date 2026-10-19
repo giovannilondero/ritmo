@@ -6,10 +6,10 @@
  * shapes of game state so most descriptors need no hand-written validation:
  *
  * ```ts
- * const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number, y: Decode.number }))("Position")
- * const Health = Descriptor.ConstructedComponent(Decode.integer)("Health")
- * const Target = Descriptor.ConstructedComponent(Decode.struct({ enemy: Decode.handle(Root, Health) }))("Target")
- * const Player = Descriptor.Tag("Player")
+ * const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number, y: Decode.number }))("Game/Position")
+ * const Health = Descriptor.ConstructedComponent(Decode.integer)("Game/Health")
+ * const Target = Descriptor.ConstructedComponent(Decode.struct({ enemy: Decode.handle(Root, Health) }))("Game/Target")
+ * const Player = Descriptor.Tag("Game/Player")
  * ```
  *
  * Each validator is a `Codec`: `result` checks already-typed input (used by
@@ -107,7 +107,7 @@ export const boolean: Codec<boolean> = primitive("boolean", (raw): raw is boolea
  *
  * @example
  * ```ts
- * const Team = Descriptor.ConstructedComponent(Decode.literal("red", "blue"))("Team")
+ * const Team = Descriptor.ConstructedComponent(Decode.literal("red", "blue"))("Game/Team")
  * ```
  */
 export const literal = <const Values extends readonly [string | number | boolean | null, ...Array<string | number | boolean | null>]>(
@@ -155,7 +155,7 @@ export const array = <T>(item: Codec<T>): Codec<ReadonlyArray<T>> => {
  *
  * @example
  * ```ts
- * const Velocity = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number, y: Decode.number }))("Velocity")
+ * const Velocity = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number, y: Decode.number }))("Game/Velocity")
  * ```
  */
 export const struct = <const Fields extends Readonly<Record<string, Codec<any>>>>(

@@ -21,6 +21,12 @@
  * transition events, and relation failures are kept until every system that
  * reads them has run, so schedules may be ticked at different rates.
  *
+ * A system skipped by its run conditions (`when`) discards the events,
+ * transition events, and relation failures published meanwhile, but keeps
+ * its change-detection position: when it runs again, `added`/`changed`
+ * filters and removed/despawned reads still show everything since its
+ * previous completed run. Use `pauseWhen` to keep the messages too.
+ *
  * @module Schedule
  * @docGroup runtime
  */

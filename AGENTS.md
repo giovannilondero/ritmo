@@ -19,11 +19,21 @@
 - Packages never draw. Drawing, particles, and effects stay in games.
 - Bridge code that hands a renderer or the platform what it needs (nodes, positions, input, timing) and glue that would otherwise repeat in every game belong in the support packages.
 - Hand the game the data it needs to draw (like `Touch`'s `view()`), never the drawing itself.
+- A package earns its place when the host platform or an integration boundary defines what it owns, the repeated logic is infrastructure (not gameplay), and games vary it through typed inputs, descriptors, and callbacks without casts or explicit generics. Feature bundles (a platformer HUD, a browser runtime that wires input, rendering, and state together) stay in games.
+- A plugin is a function `(Game, options) => System | Schedule` that returns ordinary systems the game places in its own schedules, like `RenderSync.system(Game, ...)` and `InputCapture.system(Game, ...)`. No plugin objects, registries, or composition steps; a plugin's descriptors are declared by the game or exported as a `Schema.fragment(...)`.
+- Generic contracts have generic names (`NodeRegistry`); adapters put the implementation in the name (`PixiNodeRegistry`) and export only themselves. The host provides an adapter with `Game.Runtime.service`; systems declare the generic service.
 - Core and generic package modules never call a platform API (`performance`, `window`, `document`, timers, file system, network). A platform detail is a generic contract in the owning package with platform implementations injected (like `NodeRegistry` / `PixiNodeRegistry`, `HostClock` / `BrowserHostClock`, `FixedLoop.TickSource` / `BrowserTickSource`). A default may use only what JavaScript itself guarantees in every engine. The compiler enforces this: package configs get only the ES2022 library, so a DOM or Node global does not compile; a host package that needs DOM types lists `"DOM"` in its own `lib`, as `packages/devtools` does for `Monitor`.
 - Simulation code reads time from `Clock` and randomness from `Random`; host time (`HostClock`) is for hosts, tools, and debug timing, never for systems.
 - Engines may approximate `Math.sin`, `cos`, `atan2`, `exp`, `log`, `pow`, `hypot`, the other transcendental functions, and `a ** b`, and they differ across browsers and CPUs. Package code and simulation code use `Ops` from `@typeonce/ritmo-math` instead (or `Math.sqrt(x * x + y * y)`).
 - `pnpm lint` runs the repo's own oxlint plugin (`packages/oxlint-plugin`) over package sources, examples, and scripts (see `.oxlintrc.json`); the simulation rules cover every package source and the examples' simulation files. A rule that should not apply takes `// oxlint-disable-next-line ritmo/<rule> -- <reason>`.
 - A new pattern that games must follow or avoid, and that types and devtools cannot catch, becomes a rule in `packages/oxlint-plugin`, with tests from real code. Its message says what goes wrong and the exact API to use instead.
+
+## Docs
+- A game's agent sees only what npm ships: each package's `src` JSDoc, `README.md`, `CHANGELOG.md`, and the skill in [`packages/core/skills/ritmo`](./packages/core/skills/ritmo/SKILL.md). Guidance a game needs goes there, never in a repo-only file.
+- The root `README.md` is the only doc for humans. `AGENTS.md`, `ARCHITECTURE.md`, and `RELEASING.md` are for work on this repo.
+- Package READMEs link other packages by their npm URL, never by a relative path or into `examples/`, which do not ship.
+- A changeset for a breaking change carries its fix (a short diff or the exact replacement), so the shipped `CHANGELOG.md` is the upgrade guide.
+- The skill holds only principles that change where code and state go in a game; anything a JSDoc, README, or lint message already says stays out of it.
 
 ## Core Principles
 - Type safety is the first and absolute priority.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { runConcepts, runLookups } from "../../../examples/concepts.ts"
 
-describe("CONCEPTS.md program", () => {
+describe("concepts program", () => {
   it("shares query access and reads entities and machine state explicitly", () => {
     expect(runLookups()).toEqual({ found: true, only: true, position: [{ x: 0, y: 0 }], flow: "Playing" })
   })

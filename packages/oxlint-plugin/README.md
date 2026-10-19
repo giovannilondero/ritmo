@@ -18,7 +18,7 @@ Released together with [`@typeonce/ritmo`](https://www.npmjs.com/package/@typeon
 
 ## Setup
 
-Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation rules go in an `overrides` entry that lists the game's simulation files: the code its fixed-step schedules run, which must replay exactly and run headless. Host, render, UI, tool, and unrelated files are not listed, so they keep using the platform freely.
+Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation rules go in an `overrides` entry that lists the game's simulation files: the code its fixed-step schedules run, which must replay exactly and run headless. Host, render, UI, tool, and unrelated files are not listed, so they keep using the platform freely. A file the override does not list gets no simulation checks, so list folders rather than single files, and run `ritmo-devtools lint` from `@typeonce/ritmo-devtools`: it reports every module the simulation loads that the override misses.
 
 ```jsonc
 {
@@ -100,7 +100,7 @@ Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`. 
 
 ### `ritmo/use-ops-for-math`
 
-The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run. [`Ops`](../math/README.md#determinism-across-devices) from `@typeonce/ritmo-math` has each of them as a port that returns the same bits everywhere.
+The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run. [`Ops`](https://www.npmjs.com/package/@typeonce/ritmo-math#determinism-across-devices) from `@typeonce/ritmo-math` has each of them as a port that returns the same bits everywhere.
 
 ```ts
 const turn = Math.atan2(Math.sin(b - a), Math.cos(b - a))     // reported

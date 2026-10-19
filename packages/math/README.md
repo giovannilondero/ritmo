@@ -1,7 +1,5 @@
 # `@typeonce/ritmo-math`
 
-Migrating from bevy-ts? See the [package migration guide](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md).
-
 Math for ritmo games, in two kinds:
 
 - **Validated values**: `Scalar`, `Vector2`, `Size2`, `Aabb`, and `InputAxis`. Every one exports constructors that validate untrusted input, so they work as `Descriptor.ConstructedComponent(...)` constructors and survive snapshot restore.
@@ -23,7 +21,7 @@ pnpm add @typeonce/ritmo-math @typeonce/ritmo
 
 ## Determinism across devices
 
-JavaScript engines may approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run, so a session recorded on a phone stops replaying on a server. `Ops` has the same functions as pure-JavaScript ports of fdlibm, built only from operations every engine rounds exactly, so they return the same bits everywhere (within an ulp of the exact value). Use them in simulation code; `Math.abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `sqrt`, `+ - * /`, and `x ** 2` are already exact. `Vec2`, `Collide2`, and `FlowField` use `Ops` themselves, and the `ritmo/use-ops-for-math` rule of [`@typeonce/oxlint-plugin-ritmo`](../oxlint-plugin/README.md) reports the `Math` calls left in simulation code.
+JavaScript engines may approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run, so a session recorded on a phone stops replaying on a server. `Ops` has the same functions as pure-JavaScript ports of fdlibm, built only from operations every engine rounds exactly, so they return the same bits everywhere (within an ulp of the exact value). Use them in simulation code; `Math.abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `sqrt`, `+ - * /`, and `x ** 2` are already exact. `Vec2`, `Collide2`, and `FlowField` use `Ops` themselves, and the `ritmo/use-ops-for-math` rule of [`@typeonce/oxlint-plugin-ritmo`](https://www.npmjs.com/package/@typeonce/oxlint-plugin-ritmo) reports the `Math` calls left in simulation code.
 
 ```ts
 import { Ops } from "@typeonce/ritmo-math"

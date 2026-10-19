@@ -320,7 +320,7 @@ export interface InvalidHandle {
  *     const enemy = Entity.decodeHandle(Root, isRecord(raw) ? raw["enemy"] : undefined, Health)
  *     return enemy.ok ? Result.success({ enemy: enemy.value }) : enemy
  *   }
- * })("Target")
+ * })("Game/Target")
  * ```
  */
 export const decodeHandle = <

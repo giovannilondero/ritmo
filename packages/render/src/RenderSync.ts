@@ -26,6 +26,9 @@
  * services declared in `services`. Those resources and services become
  * runtime requirements like the registry itself.
  *
+ * Its spec is erased, so it does not count as a writer for
+ * `Game.System.thisTick(...)` order checks.
+ *
  * @module RenderSync
  * @docGroup render
  *

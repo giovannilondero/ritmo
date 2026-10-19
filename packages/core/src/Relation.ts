@@ -11,8 +11,8 @@
  * @example
  * ```ts
  * // Relations are defined with Descriptor.Hierarchy and Descriptor.Relation.
- * const { relation: ChildOf } = Descriptor.Hierarchy("ChildOf", "Children")
- * const { relation: Targeting } = Descriptor.Relation("Targeting", "TargetedBy")
+ * const { relation: ChildOf } = Descriptor.Hierarchy("Game/ChildOf", "Game/Children")
+ * const { relation: Targeting } = Descriptor.Relation("Game/Targeting", "Game/TargetedBy")
  * ```
  *
  * @module Relation

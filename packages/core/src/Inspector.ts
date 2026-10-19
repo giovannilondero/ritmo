@@ -4,7 +4,13 @@
  * Inspectors declare the same reads as systems, but they cannot request write
  * queries, write resources, commands, events, or queued state transitions.
  * They run on demand through `runtime.inspect(...)` and return a value without
- * advancing schedule visibility.
+ * running a schedule or changing the world.
+ *
+ * Like a system, each inspector reads per-reader streams: `added`/`changed`
+ * filters, `removed`/`despawned` records, and events show what happened since
+ * that inspector's own previous evaluation, once. Events are not held for
+ * inspectors, so one evaluated less often than events are dropped reports
+ * `lagged()` instead.
  *
  * An inspector is the one typed read-only view of the world: tests, saves, UI,
  * `Game.Condition.check(...)` projections, and devtools invariants

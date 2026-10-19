@@ -28,7 +28,7 @@
 
 ### Patch Changes
 
-- 9cca78b: **One shape for `Runtime.make`, and runtime guards from a review of 0.8.0.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 9cca78b: **One shape for `Runtime.make`, and runtime guards from a review of 0.8.0.** See Upgrading under 0.9.0 in the `@typeonce/ritmo` CHANGELOG.md.
 
   - **Breaking: `Runtime.make` always returns a `Result`.** It returned the bare runtime or a `Result` depending on the resource values present at runtime, while its type decided from the keys of the provided type, so resources typed `{ Score?: ... }` produced a bare runtime the type called a `Result`. The type is now `Success<Runtime>` when nothing provided can fail (read `.value`), and a `Result` to check when a constructed resource may be provided.
   - **`thisTick` checks a writer that shares its reader's display name.** Systems may share a display name; the static check skipped any writer named like the reader. It now tells the reader apart by its system type.

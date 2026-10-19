@@ -19,22 +19,27 @@
  * @example
  * ```ts
  * // Build drafts as values so spawn intent stays explicit inside the system.
- * const EnemyWave = Game.System("EnemyWave", {}, ({ commands }) => {
- *   const enemy = Game.Command.spawn(
- *     // Validate raw authored input through the constructed descriptor.
- *     Game.Command.entryRaw(Position, { x: 96, y: 32 }),
- *     // Add already-validated marker or config components directly.
- *     [Enemy, {}],
- *     [Health, 3]
- *   )
+ * const EnemyWave = Game.System(
+ *   "Game/EnemyWave",
+ *   // Declare which components this system may spawn.
+ *   { commands: Game.System.commands(Game.System.spawns(Position, Enemy, Health)) },
+ *   ({ commands }) => {
+ *     const enemy = Game.Command.spawn(
+ *       // Validate raw authored input through the constructed descriptor.
+ *       Game.Command.entryRaw(Position, { x: 96, y: 32 }),
+ *       // Add already-validated marker or config components directly.
+ *       [Enemy, {}],
+ *       [Health, 3]
+ *     )
  *
- *   if (!enemy.ok) {
- *     return
+ *     if (!enemy.ok) {
+ *       return
+ *     }
+ *
+ *     // Queue the world write now. The entity becomes visible later.
+ *     commands.spawn(enemy.value)
  *   }
- *
- *   // Queue the world write now. The entity becomes visible later.
- *   commands.spawn(enemy.value)
- * })
+ * )
  *
  * // Make the deferred mutation boundary part of the schedule itself.
  * const update = Game.Schedule(

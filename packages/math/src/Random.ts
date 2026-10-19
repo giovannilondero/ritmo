@@ -14,7 +14,7 @@
  * const Rng = Descriptor.ConstructedResource(Random)("Game/Rng")
  * const runtime = Game.Runtime.make({ services, resources: { Rng: Random.seed(0x5eed) } })
  *
- * Game.System("Spawn", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
+ * Game.System("Game/Spawn", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
  *   const random = Random.draw(resources.rng)
  *   const angle = random.range(0, Math.PI * 2)
  *   const kind = random.pick(kinds) ?? "grunt"

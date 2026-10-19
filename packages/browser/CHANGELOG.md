@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- 6c09482: **`FixedLoop` moves to core, so any host can drive it.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 6c09482: **`FixedLoop` moves to core, so any host can drive it.** See Upgrading under 0.9.0 in the `@typeonce/ritmo` CHANGELOG.md.
 
   - **`FixedLoop` is now exported from `@typeonce/ritmo`** (`import { FixedLoop } from "@typeonce/ritmo"`). Its API is unchanged. `@typeonce/ritmo-browser` no longer exports it.
   - **`BrowserTickSource.make(window)`** in `@typeonce/ritmo-browser` replaces `FixedLoop.animationFrames(window)`. It is the browser's `TickSource`, named like `BrowserHostClock`. Native shells, desktop runtimes, and renderer tickers wrap their own frames with `FixedLoop.source(...)`.
