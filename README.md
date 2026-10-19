@@ -145,6 +145,4 @@ every change: where the docs are and how to structure the game.
 - Queries visit only entities with their rarest required component and cache
   their matches. CI fails on runtime regressions over 25%.
 
-Ritmo was previously named `bevy-ts`: see the [rename guide](./MIGRATION.md).
-
 <sub>[Brand assets and palette](./brand/README.md)</sub>

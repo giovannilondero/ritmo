@@ -46,5 +46,10 @@
 ## Debugging
 - Reproduce headless first, as the skill's `playbooks/bug-fix.md` describes; `integration/top-down/debug.ts` is a script to copy (`node --import tsx <script>`).
 
-## Design references
-- [`bevy`](./.agents/bevy/) for the ECS problem space, [`effect-smol`](./.agents/effect-smol/) for explicit dependencies and derive-once carried types, [`arktype`](./.agents/arktype/) for TypeScript performance. Ritmo's rule wins: user-facing safety and explicitness first.
+## Design reference: Effect
+Follow [Effect](https://github.com/Effect-TS/effect) for how APIs are shaped, keeping Ritmo's stricter rule (user-facing safety and explicitness first):
+- **Dependencies are in the type.** What a system needs (services, resources, machines) is declared and carried as a requirement; the runtime provides it, and a missing provision does not compile. No globals, singletons, or ambient context.
+- **Failures are in the type.** Expected errors are typed values in the return type (`Result`), named and narrowable; exceptions are only for defects.
+- **Contracts and implementations are separate.** A generic service (`NodeRegistry`, `HostClock`) is implemented per platform (`PixiNodeRegistry`, `BrowserHostClock`) and provided by the host, like Effect's `FileSystem` / `NodeFileSystem`.
+- **Validate at the boundary, then trust the type.** Constructors decode untrusted input once; the carried type is derived once and reused.
+- **Modules are namespaces of small composable functions** (`Clock.hz`, `Random.draw`), each independently type-safe, with inference doing the work and no explicit generics in normal use.
