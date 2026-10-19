@@ -113,47 +113,18 @@ All packages are released together with the same version.
 
 ## Get started with your agent
 
-Paste this into your coding agent in the game's folder:
+Paste this into your coding agent in the game's folder, then describe the game
+you want:
 
 ```text
-Set up @typeonce/ritmo in this project, following the "For agents" section
-of its README (https://github.com/typeonce-dev/ritmo#for-agents).
+Set up Ritmo in this project by following
+https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/skills/ritmo/SKILL.md
 ```
 
-Then describe the game you want.
-
-## For agents
-
-Setting up Ritmo in a game:
-
-1. Install the runtime, the packages the game needs, and the checks:
-
-   ```sh
-   pnpm add @typeonce/ritmo @typeonce/ritmo-math @typeonce/ritmo-browser
-   pnpm add -D @typeonce/ritmo-devtools @typeonce/oxlint-plugin-ritmo oxlint
-   ```
-
-   Add `@typeonce/ritmo-render` to mirror entities into a renderer, and
-   `@typeonce/ritmo-pixi` for Pixi.
-2. Link the skill into the folder you read skills from (`.agents/skills`,
-   `.claude/skills`, ...), and follow it:
-
-   ```sh
-   mkdir -p .agents/skills
-   ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo \
-     .agents/skills/ritmo
-   ```
-
-3. Set up `.oxlintrc.json` from the
-   [oxlint plugin README](./packages/oxlint-plugin/README.md)
-   and a `ritmo-devtools lint` entry from the
-   [devtools README](./packages/devtools/README.md).
-   Run typecheck, `oxlint`, `ritmo-devtools lint`, and the tests in the
-   game's check script.
-
-The API reference is the JSDoc in `node_modules/@typeonce/*/src`: read a
-module's header before using it. Upgrade notes are in each package's
-`CHANGELOG.md`.
+That file is the [Ritmo skill](./packages/core/skills/ritmo/SKILL.md). It
+installs the packages and checks every Ritmo game uses, links itself into the
+agent's skills folder so it updates with Ritmo, and tells the agent where the
+docs are and how to structure the game.
 
 ## Guarantees
 

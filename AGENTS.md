@@ -33,7 +33,7 @@
 - The root `README.md` is the only doc for humans. `AGENTS.md`, `ARCHITECTURE.md`, and `RELEASING.md` are for work on this repo.
 - Package READMEs link other packages' docs by their GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by a relative path or into `examples/`, which do not ship.
 - A changeset for a breaking change carries its fix (a short diff or the exact replacement), so the shipped `CHANGELOG.md` is the upgrade guide.
-- The skill holds only principles that change where code and state go in a game; anything a JSDoc, README, or lint message already says stays out of it.
+- The skill is the single entry for a game's agent: setup (base packages, checks, add-ons), where the docs are, and principles that change where code and state go. Anything a JSDoc, README, or lint message already says stays out of it. The root README's starter prompt links it.
 
 ## Core Principles
 - Type safety is the first and absolute priority.
