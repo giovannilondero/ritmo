@@ -1,5 +1,15 @@
+import tsconfigPaths from "vite-tsconfig-paths"
 import { defineConfig } from "vitest/config"
 
-import shared from "./vitest.shared.ts"
-
-export default defineConfig(shared)
+export default defineConfig({
+  plugins: [tsconfigPaths({ ignoreConfigErrors: true })],
+  test: {
+    include: ["packages/*/test/**/*.test.ts", "integration/*/test/**/*.test.ts"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/coverage/**", "**/dtslint/**"],
+    coverage: {
+      provider: "v8",
+      reportsDirectory: "coverage",
+      exclude: ["node_modules/", "dist/", "coverage/", "dtslint/", "**/*.d.ts", "**/*.config.*"]
+    }
+  }
+})

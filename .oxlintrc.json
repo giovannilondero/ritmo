@@ -37,8 +37,6 @@
     "**/dist/**",
     "**/node_modules/**",
     "coverage/**",
-    ".agents/**",
-    "docs/**",
-    "output/**"
+    ".agents/**"
   ]
 }
