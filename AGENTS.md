@@ -1,112 +1,55 @@
 ## Vision
-- This library is agent-first: coding agents write all code that uses it; a human directs the game and does not read the code.
-- The library is the agent's guardrail. Guarantees come in three layers: (1) compile time, a wrong call does not compile and the error names the fix; (2) runtime inspection via headless devtools sessions (lints, invariants, why/journal); (3) lock-in, every found bug becomes a test.
-- One way to do each thing. Two APIs for one job is a safety bug: an agent will pick both.
-- Names and JSDoc are part of the API: each export says what it is for, when to use it, and which neighbouring API to use instead.
-- The library is early: breaking changes, removals, and renames are welcome. Do NOT keep deprecated aliases or re-exports. Long-term clean API first.
+- Agent-first: coding agents write all code that uses Ritmo; a human directs the game and does not read the code.
+- The library is the agent's guardrail, in three layers: a wrong call does not compile and the error names the fix; headless devtools sessions expose lints, invariants, and why a value changed; every found bug becomes a test.
+- One way to do each thing. Two APIs for one job is a safety bug: an agent will use both.
+- Names and JSDoc are API: each export says what it is for, when to use it, and which neighbouring API to use instead.
+- Early library: break, remove, and rename freely. No deprecated aliases or re-exports.
 
-## Repo Structure
-- [`packages/core`](./packages/core/): strict public ECS/runtime library surface, plus the platform-free fixed-step loop (`FixedLoop`).
-- [`packages/browser`](./packages/browser/): browser host adapters (BrowserTickSource, BrowserHostClock) and keyboard, pointer, and touch input.
-- [`packages/render`](./packages/render/): renderer-agnostic node registry and render-sync systems.
-- [`packages/pixi`](./packages/pixi/): Pixi container adapter (`PixiNodeRegistry.make`) for the render package's registry contract.
-- [`packages/math`](./packages/math/): validated math values (Scalar, Vector2, Size2, Aabb, InputAxis) and hot-path game helpers (Vec2, Box2, Collide2, SpatialGrid, FlowField, Random, Ops).
-- [`packages/devtools`](./packages/devtools/): debug sessions, trace history, and text reports over the core `Debug` handle.
-- [`packages/oxlint-plugin`](./packages/oxlint-plugin/): oxlint rules (`ritmo/*`) for game code: deterministic, headless simulation files and checked runtime results.
-- [`examples`](./examples/): workspace example apps that consume packages by package name.
+## Repo
+- `packages/*`: the published packages (see each `package.json` description). Each has `src`, `test`, `dtslint`, and core, math, and render have `bench`.
+- `integration/*`: headless game simulations with tests, using the packages by name.
+- `.changeset/README.md`: releases and adding a package.
 
-## Package Scope
-- Packages never draw. Drawing, particles, and effects stay in games.
-- Bridge code that hands a renderer or the platform what it needs (nodes, positions, input, timing) and glue that would otherwise repeat in every game belong in the support packages.
-- Hand the game the data it needs to draw (like `Touch`'s `view()`), never the drawing itself.
-- A package earns its place when the host platform or an integration boundary defines what it owns, the repeated logic is infrastructure (not gameplay), and games vary it through typed inputs, descriptors, and callbacks without casts or explicit generics. Feature bundles (a platformer HUD, a browser runtime that wires input, rendering, and state together) stay in games.
-- A plugin is a function `(Game, options) => System | Schedule` that returns ordinary systems the game places in its own schedules, like `RenderSync.system(Game, ...)` and `InputCapture.system(Game, ...)`. No plugin objects, registries, or composition steps; a plugin's descriptors are declared by the game or exported as a `Schema.fragment(...)`.
-- Generic contracts have generic names (`NodeRegistry`); adapters put the implementation in the name (`PixiNodeRegistry`) and export only themselves. The host provides an adapter with `Game.Runtime.service`; systems declare the generic service.
-- Core and generic package modules never call a platform API (`performance`, `window`, `document`, timers, file system, network). A platform detail is a generic contract in the owning package with platform implementations injected (like `NodeRegistry` / `PixiNodeRegistry`, `HostClock` / `BrowserHostClock`, `FixedLoop.TickSource` / `BrowserTickSource`). A default may use only what JavaScript itself guarantees in every engine. The compiler enforces this: package configs get only the ES2022 library, so a DOM or Node global does not compile; a host package that needs DOM types lists `"DOM"` in its own `lib`, as `packages/devtools` does for `Monitor`.
-- Simulation code reads time from `Clock` and randomness from `Random`; host time (`HostClock`) is for hosts, tools, and debug timing, never for systems.
-- Engines may approximate `Math.sin`, `cos`, `atan2`, `exp`, `log`, `pow`, `hypot`, the other transcendental functions, and `a ** b`, and they differ across browsers and CPUs. Package code and simulation code use `Ops` from `@typeonce/ritmo-math` instead (or `Math.sqrt(x * x + y * y)`).
-- `pnpm lint` runs the repo's own oxlint plugin (`packages/oxlint-plugin`) over package sources, examples, and scripts (see `.oxlintrc.json`); the simulation rules cover every package source and the examples' simulation files. A rule that should not apply takes `// oxlint-disable-next-line ritmo/<rule> -- <reason>`.
-- A new pattern that games must follow or avoid, and that types and devtools cannot catch, becomes a rule in `packages/oxlint-plugin`, with tests from real code. Its message says what goes wrong and the exact API to use instead.
+## Verify
+- Every change: `pnpm run check`.
+- Changes to what a package publishes (exports, `package.json`, build config): `pnpm pack:check`.
+- Every change to a published package: a changeset (`pnpm changeset`). A breaking entry carries its fix.
+- Changes to runtime internals or public types: `pnpm bench:check`; record an intended shift with `pnpm bench:update`. For runtime work, compare with your own machine: `pnpm bench --json .bench/before.json`, then `pnpm bench --compare .bench/before.json` (`--filter <text>` for one case). Under about 20% is noise; do not report it. Add a bench case for a new per-frame hot path.
+
+## API rules
+- Type safety comes first. If a runtime failure can be made impossible by types, it must be; when a guarantee depends on runtime state, the type says it can fail.
+- No user-facing casts, no explicit generic arguments for normal use, no splitting schedules or features only to satisfy the compiler.
+- Expected failure is a typed `Result`, not an exception. No broad overloads or ambiguous semantics.
+- Small composable pieces, each type-safe on its own.
+- Validate exact structure at the constructor boundary, derive a normalized carried type once, and reuse it. Optimize internal types only when the public API and its guarantees stay the same.
+- A new system access category gets a runtime provision only if the runtime must validate it (one nominal requirement token); otherwise it stays local to the system spec.
+- Runtime semantics stay explicit: handles are storage-safe, not proof of liveness; lookups that depend on runtime state are fallible; commands and state transitions apply only at `applyDeferred()` / `applyStateTransitions(...)`; reads (changes, events, transitions, relation failures) are per-reader streams that show each system what was published since its own previous run, once.
+
+## Type tests
+- TSTyche in `packages/*/dtslint/*.tst.ts`. Every public API gets an inferred-type test (`expect(...).type.toBe<...>()`) and a failing test per constraint.
+- A failing test names its error: `// @ts-expect-error <fragment>` or `expect(fn).type.not.toBeCallableWith(...)` next to a passing call. Pick fragments that name the cause, not printed unions.
+
+## Package scope
+- Packages never draw. They hand games the data to draw (like `Touch`'s `view()`) and own glue every game would repeat: bridges to renderers and platforms (nodes, positions, input, timing).
+- A package owns an integration boundary, holds infrastructure (not gameplay), and is varied through typed inputs and callbacks. Feature bundles stay in games.
+- A plugin is `(Game, options) => System | Schedule`: no plugin objects, registries, or composition steps.
+- Generic contracts have generic names (`NodeRegistry`); adapters name their implementation (`PixiNodeRegistry`) and export only it. The host provides the adapter as a service.
+- Core and generic modules call no platform API (`performance`, `window`, timers, file system, network): a platform detail is a contract with injected implementations (`HostClock` / `BrowserHostClock`). Package configs get only the ES2022 lib; a host package lists `"DOM"` itself, as devtools does.
+- Package and simulation code read time from `Clock`, randomness from `Random`, and transcendental math from `Ops`; `pnpm lint` enforces this with the repo's own plugin. Disable a rule only with `// oxlint-disable-next-line ritmo/<rule> -- <reason>`.
+- A pattern games must follow that types and devtools cannot catch becomes a rule in `packages/oxlint-plugin`, tested with real code, whose message says what goes wrong and the API to use instead.
 
 ## Docs
-- A game's agent sees only what npm ships: each package's `src` JSDoc, `README.md`, `CHANGELOG.md`, `SETUP.md` in core, and the skill in [`packages/core/skills/ritmo`](./packages/core/skills/ritmo/SKILL.md). Guidance a game needs goes there, never in a repo-only file.
-- The root `README.md` is the only doc for humans. `AGENTS.md`, `ARCHITECTURE.md`, and `RELEASING.md` are for work on this repo.
-- Package READMEs link other packages' docs by their GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by a relative path or into `examples/`, which do not ship.
-- A changeset for a breaking change carries its fix (a short diff or the exact replacement), so the shipped `CHANGELOG.md` is the upgrade guide.
-- [`packages/core/SETUP.md`](./packages/core/SETUP.md) is the one-time setup (base packages, checks, add-ons, linking the skill); the root README's starter prompt links it. The skill is for every change: where the docs are, and principles that change where code and state go. Anything a JSDoc, README, or lint message already says stays out of both.
+- A game's agent sees only what npm ships: `src` JSDoc, each `README.md` and `CHANGELOG.md`, `packages/core/SETUP.md` (one-time setup), and the skill in `packages/core/skills/ritmo` (every change, with playbooks). Guidance a game needs goes there, never in a repo-only file, and says nothing a JSDoc, README, or lint message already says.
+- The root `README.md` is the only doc for humans.
+- Package READMEs link other packages' docs by GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by relative path or into `integration/`.
 
-## Core Principles
-- Type safety is the first and absolute priority.
-- Public APIs must be as strict as possible.
-- If a runtime failure can be made impossible by types, it must be.
-- If a guarantee depends on runtime state, that uncertainty must be explicit in the type surface.
-- Prefer explicit APIs over overloaded, implicit, heuristic, or convenience-first APIs.
-- Build APIs as small composable lego blocks that remain independently type-safe.
+## Debugging
+- Reproduce headless first, as the skill's `playbooks/bug-fix.md` describes; `integration/top-down/debug.ts` is a script to copy (`node --import tsx <script>`).
 
-All changes to be complete MUST BE VERIFIED by running `pnpm run check`.
-Changes to what a package publishes (exports, `package.json`, build config) must also pass `pnpm pack:check`.
-Every change to a published package needs a changeset (`pnpm changeset`); all `@typeonce/ritmo*` packages share one version.
-Changes to runtime internals or public types must also pass `pnpm bench:check`; if a change intentionally moves the numbers, record it with `pnpm bench:update` and commit the new baseline.
-
-## Performance
-- Runtime cases live in `packages/<name>/bench/*.bench.ts` (core, math, render) and use only the public API; add a case when a change creates a new per-frame hot path.
-- The committed baseline (`packages/core/bench/baseline.json`) is the target for type-checker metrics on any machine; its runtime scores only compare on similar hardware.
-- For runtime work, compare against your own machine: run `pnpm bench --json .bench/before.json` before the change, then `pnpm bench --compare .bench/before.json` after it (exits 1 on a regression over the tolerance). Use `--filter <text>` to iterate on one case.
-- Differences under about 20% are within noise; do not report them as wins or losses.
-
-## Type Tests
-- Public types are tested with TSTyche in `packages/*/dtslint/*.tst.ts` (`pnpm test-types`).
-- Every public API gets a test of its inferred type (`expect(...).type.toBe<...>()`) and a failing test for each constraint.
-- A failing test states the error it expects: `// @ts-expect-error <fragment of the message>`, or `expect(fn).type.not.toBeCallableWith(...)` paired with a passing call. `// @ts-expect-error!` (message not checked) is rejected by `pnpm test-types`, because such a test also passes for unrelated errors.
-- Pick fragments that name the cause (the missing requirement, the conflicting name, the wrong value) and avoid printed unions, whose order is not stable.
-
-## Public API Rules
-- Do not require user-facing casts.
-- Do not require explicit generic arguments for normal usage.
-- Do not require users to split schedules, features, or flows into pieces only to satisfy the compiler.
-- Do not hide normal failure behind exceptions.
-- Do not make the wrong call easy through broad overloads or ambiguous semantics.
-
-## Internal Type Rules
-- Validate exact structure at the constructor boundary.
-- Derive normalized carried types once, then reuse them.
-- Relax only internal post-validation precision when that precision is not user-meaningful.
-- Never trade away root safety, requirement safety, or explicit runtime-failure semantics for compiler performance.
-- Internal type optimization is allowed only when the user-facing API stays unchanged and requires no casts or scaffolding.
-
-```ts
-const A = Game.System("A", { queries: { moving: Moving } }, ...)
-const B = Game.System("B", { resources: { score: Game.System.writeResource(Score) } }, ...)
-
-const schedule = Game.Schedule(A, Game.Schedule.applyDeferred(), B)
-
-// Acceptable internal strategy:
-// 1. Validate exact references here.
-// 2. Carry a cheaper normalized schedule type afterward.
-// 3. Keep the same public guarantees.
-```
-
-## Explicit Runtime Semantics
-- Long-lived references are storage-safe handles, not proof of liveness.
-- Lookups and dynamic reads must stay explicit and typed as fallible when they depend on current runtime state.
-- Schedule boundaries stay explicit: deferred commands and state transitions are applied only by explicit schedule markers (`applyDeferred()`, `applyStateTransitions(...)`).
-- Reads are per-reader streams, not marker-driven: change detection, events, transition events, and relation failures show each system what was published since its own previous run, once. Change detection compares each write's tick with each reader's previous run, so a reader skipped for any number of ticks still sees it; events, transition events, and relation failures are kept until every reading system has run (capped, with `lagged()` reporting loss).
-
-```ts
-const target = lookup.getHandle(handle, query)
-if (!target.ok) {
-  return
-}
-```
-
-## Debugging Game Behavior
-- Reproduce headless before changing code: build the game's simulation schedules on a runtime made with `debug: { hostClock: HostClock.test() }` and scripted input (`Keyboard.scripted`). [`examples/top-down/simulation.ts`](./examples/top-down/simulation.ts) is the reference; copy [`examples/top-down/debug.ts`](./examples/top-down/debug.ts) and run it with `node --import tsx <script>`.
-- Use `@typeonce/ritmo-devtools` sessions: read the lints at the top of `describe()` first, then orient, `run(name, { frames })` with an `Invariant` that encodes the bug, then `why(entity, Component)`, `journal({ frames, entity })`, and `report()` to explain it. See [`packages/devtools/README.md`](./packages/devtools/README.md).
-- Once the script reproduces the bug, turn it into a test next to the game.
-
-## Design References
-- [`bevy`](./.agents/bevy/): ECS concepts, scheduling, states, and relationships. Reference for the problem space, not a mandate to copy engine-owned ergonomics.
-- [`effect-smol`](./.agents/effect-smol/): explicit dependencies, canonical carried types, derive-once/carry-later type architecture.
-- [`arktype`](./.agents/arktype/): TypeScript performance patterns, normalization strategy, merge-over-intersection when valid, and avoidance of reflective type machinery.
-
-Use these references to guide design decisions, but preserve this library's stricter rule: user-facing safety and explicitness come first.
+## Design reference: Effect
+Follow [Effect](https://github.com/Effect-TS/effect) for how APIs are shaped, keeping Ritmo's stricter rule (user-facing safety and explicitness first):
+- **Dependencies are in the type.** What a system needs (services, resources, machines) is declared and carried as a requirement; the runtime provides it, and a missing provision does not compile. No globals, singletons, or ambient context.
+- **Failures are in the type.** Expected errors are typed values in the return type (`Result`), named and narrowable; exceptions are only for defects.
+- **Contracts and implementations are separate.** A generic service (`NodeRegistry`, `HostClock`) is implemented per platform (`PixiNodeRegistry`, `BrowserHostClock`) and provided by the host, like Effect's `FileSystem` / `NodeFileSystem`.
+- **Validate at the boundary, then trust the type.** Constructors decode untrusted input once; the carried type is derived once and reused.
+- **Modules are namespaces of small composable functions** (`Clock.hz`, `Random.draw`), each independently type-safe, with inference doing the work and no explicit generics in normal use.

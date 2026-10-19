@@ -121,10 +121,17 @@ Set up Ritmo in this project by following
 https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
 ```
 
-[That file](./packages/core/SETUP.md) installs the packages and checks every
+[`SETUP.md`](./packages/core/SETUP.md) installs the packages and checks every
 Ritmo game uses and links the [Ritmo skill](./packages/core/skills/ritmo/SKILL.md)
 into the agent's skills folder. From then on, the agent follows the skill on
 every change: where the docs are and how to structure the game.
+
+## Games built with Ritmo
+
+- [Inkline Town](https://github.com/SandroMaglione/inkline-town): a town
+  simulation in isometric line art, rendered with Three.js.
+- [Spirit Call](https://github.com/SandroMaglione/spirit-call): a
+  top-down action game for the phone, with teams of elemental spirits.
 
 ## Guarantees
 
@@ -137,7 +144,5 @@ every change: where the docs are and how to structure the game.
 - A failing system rolls back its writes, and the tick returns the failure.
 - Queries visit only entities with their rarest required component and cache
   their matches. CI fails on runtime regressions over 25%.
-
-Ritmo was previously named `bevy-ts`: see the [rename guide](./MIGRATION.md).
 
 <sub>[Brand assets and palette](./brand/README.md)</sub>

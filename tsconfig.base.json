@@ -8,7 +8,7 @@
     "composite": true,
     "target": "ES2022",
     // No DOM: package code must not reach platform APIs. Host packages and the
-    // workspace configs that check examples add "DOM" themselves.
+    // root workspace config (tests, integration, scripts) add "DOM" themselves.
     "lib": ["ES2022"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",

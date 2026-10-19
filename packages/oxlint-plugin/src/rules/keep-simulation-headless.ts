@@ -21,7 +21,7 @@ const renderers = new Set([
 ])
 
 /** Renderer and UI packages, by scope or subpath. */
-const rendererPrefixes = ["@pixi/", "@preact/", "@react-three/", "three/", "react-dom/", "preact/", "@babylonjs/", "solid-js/"]
+const rendererPrefixes = ["@typeonce/ritmo-render/", "@typeonce/ritmo-pixi/", "@pixi/", "@preact/", "@react-three/", "three/", "react-dom/", "preact/", "@babylonjs/", "solid-js/"]
 
 interface Options {
   readonly packages?: ReadonlyArray<string>
@@ -29,8 +29,9 @@ interface Options {
 
 /**
  * Simulation code runs headless (tests, bots, replays, servers): it never
- * touches the page, does host I/O, or imports a renderer. The host feeds it
- * input and data, and a render schedule draws it.
+ * touches the page, does host I/O, or imports a renderer, not even a type,
+ * so another renderer can replace the current one. The host feeds it input
+ * and data, and render code draws it.
  */
 export default defineRule({
   meta: {
@@ -45,7 +46,9 @@ export default defineRule({
       io:
         "`{{name}}` is host I/O, which tests, bots, and replays do not have and cannot reproduce. Do the I/O in host code and pass the result in with `runtime.send(...)` or a resource; save and load the world in host code with `runtime.snapshot()` and `runtime.restore(...)`.",
       renderer:
-        "The simulation imports `{{source}}`, a renderer or UI package, so it no longer runs headless. Draw from a render schedule in host files: mirror entities into nodes with `RenderSync` and a `NodeRegistry` from `@typeonce/ritmo-render`. To name a renderer type in the schema (a service), use `import type`, which does not run."
+        "The simulation imports `{{source}}`, a renderer or UI package, so it no longer runs headless. Draw from a render schedule in render code: mirror entities into nodes with `RenderSync` and a `NodeRegistry` from `@typeonce/ritmo-render`, and declare its services (a node registry) there. Renderer nodes stay in the registry, never in components.",
+      rendererType:
+        "The simulation names a type from `{{source}}`, a renderer or UI package, so it is tied to that renderer and another one cannot replace it. Declare renderer services (a node registry) and their types in render code; services are not registered in the schema. Renderer nodes stay in the registry, never in components."
     },
     schema: [
       {
@@ -68,18 +71,18 @@ export default defineRule({
       renderers.has(source) ||
       rendererPrefixes.some((prefix) => source.startsWith(prefix)) ||
       extra.some((entry) => (entry.endsWith("/") ? source.startsWith(entry) : source === entry || source.startsWith(`${entry}/`)))
-    const checkSource = (node: ESTree.Node, source: string | undefined): void => {
-      if (source !== undefined && isRenderer(source)) context.report({ node, messageId: "renderer", data: { source } })
+    const checkSource = (node: ESTree.Node, source: string | undefined, onlyTypes = false): void => {
+      if (source !== undefined && isRenderer(source)) context.report({ node, messageId: onlyTypes ? "rendererType" : "renderer", data: { source } })
     }
     return {
       ImportDeclaration(node) {
-        if (!importsOnlyTypes(node)) checkSource(node, node.source.value)
+        checkSource(node, node.source.value, importsOnlyTypes(node))
       },
       ExportNamedDeclaration(node) {
-        if (node.source !== null && node.exportKind !== "type") checkSource(node, node.source.value)
+        if (node.source !== null) checkSource(node, node.source.value, node.exportKind === "type")
       },
       ExportAllDeclaration(node) {
-        if (node.exportKind !== "type") checkSource(node, node.source.value)
+        checkSource(node, node.source.value, node.exportKind === "type")
       },
       ImportExpression(node) {
         checkSource(node, stringValue(node.source))

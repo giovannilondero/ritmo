@@ -1,0 +1,9 @@
+{
+  "name": "@typeonce/ritmo-integration-algorithms",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typeonce/ritmo": "workspace:*",
+    "@typeonce/ritmo-math": "workspace:*"
+  }
+}

@@ -5,9 +5,6 @@ const rule = plugin.rules["keep-simulation-headless"]!
 
 tester.run("keep-simulation-headless", rule, {
   valid: [
-    // Naming a renderer type in the schema runs nothing.
-    "import type { Container } from \"pixi.js\"",
-    "import { type Container } from \"pixi.js\"",
     "type Window = typeof window",
     // Input arrives through ritmo-browser and resources.
     "import { Keyboard } from \"@typeonce/ritmo-browser\"; const pressed = resources.input.get().jump.pressed",
@@ -27,9 +24,18 @@ tester.run("keep-simulation-headless", rule, {
     { code: "import { Container } from \"pixi.js\"", errors: [{ messageId: "renderer", data: { source: "pixi.js" } }] },
     { code: "import * as THREE from \"three\"", errors: [{ messageId: "renderer", data: { source: "three" } }] },
     { code: "import { RenderSync } from \"@typeonce/ritmo-render\"", errors: [{ messageId: "renderer", data: { source: "@typeonce/ritmo-render" } }] },
+    { code: "import * as NodeRegistry from \"@typeonce/ritmo-render/NodeRegistry\"", errors: [{ messageId: "renderer", data: { source: "@typeonce/ritmo-render/NodeRegistry" } }] },
     { code: "import { useState } from \"preact/hooks\"", errors: [{ messageId: "renderer", data: { source: "preact/hooks" } }] },
     { code: "export { Sprite } from \"@pixi/sprite\"", errors: [{ messageId: "renderer", data: { source: "@pixi/sprite" } }] },
     { code: "const ui = await import(\"react-dom/client\")", errors: [{ messageId: "renderer", data: { source: "react-dom/client" } }] },
+    {
+      // inkline-town moved these out of its schema so the renderer can be swapped.
+      code: "import type { Container } from \"pixi.js\"",
+      errors: [{ messageId: "rendererType", data: { source: "pixi.js" } }]
+    },
+    { code: "import { type Container } from \"pixi.js\"", errors: [{ messageId: "rendererType", data: { source: "pixi.js" } }] },
+    { code: "import type { NodeRegistry } from \"@typeonce/ritmo-render\"", errors: [{ messageId: "rendererType", data: { source: "@typeonce/ritmo-render" } }] },
+    { code: "export type { Sprite } from \"pixi.js\"", errors: [{ messageId: "rendererType", data: { source: "pixi.js" } }] },
     {
       // A game's own renderer package, from the options.
       code: "import { draw } from \"@town/canvas/draw\"",
