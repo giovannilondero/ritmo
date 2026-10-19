@@ -1,5 +1,32 @@
 # @typeonce/ritmo
 
+## 0.10.0
+
+### Patch Changes
+
+- 7002f4d: **Everything a game's agent needs now ships with the packages, and `ritmo-devtools lint` reports simulation modules the lint rules miss.**
+
+  - **Breaking: `ritmo-devtools lint` fails on an uncovered simulation module.** Every module the entry loads that the `ritmo/keep-simulation-headless` override in `.oxlintrc.json` does not cover is reported as `uncovered-simulation-module`, and the command exits 1. Add the module (or its folder) to the simulation override's `"files"`, or stop importing values from it. Modules loaded only inside `lintTarget` are not checked. Requires Node 22.15 or newer (`engines.node` is now `>=22.15`).
+  - **An agent skill ships with `@typeonce/ritmo`** in `skills/ritmo/SKILL.md`, for every change: where the docs are, and principles for where a game's code and state belong. Link it into the folder the game's agent reads skills from, for example `ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo .agents/skills/ritmo`. `SETUP.md` in `@typeonce/ritmo` is the one-time setup: the base packages and checks every game uses, the add-ons, and linking the skill.
+  - **Every package ships its `CHANGELOG.md`.** The upgrade notes for 0.8.0 and 0.9.0 are in the `@typeonce/ritmo` changelog.
+  - **JSDoc corrections.** Examples no longer provide randomness or time as services (use the `Random` resource and `Clock`), the `Command` module example declares its commands, inspector docs state that `added`/`changed` reads report records since the inspector's previous evaluation, and every example uses prefixed names (`"Game/Position"`). Guidance that lived only in the repository's guides (spawn order, `ReadonlyValue` helpers, re-entering a state, `thisTick` and plugin systems, service effects and rollback) is now in the JSDoc.
+  - Package READMEs link other packages' READMEs by GitHub URL, so the links work on npm.
+
+- 388a696: **The Ritmo skill routes each change to a playbook, and simulation code names no renderer type.**
+
+  - **Breaking: `ritmo/keep-simulation-headless` reports type-only renderer imports** (`import type { Container } from "pixi.js"`, `export type ... from "three"`) and subpath imports of `@typeonce/ritmo-render` and `@typeonce/ritmo-pixi`. A schema that names a renderer type ties the simulation to that renderer. Move the renderer service (a `Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()(...)`) and the systems that use it into render code; services are not registered in the schema, so nothing else changes:
+
+    ```diff
+    -// src/game/schema.ts
+    -import type { Sprite } from "pixi.js"
+    -export const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Game/Sprites")
+    +// src/render/sprites.ts
+    +import type { Sprite } from "pixi.js"
+    +export const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Game/Sprites")
+    ```
+
+  - **The skill in `skills/ritmo` now has playbooks**: one per kind of change (a mechanic, content, UI and rendering, a bug fix, a refactor, state and upgrades), each a short list of steps that ends with the check that proves it. `SKILL.md` routes to them and keeps the principles. A game that already links the skill folder gets them on upgrade.
+
 ## 0.9.0
 
 ### Upgrading
@@ -94,8 +121,7 @@ Fix each error where it is reported; the messages name the fix.
   marker; a failure in the exit phase now undoes the whole phase.
 - **Provide each service and machine once** in `Runtime.services(...)` /
   `Runtime.machines(...)`.
-- **Snapshots carry `gameVersion`.** Saves without it restore as version
-  0. Code that builds a `Snapshot.WorldSnapshot` by hand adds
+- **Snapshots carry `gameVersion`.** Saves without it restore as version 0. Code that builds a `Snapshot.WorldSnapshot` by hand adds
   `gameVersion: 0`. To change a game's save format, pass
   `saves: Snapshot.migrations(...)` to `Game.Runtime.make` instead of editing
   raw saves before `restore`.
@@ -216,7 +242,7 @@ Fix each error where it is reported; the messages name the fix.
 
   A raw id fails with an error that first prints the id's type (the whole
   schema), then the fix: `remove needs an entity from a query (pass
-  match.entity) or the id spawn returned in this run, not a raw id`.
+match.entity) or the id spawn returned in this run, not a raw id`.
 
 - **`remove` takes several components.** Removing a component together with
   the components that require it must happen in one call:
