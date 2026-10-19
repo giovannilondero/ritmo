@@ -16,6 +16,7 @@
  * sprites.clear()
  * ```
  */
+// oxlint-disable-next-line ritmo/keep-simulation-headless -- this package is the Pixi adapter for the render registry, render code by definition
 import * as NodeRegistry from "@typeonce/ritmo-render/NodeRegistry"
 
 /**

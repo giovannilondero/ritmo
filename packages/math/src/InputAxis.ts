@@ -4,7 +4,7 @@
  *
  * This module is runtime-agnostic: it does not know about keyboard events,
  * gamepads, or host APIs. It only translates already-sampled booleans into the
- * compact movement values used by the examples.
+ * compact movement values that systems consume.
  *
  * Reach for it in the gap between host input sampling and ECS simulation:
  * capture raw button state in the host, normalize it here, then write the

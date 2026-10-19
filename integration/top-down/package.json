@@ -1,0 +1,11 @@
+{
+  "name": "@typeonce/ritmo-integration-top-down",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typeonce/ritmo": "workspace:*",
+    "@typeonce/ritmo-browser": "workspace:*",
+    "@typeonce/ritmo-math": "workspace:*",
+    "@typeonce/ritmo-devtools": "workspace:*"
+  }
+}

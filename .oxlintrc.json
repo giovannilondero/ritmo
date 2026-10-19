@@ -10,7 +10,7 @@
     {
       "files": [
         "packages/*/src/**",
-        "examples/**",
+        "integration/**",
         "scripts/**"
       ],
       "rules": {
@@ -22,11 +22,7 @@
     {
       "files": [
         "packages/*/src/**",
-        "examples/*/simulation.ts",
-        "examples/*/schema.ts",
-        "examples/*/systems/**",
-        "examples/genetics/logic.ts",
-        "examples/genetics/math.ts"
+        "integration/*/**"
       ],
       "rules": {
         "ritmo/use-clock-for-time": "error",
@@ -34,14 +30,6 @@
         "ritmo/use-ops-for-math": "error",
         "ritmo/keep-simulation-headless": "error",
         "ritmo/no-infinity-in-simulation-data": "error"
-      }
-    },
-    {
-      "files": [
-        "examples/*/systems/render*.ts"
-      ],
-      "rules": {
-        "ritmo/keep-simulation-headless": "off"
       }
     }
   ],

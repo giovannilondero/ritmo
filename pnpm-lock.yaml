@@ -17,9 +17,6 @@ importers:
       '@typeonce/ritmo-math':
         specifier: workspace:*
         version: link:packages/math
-      '@types/matter-js':
-        specifier: ^0.20.2
-        version: 0.20.2
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
@@ -29,9 +26,6 @@ importers:
       '@vitest/expect':
         specifier: 4.0.18
         version: 4.0.18
-      matter-js:
-        specifier: ^0.20.0
-        version: 0.20.0
       oxlint:
         specifier: 1.88.0
         version: 1.88.0
@@ -60,7 +54,7 @@ importers:
         specifier: 4.0.18
         version: 4.0.18(@types/node@25.5.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.1)
 
-  examples/algorithms:
+  integration/algorithms:
     dependencies:
       '@typeonce/ritmo':
         specifier: workspace:*
@@ -69,58 +63,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/math
 
-  examples/genetics:
-    dependencies:
-      '@typeonce/ritmo':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@typeonce/ritmo-browser':
-        specifier: workspace:*
-        version: link:../../packages/browser
-      '@typeonce/ritmo-pixi':
-        specifier: workspace:*
-        version: link:../../packages/pixi
-      '@typeonce/ritmo-render':
-        specifier: workspace:*
-        version: link:../../packages/render
-
-  examples/pixi:
-    dependencies:
-      '@typeonce/ritmo':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@typeonce/ritmo-browser':
-        specifier: workspace:*
-        version: link:../../packages/browser
-      '@typeonce/ritmo-math':
-        specifier: workspace:*
-        version: link:../../packages/math
-      '@typeonce/ritmo-pixi':
-        specifier: workspace:*
-        version: link:../../packages/pixi
-      '@typeonce/ritmo-render':
-        specifier: workspace:*
-        version: link:../../packages/render
-
-  examples/platformer:
-    dependencies:
-      '@typeonce/ritmo':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@typeonce/ritmo-browser':
-        specifier: workspace:*
-        version: link:../../packages/browser
-      '@typeonce/ritmo-math':
-        specifier: workspace:*
-        version: link:../../packages/math
-      '@typeonce/ritmo-pixi':
-        specifier: workspace:*
-        version: link:../../packages/pixi
-      '@typeonce/ritmo-render':
-        specifier: workspace:*
-        version: link:../../packages/render
-
-  examples/top-down:
+  integration/top-down:
     dependencies:
       '@typeonce/ritmo':
         specifier: workspace:*
@@ -134,9 +77,6 @@ importers:
       '@typeonce/ritmo-math':
         specifier: workspace:*
         version: link:../../packages/math
-      '@typeonce/ritmo-render':
-        specifier: workspace:*
-        version: link:../../packages/render
 
   packages/browser:
     dependencies:
@@ -836,9 +776,6 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
-  '@types/matter-js@0.20.2':
-    resolution: {integrity: sha512-3PPKy3QxvZ89h9+wdBV2488I1JLVs7DEpIkPvgO8JC1mUdiVSO37ZIvVctOTD7hIq8OAL2gJ3ugGSuUip6DhCw==}
-
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
@@ -1330,9 +1267,6 @@ packages:
   make-dir@4.0.0:
     resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
     engines: {node: '>=10'}
-
-  matter-js@0.20.0:
-    resolution: {integrity: sha512-iC9fYR7zVT3HppNnsFsp9XOoQdQN2tUyfaKg4CHLH8bN+j6GT4Gw7IH2rP0tflAebrHFw730RR3DkVSZRX8hwA==}
 
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
@@ -2254,8 +2188,6 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
-  '@types/matter-js@0.20.2': {}
-
   '@types/node@12.20.55': {}
 
   '@types/node@25.5.0':
@@ -2676,8 +2608,6 @@ snapshots:
   make-dir@4.0.0:
     dependencies:
       semver: 7.7.4
-
-  matter-js@0.20.0: {}
 
   merge2@1.4.1: {}
 

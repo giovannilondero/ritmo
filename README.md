@@ -126,6 +126,13 @@ Ritmo game uses and links the [Ritmo skill](./packages/core/skills/ritmo/SKILL.m
 into the agent's skills folder. From then on, the agent follows the skill on
 every change: where the docs are and how to structure the game.
 
+## Games built with Ritmo
+
+- [Inkline Town](https://github.com/SandroMaglione/inkline-town): a town
+  simulation in isometric line art, rendered with Three.js.
+- [Spirit Call](https://github.com/SandroMaglione/top-down-team-shooter): a
+  top-down action game for the phone, with teams of elemental spirits.
+
 ## Guarantees
 
 - A schema rejects two descriptors of one kind with the same name at compile

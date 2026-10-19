@@ -13,7 +13,7 @@
 - [`packages/math`](./packages/math/): validated math values (Scalar, Vector2, Size2, Aabb, InputAxis) and hot-path game helpers (Vec2, Box2, Collide2, SpatialGrid, FlowField, Random, Ops).
 - [`packages/devtools`](./packages/devtools/): debug sessions, trace history, and text reports over the core `Debug` handle.
 - [`packages/oxlint-plugin`](./packages/oxlint-plugin/): oxlint rules (`ritmo/*`) for game code: deterministic, headless simulation files and checked runtime results.
-- [`examples`](./examples/): workspace example apps that consume packages by package name.
+- [`integration`](./integration/): headless integration tests that use the packages by package name.
 
 ## Package Scope
 - Packages never draw. Drawing, particles, and effects stay in games.
@@ -25,13 +25,13 @@
 - Core and generic package modules never call a platform API (`performance`, `window`, `document`, timers, file system, network). A platform detail is a generic contract in the owning package with platform implementations injected (like `NodeRegistry` / `PixiNodeRegistry`, `HostClock` / `BrowserHostClock`, `FixedLoop.TickSource` / `BrowserTickSource`). A default may use only what JavaScript itself guarantees in every engine. The compiler enforces this: package configs get only the ES2022 library, so a DOM or Node global does not compile; a host package that needs DOM types lists `"DOM"` in its own `lib`, as `packages/devtools` does for `Monitor`.
 - Simulation code reads time from `Clock` and randomness from `Random`; host time (`HostClock`) is for hosts, tools, and debug timing, never for systems.
 - Engines may approximate `Math.sin`, `cos`, `atan2`, `exp`, `log`, `pow`, `hypot`, the other transcendental functions, and `a ** b`, and they differ across browsers and CPUs. Package code and simulation code use `Ops` from `@typeonce/ritmo-math` instead (or `Math.sqrt(x * x + y * y)`).
-- `pnpm lint` runs the repo's own oxlint plugin (`packages/oxlint-plugin`) over package sources, examples, and scripts (see `.oxlintrc.json`); the simulation rules cover every package source and the examples' simulation files. A rule that should not apply takes `// oxlint-disable-next-line ritmo/<rule> -- <reason>`.
+- `pnpm lint` runs the repo's own oxlint plugin (`packages/oxlint-plugin`) over package sources, integration tests, and scripts (see `.oxlintrc.json`); the simulation rules cover every package source and the integration simulations. A rule that should not apply takes `// oxlint-disable-next-line ritmo/<rule> -- <reason>`.
 - A new pattern that games must follow or avoid, and that types and devtools cannot catch, becomes a rule in `packages/oxlint-plugin`, with tests from real code. Its message says what goes wrong and the exact API to use instead.
 
 ## Docs
 - A game's agent sees only what npm ships: each package's `src` JSDoc, `README.md`, `CHANGELOG.md`, `SETUP.md` in core, and the skill in [`packages/core/skills/ritmo`](./packages/core/skills/ritmo/SKILL.md). Guidance a game needs goes there, never in a repo-only file.
 - The root `README.md` is the only doc for humans. `AGENTS.md`, `ARCHITECTURE.md`, and `RELEASING.md` are for work on this repo.
-- Package READMEs link other packages' docs by their GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by a relative path or into `examples/`, which do not ship.
+- Package READMEs link other packages' docs by their GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by a relative path or into `integration/`, which does not ship.
 - A changeset for a breaking change carries its fix (a short diff or the exact replacement), so the shipped `CHANGELOG.md` is the upgrade guide.
 - [`packages/core/SETUP.md`](./packages/core/SETUP.md) is the one-time setup (base packages, checks, add-ons, linking the skill); the root README's starter prompt links it. The skill is for every change: where the docs are, and principles that change where code and state go. Anything a JSDoc, README, or lint message already says stays out of both.
 
@@ -100,7 +100,7 @@ if (!target.ok) {
 ```
 
 ## Debugging Game Behavior
-- Reproduce headless before changing code: build the game's simulation schedules on a runtime made with `debug: { hostClock: HostClock.test() }` and scripted input (`Keyboard.scripted`). [`examples/top-down/simulation.ts`](./examples/top-down/simulation.ts) is the reference; copy [`examples/top-down/debug.ts`](./examples/top-down/debug.ts) and run it with `node --import tsx <script>`.
+- Reproduce headless before changing code: build the game's simulation schedules on a runtime made with `debug: { hostClock: HostClock.test() }` and scripted input (`Keyboard.scripted`). [`integration/top-down/simulation.ts`](./integration/top-down/simulation.ts) is the reference; copy [`integration/top-down/debug.ts`](./integration/top-down/debug.ts) and run it with `node --import tsx <script>`.
 - Use `@typeonce/ritmo-devtools` sessions: read the lints at the top of `describe()` first, then orient, `run(name, { frames })` with an `Invariant` that encodes the bug, then `why(entity, Component)`, `journal({ frames, entity })`, and `report()` to explain it. See [`packages/devtools/README.md`](./packages/devtools/README.md).
 - Once the script reproduces the bug, turn it into a test next to the game.
 

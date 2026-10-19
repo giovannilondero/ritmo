@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { runConcepts, runLookups } from "../../../examples/concepts.ts"
+import { runConcepts, runLookups } from "./concepts.ts"
 
 describe("concepts program", () => {
   it("shares query access and reads entities and machine state explicitly", () => {
