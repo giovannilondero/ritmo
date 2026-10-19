@@ -7,15 +7,15 @@
 
 # Ritmo
 
-The agent-first type safe ECS runtime
+**The agent-first, type-safe ECS runtime for games.**
 
-You direct the mechanics and feel. Your coding agent builds the simulation with
-closed schemas, declared system access, explicit schedule boundaries, and typed
-services. Compile-time checks reject undeclared access and missing requirements;
-headless sessions expose lints, invariants, journals, and the causes of changes.
+🎮 You direct the mechanics and feel. Your coding agent writes the simulation.
 
-Ritmo works with your renderer and game loop. Its packages provide simulation,
-input, timing, math, and renderer bridges. Drawing stays in the game.
+Ritmo keeps the agent on track: wrong code does not compile and the error
+names the fix, and headless runs show lints, invariants, and why each value
+changed.
+
+Ritmo works with your renderer and game loop. Drawing stays in your game.
 
 <p align="center">
   <picture>
@@ -24,93 +24,120 @@ input, timing, math, and renderer bridges. Drawing stays in the game.
   </picture>
 </p>
 
-New to the library? Start with [CONCEPTS.md](./CONCEPTS.md) (the model in five
-minutes), then [GAME_API.md](./GAME_API.md). Type architecture and storage are
-documented in [ARCHITECTURE.md](./ARCHITECTURE.md).
+## Quick start
 
 ```sh
 pnpm add @typeonce/ritmo
 ```
 
-Requires TypeScript 5.9 or newer. The type tests run on every TypeScript
-version from 5.9 up, and the packages build with TypeScript 7.
+Requires TypeScript 5.9 or newer. Leave `noErrorTruncation` off: errors name
+the fix near their start, and an untruncated one can print a whole schema.
 
-Leave `noErrorTruncation` off in your tsconfig. A rejected call's error names
-the fix near its start, and the type tests check that every fix stays visible
-in TypeScript's default (truncated) message; with truncation off, an error that
-prints a whole schema can run to tens of kilobytes.
+```ts
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 
-| Package | Contents |
-|---|---|
-| `@typeonce/ritmo` | The ECS runtime and the fixed-step loop |
-| `@typeonce/ritmo-math` | Validated vectors, sizes, and bounding boxes; swept collision, spatial grid, flow field, deterministic random, and trig/exp/pow that return the same bits on every engine |
-| `@typeonce/ritmo-browser` | Animation-frame tick source, keyboard, pointer, and touch input, input capture |
-| `@typeonce/ritmo-render` | Entity to renderer node sync, for any renderer |
-| `@typeonce/ritmo-pixi` | Pixi container adapter (`PixiNodeRegistry.make`) |
-| `@typeonce/ritmo-devtools` | Headless debug sessions and trace reports ([README](./packages/devtools/README.md)) |
-| `@typeonce/oxlint-plugin-ritmo` | Oxlint rules that keep simulation code deterministic and headless and runtime results checked ([README](./packages/oxlint-plugin/README.md)) |
+type Vec = { x: number; y: number }
+
+// Define the world once: components, resources, and the fixed step.
+const step = Clock.hz(60)
+const Time = Clock.resource("Example/Time", step)
+const Position = Descriptor.Component<Vec>()("Example/Position")
+const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
+
+// Bind the schema to its game-facing APIs.
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Velocity },
+    resources: { Time }
+  })
+)
+
+const AdvanceTime = Clock.system(Game, {
+  name: "Example/AdvanceTime",
+  resource: Time
+})
+
+// Systems receive only the access they declare.
+const Move = Game.System(
+  "Example/Move",
+  {
+    queries: {
+      moving: Game.Query({
+        selection: {
+          position: Game.Query.write(Position),
+          velocity: Game.Query.read(Velocity)
+        }
+      })
+    },
+    resources: { time: Game.System.readResource(Time) }
+  },
+  ({ queries, resources }) => {
+    const { dt } = resources.time.get()
+    for (const match of queries.moving.each()) {
+      const position = match.data.position.get()
+      const velocity = match.data.velocity.get()
+      match.data.position.set({
+        x: position.x + velocity.x * dt,
+        y: position.y + velocity.y * dt
+      })
+    }
+  }
+)
+
+// Starting can fail (the clock is a validated resource),
+// and so can a tick: both return a Result.
+const made = Game.Runtime.make({
+  services: Game.Runtime.services(),
+  resources: { Time: Clock.start(step) }
+})
+if (made.ok) {
+  const runtime = made.value
+  const ticked = runtime.tick(Game.Schedule(AdvanceTime, Move))
+  if (!ticked.ok) console.error(ticked.error)
+}
+```
+
+## Packages
 
 All packages are released together with the same version.
 
-```ts
-import { Descriptor, Schema } from "@typeonce/ritmo"
+| Package | Contents |
+|---|---|
+| `@typeonce/ritmo` | ECS runtime and fixed-step loop |
+| `@typeonce/ritmo-math` | Vectors, collision, spatial grid, flow field, seeded random, same-bits trig |
+| `@typeonce/ritmo-browser` | Animation-frame ticks, keyboard, pointer, and touch input |
+| `@typeonce/ritmo-render` | Entity-to-node sync for any renderer |
+| `@typeonce/ritmo-pixi` | Pixi adapter for the render node registry |
+| `@typeonce/ritmo-devtools` | Headless debug sessions, reports, and `ritmo-devtools lint` |
+| `@typeonce/oxlint-plugin-ritmo` | Lint rules for deterministic, headless simulation code |
 
-// Define the ECS world shape once.
-const Position = Descriptor.Component<{ x: number; y: number }>()("Example/Position")
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Example/Velocity")
-const DeltaTime = Descriptor.Resource<number>()("Example/DeltaTime")
+## Get started with your agent
 
-// Bind the schema to its game-facing APIs.
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { DeltaTime } }))
+Paste this into your coding agent in the game's folder, then describe the game
+you want:
 
-// Systems only receive the access they declare here.
-const Move = Game.System("Example/Move", {
-  queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) },
-  resources: { deltaTime: Game.System.readResource(DeltaTime) }
-}, ({ queries, resources }) => {
-  for (const match of queries.moving.each()) {
-    const position = match.data.position.get()
-    const velocity = match.data.velocity.get()
-    match.data.position.set({ x: position.x + velocity.x * resources.deltaTime.get(), y: position.y + velocity.y * resources.deltaTime.get() })
-  }
-})
-
-const runtime = Game.Runtime.make({
-  services: Game.Runtime.services(),
-  resources: { DeltaTime: 1 / 60 }
-}).value
-runtime.tick(Game.Schedule(Move))
+```text
+Set up Ritmo in this project by following
+https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
 ```
 
-Start with the [Pixi walkthrough](./examples/pixi/README.md) for the full step-by-step example.
+[That file](./packages/core/SETUP.md) installs the packages and checks every
+Ritmo game uses and links the [Ritmo skill](./packages/core/skills/ritmo/SKILL.md)
+into the agent's skills folder. From then on, the agent follows the skill on
+every change: where the docs are and how to structure the game.
 
-## Runtime semantics
+## Guarantees
 
-- Descriptor identity is `(kind, name)`. A bound schema rejects two descriptors of one kind with the same name at compile time, and a look-alike descriptor with a different value type is not accepted in place of the registered one.
-- Structural changes are never applied implicitly. Queued commands and machine transitions stay pending, across schedule runs if needed, until a schedule reaches `applyDeferred()` or `applyStateTransitions(...)`.
-- Reads are per system: `added(...)`/`changed(...)` filters, removed/despawned reads, events, transition events, and relation failures show each system what was published since its own previous run, exactly once.
-- Query results come back in spawn order.
+- A schema rejects two descriptors of one kind with the same name at compile
+  time.
+- Commands and state transitions wait for an explicit `applyDeferred()` or
+  `applyStateTransitions(...)` in the schedule.
+- Each system sees what was published since its own previous run, exactly
+  once.
+- A failing system rolls back its writes, and the tick returns the failure.
+- Queries visit only entities with their rarest required component and cache
+  their matches. CI fails on runtime regressions over 25%.
 
-## Performance
-
-Queries only visit entities that carry their rarest required component, cache their match set until a component or relation they depend on changes membership, and reuse match objects between runs. See [ARCHITECTURE.md](./ARCHITECTURE.md#storage).
-
-The benchmark suite in [`packages/core/bench`](./packages/core/bench) covers spawn/despawn, query iteration, change detection, structural churn, schedule overhead, lookups, events, relations, and type-checker cost; [`packages/math/bench`](./packages/math/bench) and [`packages/render/bench`](./packages/render/bench) cover per-frame vector math, swept collision, spatial grid, flow field, random, input axes, and render sync:
-
-```sh
-pnpm bench          # run and print
-pnpm bench:check    # compare with packages/core/bench/baseline.json (exit 1 on regression)
-pnpm bench:update   # record a new baseline
-```
-
-CI measures every pull request against its base commit on the same runner and fails on runtime regressions over 25%. Type-checker growth over 5% produces a warning without blocking merges. Local `pnpm bench:check` still fails on both kinds of regression.
-
-## Naming note
-
-Ritmo was previously named `bevy-ts`. See the [migration guide](./MIGRATION.md)
-for package replacements and the [release checklist](./RELEASING.md) for the
-remaining registry and repository setup. Documentation lives in this repository
-and in the source JSDoc.
+Ritmo was previously named `bevy-ts`: see the [rename guide](./MIGRATION.md).
 
 <sub>[Brand assets and palette](./brand/README.md)</sub>
-

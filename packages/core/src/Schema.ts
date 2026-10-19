@@ -36,9 +36,9 @@
  *
  * @example
  * ```ts
- * const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
- * const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
- * const Score = Descriptor.Resource<number>()("Score")
+ * const Position = Descriptor.Component<{ x: number; y: number }>()("Game/Position")
+ * const Velocity = Descriptor.Component<{ x: number; y: number }>()("Game/Velocity")
+ * const Score = Descriptor.Resource<number>()("Game/Score")
  *
  * const Core = Schema.fragment({
  *   components: { Position, Velocity },
@@ -151,6 +151,12 @@ type PairsOf<R> = R extends ComponentRequirement<infer Pairs> ? Pairs : never
  * stay. `Game.System.spawns(component)` also allows spawning what it
  * requires. Nothing is ever filled in with a default: the draft must carry
  * every value.
+ *
+ * Types cannot see everything (another command applied first in the same
+ * `applyDeferred()`, erased specs), so the runtime checks again: a command
+ * that would break a requirement is skipped and traced (the
+ * `requirement-violated` lint), and `restore` rejects a save whose entity
+ * misses a required component.
  *
  * Requirements chain (`A` requires `B`, `B` requires `C`) and may name
  * components of other fragments of the same `Schema.bind`.
@@ -319,7 +325,7 @@ export type ValidateRequires<S extends Schema.Any> =
  *
  * const Target = Descriptor.Component<{
  *   handle: Entity.Handle<typeof Root>
- * }>()("Target")
+ * }>()("Game/Target")
  * ```
  */
 export const defineRoot = <const Name extends string>(name: Name): RootToken<Name> => ({
@@ -765,7 +771,7 @@ export namespace Schema {
        *
        * @example
        * ```ts
-       * const Phase = Game.StateMachine("Phase", ["Setup", "Battle"], { within: [Session, "Playing"] })
+       * const Phase = Game.StateMachine("Game/Phase", ["Setup", "Battle"], { within: [Session, "Playing"] })
        * ```
        */
       <

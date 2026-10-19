@@ -2,6 +2,128 @@
 
 ## 0.9.0
 
+### Upgrading
+
+0.9.0 rejects several calls that compiled before but were always wrong.
+Fix each error where it is reported; the messages name the fix.
+
+- **`Runtime.make` always returns a `Result`.** When nothing provided can
+  fail, its type is `Success`: read `.value`. When a constructed resource
+  may be provided, check it as before.
+
+  ```diff
+  -const runtime = Game.Runtime.make({ services, resources: { Score: 0 } })
+  +const runtime = Game.Runtime.make({ services, resources: { Score: 0 } }).value
+  ```
+
+- **A query match is valid only during its run.** Keeping a match in
+  `local` and reading or writing it later throws once its entity was
+  despawned or lost the component. Keep the entity id or a handle, and
+  resolve it with `queries.x.get(id)` / `getHandle(handle)`.
+- **A look-alike descriptor must behave like the registered one.** A
+  descriptor built elsewhere with the same kind and name but different
+  behaviour (an entity state, a constructor, `immutable`, transient) throws
+  when its query first runs; use the descriptor the schema registers.
+- **New lint `next-state-replaced`.** On a debug runtime, two systems
+  queuing different next states for one machine before the same marker are
+  reported. Decide in one system, or check `nextMachines.x.getPending()`
+  before setting.
+
+- **Draft relations need `relates`.** A system that spawns a draft built
+  with `Game.Command.relate(...)` declares the relation:
+
+  ```diff
+  -commands: Game.System.commands(Game.System.spawns(Errand))
+  +commands: Game.System.commands(Game.System.spawns(Errand), Game.System.relates(WalkerOf))
+  ```
+
+  The `relation-failure-never-read` lint then sees these relations: read
+  their failures (`Game.System.readRelationFailures(WalkerOf)`) and handle
+  them, for example by despawning a child whose parent was gone when it
+  spawned.
+
+- **A command target picked from several queries must be valid for each.**
+  `commands.despawn(cond ? a.entity : b.entity)` needs both queries to prove
+  a `despawns` component; resolve the entity through one query, or branch
+  and call the command in each branch. A raw id is never a target, not even
+  as one side of a conditional.
+- **Conditional and spread entries count as maybe present.** A requirer a
+  draft may hold needs its requirements surely held:
+  `spawn(Game.Command.spawn(...parts))` with a widened array fails when a
+  part requires another; list the required components as fixed entries.
+- **`Runtime.make` names unknown resource keys.** Fix the spelling, or
+  remove the key.
+- **Queries that can never match fail to compile.** Remove the component
+  from `without` or from the required side.
+- **A bundle's transition schedules require their machine.** Provide it with
+  `Game.Runtime.machine(...)`, or drop the schedule.
+- **Registries take their own kind.** Move a resource out of `components`,
+  and so on.
+- **Type-level:** `EntityRef` / `EntityMut` `Proves` and `Lacks` parameters
+  are contravariant and default to `never`; `EntityDraft` has a fourth
+  parameter (`Relates`). Code that names these types with explicit
+  arguments updates them; inferred code is unchanged.
+- **Removed duplicates.** Use `Descriptor.Hierarchy` / `Descriptor.Relation`
+  instead of `Relation.Hierarchy` / `Relation.Relation`, and
+  `Schema.fragment({})` instead of `Schema.empty()`.
+- **Permissions name at least one entry**, and a system declares one slot
+  per resource (a write or changed view reads too).
+- **Optional slots read with `value()`**: `cell.value()` replaces
+  `cell.present ? cell.get() : undefined`.
+- **A `SpawnedId` is valid only in the run that spawned it.** A `despawn`
+  or `remove` given one kept from an earlier run is skipped and reported
+  by the `stale-target` lint. Keep the entity id or a handle and resolve it
+  through a query (`queries.x.get(id)`), then pass `match.entity`.
+- **Descriptor values cannot be `any` or `never`.** Give the value a type;
+  use `unknown` for a value no system reads, and `Descriptor.Tag` for a
+  marker.
+- **A saved component cannot require a transient one.** Make the requirer
+  transient too, or give the required component a constructor.
+- **Filtered queries have no lookups.** Resolve entities through a second
+  query without `added` / `changed` filters:
+
+  ```diff
+  -Game.System("Follow", { queries: { moved: Moved } }, ({ queries }) => {
+  -  const target = queries.moved.getHandle(handle)
+  +Game.System("Follow", { queries: { moved: Moved, targets: Targets } }, ({ queries }) => {
+  +  const target = queries.targets.getHandle(handle)
+  ```
+
+- **`onExit` / `onTransition` schedules cannot contain `applyDeferred()`.**
+  Their commands are applied at the next `applyDeferred()` after the
+  marker; a failure in the exit phase now undoes the whole phase.
+- **Provide each service and machine once** in `Runtime.services(...)` /
+  `Runtime.machines(...)`.
+- **Snapshots carry `gameVersion`.** Saves without it restore as version
+  0. Code that builds a `Snapshot.WorldSnapshot` by hand adds
+  `gameVersion: 0`. To change a game's save format, pass
+  `saves: Snapshot.migrations(...)` to `Game.Runtime.make` instead of editing
+  raw saves before `restore`.
+- **Keep random state with `Random.draw`.** Declare the resource with
+  `Descriptor.ConstructedResource(Random)`, start it with `Random.seed(n)`
+  (the runtime is then made as a `Result`), and draw with
+  `Random.draw(resources.rng)` instead of `Random.make(state)` plus a `set`.
+  `Random.integer` / `range` now throw on bounds with nothing to draw, and
+  `SpatialGrid` on non-finite input.
+- **New lints `stale-target` and `stream-loss-unread`** on debug runtimes.
+  For the second, check `lagged()` where a missed entry matters and rebuild
+  from queries when it is true.
+- **Behaviour:** `Collide2` now stops a circle that starts exactly touching
+  a wall and moves into it. A game that fingerprints its simulation
+  re-records the fingerprints with the upgrade.
+
+- **`FixedLoop` moved to `@typeonce/ritmo`.** Import it from core. The
+  browser's animation-frame source is now `BrowserTickSource.make(window)`;
+  a source wrapped with `FixedLoop.source(...)` is unchanged.
+
+  ```diff
+  -import { FixedLoop } from "@typeonce/ritmo-browser"
+  -const source = FixedLoop.animationFrames(window)
+  +import { FixedLoop } from "@typeonce/ritmo"
+  +import { BrowserTickSource } from "@typeonce/ritmo-browser"
+  +const source = BrowserTickSource.make(window)
+  ```
+
 ### Minor Changes
 
 - c2c32e0: **API additions from a second review.**
@@ -12,7 +134,7 @@
   - **Save migrations.** `Game.Runtime.make({ saves: Snapshot.migrations(Snapshot.migration(1, ...), Snapshot.migration(2, ...)) })`: snapshots carry a `gameVersion` (the last step; 0 without migrations and for older saves), and `restore` runs every step after the save's version in order, checking the structure after each, before validating as usual. A save newer than the last step fails with `NewerGameVersion`. Steps must be numbered 1, 2, 3, ... in order (checked at compile time and at runtime).
   - **Docs** now state that a system does not see its own writes as changes (it does see its own events), how long `Condition.stateChanged` holds, that a sub-state value set at the marker its parent leaves is dropped, and that `restore` keeps a current resource the save lacks.
 
-- 9cca78b: **One shape for `Runtime.make`, and runtime guards from a review of 0.8.0.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 9cca78b: **One shape for `Runtime.make`, and runtime guards from a review of 0.8.0.** See Upgrading above.
 
   - **Breaking: `Runtime.make` always returns a `Result`.** It returned the bare runtime or a `Result` depending on the resource values present at runtime, while its type decided from the keys of the provided type, so resources typed `{ Score?: ... }` produced a bare runtime the type called a `Result`. The type is now `Success<Runtime>` when nothing provided can fail (read `.value`), and a `Result` to check when a constructed resource may be provided.
   - **`thisTick` checks a writer that shares its reader's display name.** Systems may share a display name; the static check skipped any writer named like the reader. It now tells the reader apart by its system type.
@@ -21,13 +143,13 @@
   - **A query descriptor that behaves unlike the registered one throws**: a look-alike (same kind and name) that adds or drops entity-state transitions, a constructor, immutability, or transience. Look-alikes that behave the same keep working.
   - `Scalar.Finite` and the `Vector2` / `Scalar` arithmetic helpers document that results keep the brand without re-validating, finite while they stay within `±Number.MAX_VALUE`.
 
-- 6c09482: **`FixedLoop` moves to core, so any host can drive it.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 6c09482: **`FixedLoop` moves to core, so any host can drive it.** See Upgrading above.
 
   - **`FixedLoop` is now exported from `@typeonce/ritmo`** (`import { FixedLoop } from "@typeonce/ritmo"`). Its API is unchanged. `@typeonce/ritmo-browser` no longer exports it.
   - **`BrowserTickSource.make(window)`** in `@typeonce/ritmo-browser` replaces `FixedLoop.animationFrames(window)`. It is the browser's `TickSource`, named like `BrowserHostClock`. Native shells, desktop runtimes, and renderer tickers wrap their own frames with `FixedLoop.source(...)`.
   - **Package sources compile without DOM types.** Core, math, render, browser, and pixi reach no DOM global, and the compiler now rejects one. Published code is unchanged.
 
-- ecfd0f1: **One way to do each thing, and docs that match the code.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- ecfd0f1: **One way to do each thing, and docs that match the code.** See Upgrading above.
 
   - **Removed** `Relation.Hierarchy` / `Relation.Relation` (use `Descriptor.Hierarchy` / `Descriptor.Relation`), `Schema.empty()` (use `Schema.fragment({})`), and `Debug.MemberFor` (described the removed `debug: true`). `Relation.PairBrand` is now exported as a type.
   - **Command permissions need at least one entry**: `Game.System.spawns()` with nothing no longer compiles (it made `commands.spawn` say spawn is not declared).
@@ -35,7 +157,7 @@
   - **`value()` on optional query cells** returns the value, or `undefined` when the entity does not hold the component.
   - JSDoc now matches the code: `Game.Command.spawn` and `entryRaw` name `extend`, `Schedule.when` says bundle transition schedules are not gated, `Clock.every` is false on step 0, and `EntityStateWriteCell.transition` says when to use `set` instead.
 
-- 330246e: **Safety follow-ups from a second review.** Each closes a way a game could go wrong silently; see [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 330246e: **Safety follow-ups from a second review.** Each closes a way a game could go wrong silently; see Upgrading above.
 
   - **A `SpawnedId` is valid only in the run that spawned it.** Kept in a closure or resource and passed to `commands.despawn` / `commands.remove` in a later run, it could name an entity despawned meanwhile whose id was reused. Such a command is now skipped, traced as a `staleTarget` effect, and reported by the new `stale-target` lint (`Debug.StaleTarget`). Keep the entity id or a handle and resolve it through a query.
   - **`any` and `never` are not descriptor values.** `Descriptor.Component<any>()`, `Resource`, `Event`, `Service`, and the transient variants fail at the constructor: `any` turned off every check on the descriptor, and `never` erased the fragment listing it.
@@ -46,7 +168,7 @@
   - **`RenderSync` recovers from dropped removals.** After a pause longer than a stream keeps entries, the removals it missed left nodes on screen; when its removal stream reports `lagged()`, it now destroys every node whose entity no longer matches. Give each `RenderSync.system` its own registry.
   - **New lint `stream-loss-unread`.** On a debug runtime, a reader of events, transition events, removed, despawned, or relation failures that lost entries without checking `lagged()` is a warning, and one reading under `pauseWhen` without checking it is noted (`Debug.StreamLoss`).
 
-- 7f2b2dd: **Stricter types from a review of 0.8.0.** Each change rejects code that was always wrong; see [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 7f2b2dd: **Stricter types from a review of 0.8.0.** Each change rejects code that was always wrong; see Upgrading above.
 
   - **A command target chosen from several queries is checked for every one of them.** `commands.despawn(cond ? a.entity : b.entity)`, `insert`, and `remove` compiled when either target was allowed, and a raw id joined with a match (`cond ? match.entity : match.entity.id`) passed as a match. `EntityRef` / `EntityMut` proof parameters are now contravariant (proving nothing is `never`), so a union of refs keeps only what all of them prove.
   - **Drafts and inserts check components they may hold.** A conditional or spread entry holding a component with requirements now needs those requirements surely present, in `commands.spawn` and `commands.insert`. Fixed entries before or after a spread count as held.
@@ -74,6 +196,63 @@
 
 ## 0.8.0
 
+### Upgrading
+
+0.8.0 adds component requirements (`Schema.requires`) and changes how
+`commands.insert` and `commands.remove` take their target.
+
+- **`remove` takes a query match, not a raw id.** Pass `match.entity` (or the
+  id `commands.spawn` returned in the same run). With only a stored id,
+  resolve it first.
+
+  ```diff
+  -for (const match of queries.marked.each()) commands.remove(match.entity.id, Marker)
+  +for (const match of queries.marked.each()) commands.remove(match.entity, Marker)
+
+  -commands.remove(storedId, Sprite)
+  +const found = queries.sprites.get(storedId)
+  +if (found.ok) commands.remove(found.value.entity, Sprite)
+  ```
+
+  A raw id fails with an error that first prints the id's type (the whole
+  schema), then the fix: `remove needs an entity from a query (pass
+  match.entity) or the id spawn returned in this run, not a raw id`.
+
+- **`remove` takes several components.** Removing a component together with
+  the components that require it must happen in one call:
+  `commands.remove(match.entity, Player, Velocity)`.
+- **`insert` takes `match.entity` too.** A raw id still works for components
+  that require nothing; a component with requirements needs a target whose
+  query proves them, or the requirements inserted in the same call.
+- **A query's `without` proves absence.** `remove(match.entity, Velocity)`
+  compiles when every component that requires `Velocity` is excluded by the
+  query (`without: [Player]`) or removed in the same call.
+- **Hand-kept part lists can go.** Declare what always comes together in the
+  schema, and give `spawns` the main component:
+
+  ```diff
+  -export const PlayerParts = [Position, Velocity, Collider, Player] as const
+  -commands: Game.System.commands(Game.System.spawns(...PlayerParts))
+  +Schema.fragment({ components: { ... }, requires: [Schema.requires(Player, Position, Velocity, Collider)] })
+  +commands: Game.System.commands(Game.System.spawns(Player))
+  ```
+
+  - Put a requirement on the component that needs it, not on widely shared
+    ones. If many components require `Position` or `Renderable`, every
+    `remove` of those needs a query with `without` for each requirer.
+  - Only `spawns(...)` expands requirements. `inserts(...)`, `removes(...)`,
+    and `remove(...)` do not, so a list such as "every part of a body" stays a
+    plain array: `removes(...BodyParts)` and `remove(match.entity, ...BodyParts)`.
+  - Components a draft may hold that no requirement covers (optional parts)
+    are still listed in `spawns(...)` next to the main component.
+
+- **New optional descriptor option.** `{ immutable: true }` on a component
+  makes `Game.Query.write` of it a compile error; replace it with `insert`.
+- **Debug output.** `describe()` component entries gain `immutable` and
+  `requires`; a new effect kind `requirementViolated` and lint
+  `requirement-violated` report commands skipped at apply time. Replay schema
+  hashes are unchanged.
+
 ### Minor Changes
 
 - 0b22113: **Immutable components.** `Descriptor.Component`, `ConstructedComponent`, and `TransientComponent` take an optional `{ immutable: true }` for data that says what an entity is (a kind, a team, a tile). Queries can only read such a component: `Game.Query.write(Kind)` is a compile error naming the fix (`replace it with commands.insert(entity, Game.Command.entry(Kind, ...))`), and it throws the same message when an erased type reaches it. Replacing the component with `commands.insert` still marks it changed for `Game.Query.changed(Kind)`. Descriptors declared without the option keep their exact type.
@@ -86,7 +265,7 @@
   - `RenderSync.system` now builds one query per sync system (an `anyOf` of its added and changed filters) instead of one query per trigger plus deduplication.
   - `Debug.QueryDescription` gains `anyOf` (one entry per `anyOf` filter, with its `added` and `changed` components); code that builds a `QueryDescription` by hand must add it. The text report prints it as `any of (...)`, and Monitor counts its components as reads.
 
-- 0b22113: **Breaking: required components; `insert` and `remove` take a query match.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-080).
+- 0b22113: **Breaking: required components; `insert` and `remove` take a query match.** See Upgrading above.
 
   A fragment declares what always comes together: `Schema.fragment({ components: { ... }, requires: [Schema.requires(Player, Position, Velocity)] })`. Requirements chain, may name components of other fragments of the same `Schema.bind` (checked there), and are never filled in with defaults.
 

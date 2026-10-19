@@ -20,6 +20,11 @@
  * matter is a state machine (`Game.StateMachine(...)`); a state each entity
  * has on its own is a component (`Descriptor.EntityState(...)`).
  *
+ * Identity is `(kind, name)`: names are unique per kind across everything
+ * bound with `Schema.bind`, and a clash between fragments is rejected there.
+ * Prefix every name with the game or package (`"Game/Position"`), as the
+ * `ritmo/prefix-descriptor-and-system-names` lint rule requires.
+ *
  * @module Descriptor
  * @docGroup core
  *
@@ -41,16 +46,16 @@
  * @example
  * ```ts
  * // Components describe per-entity state that queries can match.
- * const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
+ * const Position = Descriptor.Component<{ x: number; y: number }>()("Game/Position")
  *
  * // Resources describe singleton world data shared across systems.
- * const DeltaTime = Descriptor.Resource<number>()("DeltaTime")
+ * const DeltaTime = Descriptor.Resource<number>()("Game/DeltaTime")
  *
  * // Events describe messages between systems, read once per reader.
- * const DamageTaken = Descriptor.Event<{ amount: number }>()("DamageTaken")
+ * const DamageTaken = Descriptor.Event<{ amount: number }>()("Game/DamageTaken")
  *
  * // Services describe host capabilities that live outside ECS storage.
- * const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Logger")
+ * const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Game/Logger")
  * ```
  */
 export type DescriptorTypeId = "~ritmo/Descriptor"
@@ -311,9 +316,9 @@ type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Valu
  *
  * @example
  * ```ts
- * const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
+ * const Position = Descriptor.Component<{ x: number; y: number }>()("Game/Position")
  * // What an entity is, replaced with commands.insert and never written by a query:
- * const EnemyKind = Descriptor.Component<"grunt" | "boss">()("EnemyKind", { immutable: true })
+ * const EnemyKind = Descriptor.Component<"grunt" | "boss">()("Game/EnemyKind", { immutable: true })
  * ```
  */
 export const Component = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
@@ -332,7 +337,7 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  * @example
  * ```ts
  * // Route raw component input through a constructor once at the boundary.
- * const Position = Descriptor.ConstructedComponent(Vector2)("Position")
+ * const Position = Descriptor.ConstructedComponent(Vector2)("Game/Position")
  * ```
  */
 export const ConstructedComponent = <Value, Raw, Error, Constructor extends {} = {}>(
@@ -351,7 +356,7 @@ export const ConstructedComponent = <Value, Raw, Error, Constructor extends {} =
  *
  * @example
  * ```ts
- * const SpriteRef = Descriptor.TransientComponent<{ frame: number }>()("SpriteRef")
+ * const SpriteRef = Descriptor.TransientComponent<{ frame: number }>()("Game/SpriteRef")
  * ```
  */
 export const TransientComponent = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
@@ -368,8 +373,8 @@ export const TransientComponent = <Value>(): CheckedValue<"component", Value, <c
  *
  * @example
  * ```ts
- * const Player = Descriptor.Tag("Player")
- * const Enemy = Descriptor.Tag("Enemy")
+ * const Player = Descriptor.Tag("Game/Player")
+ * const Enemy = Descriptor.Tag("Game/Enemy")
  * ```
  */
 export const Tag = <const Name extends string>(
@@ -418,10 +423,13 @@ export interface EntityStateDescriptor<
  * happens only if the current state is still `from`, otherwise it returns an
  * `EntityStateMismatch` failure. Transitions are ordinary component writes:
  * immediate, visible to later systems, rolled back with a failed system.
+ * The graph lists every state (`[]` for one with no way out). There are no
+ * per-state schedules: branch on `get()` in the system that owns the
+ * component, and emit an event on a transition other systems must react to.
  *
  * @example
  * ```ts
- * const Attack = Descriptor.EntityState("Attack", ["ready", "windup", "active"] as const, {
+ * const Attack = Descriptor.EntityState("Game/Attack", ["ready", "windup", "active"] as const, {
  *   transitions: { ready: ["windup"], windup: ["active", "ready"], active: ["ready"] }
  * })
  * // in a system with a write slot `attack`:
@@ -463,7 +471,7 @@ export const isEntityState = (
  * @example
  * ```ts
  * // Store shared world state once and request it explicitly from systems.
- * const Score = Descriptor.Resource<number>()("Score")
+ * const Score = Descriptor.Resource<number>()("Game/Score")
  * ```
  */
 export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name extends string>(
@@ -486,7 +494,7 @@ export const ConstructedResource = <Value, Raw, Error, Constructor extends {} = 
  *
  * @example
  * ```ts
- * const DeltaTime = Descriptor.TransientResource<number>()("DeltaTime")
+ * const DeltaTime = Descriptor.TransientResource<number>()("Game/DeltaTime")
  * ```
  */
 export const TransientResource = <Value>(): CheckedValue<"resource", Value, <const Name extends string>(
@@ -508,7 +516,7 @@ export const TransientResource = <Value>(): CheckedValue<"resource", Value, <con
  *
  * @example
  * ```ts
- * const Hit = Descriptor.Event<{ target: number; amount: number }>()("Hit")
+ * const Hit = Descriptor.Event<{ target: number; amount: number }>()("Game/Hit")
  * ```
  */
 export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends string>(
@@ -522,14 +530,17 @@ export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends
  * Effect environment entries.
  *
  * Use them for capabilities owned by the host instead of the ECS world:
- * clocks, random sources, render/audio bridges, storage, or network clients.
- * Systems request them explicitly with `Game.System.service(...)`, and the
- * runtime provides them through `Game.Runtime.services(...)`.
+ * render/audio bridges, logs, storage, or network clients. Simulation time
+ * is `Clock` and randomness is the `Random` resource from
+ * `@typeonce/ritmo-math`, not services. Systems request them explicitly with
+ * `Game.System.service(...)`, and the runtime provides them through
+ * `Game.Runtime.services(...)`. A service's effects (a sound played, a
+ * request sent, a value stored) are not rolled back when the system fails.
  *
  * @example
  * ```ts
  * // Describe one host capability the runtime must provide.
- * const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Logger")
+ * const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Game/Logger")
  * ```
  */
 export const Service = <Value>(): CheckedValue<"service", Value, <const Name extends string>(
@@ -580,7 +591,7 @@ const asyncValidationIssue: ReadonlyArray<StandardSchema.Issue> = [
  * ```ts
  * const Position = Descriptor.ConstructedComponent(
  *   Descriptor.fromStandardSchema(type({ x: "number", y: "number" }))
- * )("Position")
+ * )("Game/Position")
  * ```
  */
 export const fromStandardSchema = <Input, Output>(

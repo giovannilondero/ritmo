@@ -16,7 +16,7 @@
  * @example
  * ```ts
  * // Model a gameplay phase whose transition timing matters.
- * const GameFlow = Machine.StateMachine("GameFlow", ["Menu", "Playing"] as const)
+ * const GameFlow = Machine.StateMachine("Game/GameFlow", ["Menu", "Playing"] as const)
  *
  * // Gate one system so it only runs in the committed playing phase.
  * const isPlaying = Machine.inState(GameFlow, "Playing")

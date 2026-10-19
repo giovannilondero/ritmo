@@ -1,7 +1,5 @@
 # `@typeonce/ritmo-render`
 
-Migrating from bevy-ts? See the [package migration guide](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md).
-
 Renderer-agnostic entity-to-node mirroring for ritmo: a render-node registry keyed by entity (`NodeRegistry`), a system that creates, updates, and destroys renderer nodes from ECS entities (`RenderSync.system`), and a system that draws fixed-step movement smoothly between steps (`RenderSync.interpolate`).
 
 ```sh
@@ -35,8 +33,8 @@ const runtime = Game.Runtime.make({
 }).value
 ```
 
-For Pixi, [`@typeonce/ritmo-pixi`](https://www.npmjs.com/package/@typeonce/ritmo-pixi) provides `PixiNodeRegistry.make(container)`, an implementation of the same registry contract. The host provides it with `Game.Runtime.service`; render systems keep depending on the generic service descriptor.
+For Pixi, [`@typeonce/ritmo-pixi`](https://github.com/typeonce-dev/ritmo/blob/main/packages/pixi/README.md) provides `PixiNodeRegistry.make(container)`, an implementation of the same registry contract. The host provides it with `Game.Runtime.service`; render systems keep depending on the generic service descriptor.
 
-Released together with [`@typeonce/ritmo`](https://www.npmjs.com/package/@typeonce/ritmo), always with the same version.
+Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.
 
 Source: https://github.com/typeonce-dev/ritmo

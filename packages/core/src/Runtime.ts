@@ -17,10 +17,12 @@
  *
  * @example
  * ```ts
- * // Provide the services systems declared in their specs.
+ * // Provide the host capabilities systems declared as services. Simulation
+ * // time comes from `Clock` and randomness from the `Random` resource
+ * // (`@typeonce/ritmo-math`), never from a service.
  * const services = Game.Runtime.services(
- *   Game.Runtime.service(RenderClock, { now: () => performance.now() }),
- *   Game.Runtime.service(Random, { next: Math.random })
+ *   Game.Runtime.service(Audio, { play: (sound) => audioHost.play(sound) }),
+ *   Game.Runtime.service(Nodes, nodeRegistry)
  * )
  *
  * // make always returns a Result. Viewport is a constructed resource, so
@@ -28,7 +30,8 @@
  * const runtime = Game.Runtime.make({
  *   services,
  *   resources: {
- *     viewport: { width: 800, height: 600 }
+ *     viewport: { width: 800, height: 600 },
+ *     rng: Random.seed(0x5eed)
  *   },
  *   machines: Game.Runtime.machines(
  *     Game.Runtime.machine(GameFlow, "Boot")
@@ -664,7 +667,10 @@ export interface Runtime<
    */
   readonly restore: Snapshot.Gate<S, (data: unknown) => Result.Result<void, Snapshot.RestoreError>>
   /**
-   * Evaluates one read-only projection without advancing schedule visibility.
+   * Evaluates one read-only projection without running a schedule. Like a
+   * system, the inspector sees `added`/`changed` matches, removed and
+   * despawned records, and events published since its own previous
+   * evaluation, once.
    */
   readonly inspect: {
     <const Selected extends Inspector.InspectorDefinition<any, any, Root, any, any>>(
@@ -2888,7 +2894,9 @@ const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine
  *
  * This is the runtime-side counterpart to `Game.System.service(...)`. Use it
  * to assemble the host implementations the game exposes to systems, such as
- * clocks, random generators, render bridges, audio sinks, or network clients.
+ * render bridges, audio sinks, logs, or network clients. Simulation time is
+ * `Clock` and randomness is the `Random` resource from
+ * `@typeonce/ritmo-math`; neither is a service.
  *
  * The helper keeps the runtime map keyed by service descriptors instead of
  * ad hoc strings, so the provision site cannot drift from the declaration site.
@@ -2900,7 +2908,7 @@ const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine
  * // Bundle host capabilities once when building the runtime.
  * const services = Game.Runtime.services(
  *   Game.Runtime.service(Logger, { log: console.log }),
- *   Game.Runtime.service(Random, { next: Math.random })
+ *   Game.Runtime.service(Audio, { play: (sound) => audioHost.play(sound) })
  * )
  * ```
  */

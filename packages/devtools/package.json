@@ -27,6 +27,7 @@
     "src/**/*.ts",
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "bin": {
@@ -73,6 +74,6 @@
     "@typeonce/ritmo": "workspace:^"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.15"
   }
 }

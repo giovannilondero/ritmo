@@ -18,7 +18,7 @@
  * @example
  * ```ts
  * // Define one simulation step with explicit world access.
- * const Move = Game.System("Move", {
+ * const Move = Game.System("Game/Move", {
  *   queries: {
  *     moving: Game.Query({
  *       selection: {
@@ -89,7 +89,7 @@ import type { CommandAccess, CommandsApi, NotDeclared } from "./Command.ts"
  *
  * @example
  * ```ts
- * const Move = Game.System("Move", {
+ * const Move = Game.System("Game/Move", {
  *   queries: {
  *     moving: Game.Query({
  *       selection: {
@@ -125,9 +125,12 @@ export interface ServiceRead<D extends Descriptor<"service", string, any>> {
  * Declares that a system needs a service from the external runtime environment.
  *
  * Use this for host capabilities that should not live in ECS world storage:
- * clocks, random generators, render bridges, audio sinks, persistence APIs,
- * or network clients. The matching implementation must be supplied when the
- * runtime is created with `Game.Runtime.services(...)`.
+ * render bridges, audio sinks, logs, persistence APIs, or network clients.
+ * Simulation time is `Clock` and randomness is the `Random` resource from
+ * `@typeonce/ritmo-math`, not services. The matching implementation must be
+ * supplied when the runtime is created with `Game.Runtime.services(...)`.
+ * Service effects (audio, network, storage) are not rolled back when the
+ * system fails.
  */
 export const service = <D extends Descriptor<"service", string, any>>(
   descriptor: D
@@ -176,7 +179,7 @@ export const readResource = <D extends Descriptor<"resource", string, any>>(
  *
  * @example
  * ```ts
- * const CountUp = Game.System("CountUp", {
+ * const CountUp = Game.System("Game/CountUp", {
  *   resources: {
  *     score: Game.System.writeResource(Score)
  *   }
@@ -221,7 +224,7 @@ export type ResourceChanged<D extends Descriptor<"resource", string, any>> = {
  *
  * @example
  * ```ts
- * const SyncHud = Game.System("SyncHud", {
+ * const SyncHud = Game.System("Game/SyncHud", {
  *   resources: { score: Game.System.changedResource(Score) },
  *   services: { hud: Game.System.service(Hud) }
  * }, ({ resources, services }) => {
@@ -265,7 +268,10 @@ export type EventWrite<D extends Descriptor<"event", string, any>> = {
  * render rate) still receives all of them. Events nobody has read yet are
  * kept for the current and previous `runtime.tick(...)` call; a reader's
  * first run sees whatever is still kept. A system skipped by its run
- * conditions discards the events published meanwhile. Each stream is capped
+ * conditions discards the events published meanwhile, but keeps its
+ * change-detection position: `added`/`changed` filters and
+ * `removed`/`despawned` reads still show everything since its previous
+ * completed run when it runs again. Each stream is capped
  * at `Runtime.streamCapacity` entries; a reader that missed dropped ones sees
  * `lagged() === true`.
  *
@@ -293,7 +299,7 @@ export const readEvent = <D extends Descriptor<"event", string, any>>(
  *
  * @example
  * ```ts
- * const EmitHit = Game.System("EmitHit", {
+ * const EmitHit = Game.System("Game/EmitHit", {
  *   events: {
  *     hit: Game.System.writeEvent(Hit)
  *   }
@@ -325,7 +331,8 @@ export interface ThisTick {
  * runs after the reader and a call whose order is not statically known. A
  * read with no writer in the call compiles (a reader reused in several
  * ticks); the `event-never-written` lint reports data nobody writes.
- * `tryTick` checks the same at runtime.
+ * `tryTick` checks the same at runtime. Plugin systems with erased specs
+ * (`RenderSync.system`, `InputCapture.system`) do not count as writers.
  *
  * Use it on reads whose correctness depends on running after their writers
  * (damage applied the tick it is dealt). A plain read is right when last
@@ -345,16 +352,16 @@ export interface ThisTick {
  *
  * @example
  * ```ts
- * const ApplyDamage = Game.System("ApplyDamage", {
+ * const ApplyDamage = Game.System("Game/ApplyDamage", {
  *   events: { damage: Game.System.thisTick(Game.System.readEvent(Damage)) }
  * }, ({ events }) => { ... })
  *
  * runtime.tick(Game.Schedule(DealDamage, ApplyDamage)) // compiles
- * runtime.tick(Game.Schedule(ApplyDamage, DealDamage)) // "ApplyDamage needs Damage from this tick, but its writer DealDamage runs after it"
+ * runtime.tick(Game.Schedule(ApplyDamage, DealDamage)) // "Game/ApplyDamage needs Game/Damage from this tick, but its writer Game/DealDamage runs after it"
  *
- * const AimAtNewest = Game.System("AimAtNewest", { queries: { enemies: Game.System.thisTick(Enemies) } }, ...)
+ * const AimAtNewest = Game.System("Game/AimAtNewest", { queries: { enemies: Game.System.thisTick(Enemies) } }, ...)
  * runtime.tick(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), AimAtNewest)) // compiles
- * runtime.tick(Game.Schedule(SpawnWave, AimAtNewest)) // "AimAtNewest needs this tick's commands for queries.enemies, but SpawnWave queues them with no applyDeferred() in between"
+ * runtime.tick(Game.Schedule(SpawnWave, AimAtNewest)) // "Game/AimAtNewest needs this tick's commands for queries.enemies, but Game/SpawnWave queues them with no applyDeferred() in between"
  * ```
  */
 export const thisTick = <
@@ -490,6 +497,9 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * value queued before the current marker still commits at it. A sub-state
    * value set while its parent is still in its state but leaves it at the
    * same marker returns ok and is dropped with the sub-state.
+   *
+   * Setting the current state again re-runs its exit and enter schedules, so
+   * its sub-states restart. Use `setIfChanged` when that is not wanted.
    */
   set(value: Machine.StateMachine.Value<M>): Machine.SetResult<M>
   /** Like `set`, but committing the current value again is skipped (no exit or enter schedules). */
@@ -565,7 +575,7 @@ export interface RelationFailureRead<R extends Relation.Relation.Any> {
  *
  * @example
  * ```ts
- * const DestroyRenderNodesSystem = Game.System("DestroyRenderNodes", {
+ * const DestroyRenderNodesSystem = Game.System("Game/DestroyRenderNodes", {
  *   removed: {
  *     renderables: Game.System.readRemoved(Renderable)
  *   }
@@ -601,7 +611,7 @@ export const readRelationFailures = <R extends Relation.Relation.Any>(
  *
  * @example
  * ```ts
- * const DestroyNodesSystem = Game.System("DestroyNodes", {
+ * const DestroyNodesSystem = Game.System("Game/DestroyNodes", {
  *   despawned: {
  *     entities: Game.System.readDespawned()
  *   }
@@ -680,6 +690,10 @@ export type QueryHandle<S extends Schema.Any, Q extends Query.Any> =
 
 /** What every query handle has: iteration over its current matches. */
 export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
+  /**
+   * Returns every current match, in spawn order (ascending entity id), so
+   * iteration is the same on every run and platform.
+   */
   each(): ReadonlyArray<QueryMatch<S, Q>>
   /**
    * Returns a single match when zero or one entity satisfies the query.
@@ -1208,7 +1222,7 @@ export interface SystemDefinition<
  *
  * @example
  * ```ts
- * const Spend = Game.System("Spend", {
+ * const Spend = Game.System("Game/Spend", {
  *   resources: { gold: Game.System.writeResource(Gold) }
  * }, ({ resources }) => {
  *   if (resources.gold.get() < 10) return Result.failure("NotEnoughGold" as const)
@@ -1232,7 +1246,7 @@ export type SystemRun<Spec extends AnySystemSpec, E = never> =
  *
  * @example
  * ```ts
- * const CountEnemies = Game.System("CountEnemies", {
+ * const CountEnemies = Game.System("Game/CountEnemies", {
  *   queries: {
  *     enemies: Game.Query({
  *       selection: {

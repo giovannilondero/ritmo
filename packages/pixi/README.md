@@ -1,10 +1,8 @@
 # `@typeonce/ritmo-pixi`
 
-Migrating from bevy-ts? See the [package migration guide](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md).
-
 Pixi's implementation of the renderer-independent `NodeRegistry` contract. `PixiNodeRegistry.make` attaches nodes to one Pixi container and detaches and destroys them with their children on removal.
 
-Import the generic `NodeRegistry` contract and `RenderSync` systems from [`@typeonce/ritmo-render`](https://www.npmjs.com/package/@typeonce/ritmo-render). The Pixi package exports only its adapter; systems depend on the generic registry service, and the host chooses its implementation.
+Import the generic `NodeRegistry` contract and `RenderSync` systems from [`@typeonce/ritmo-render`](https://github.com/typeonce-dev/ritmo/blob/main/packages/render/README.md). The Pixi package exports only its adapter; systems depend on the generic registry service, and the host chooses its implementation.
 
 ```sh
 pnpm add @typeonce/ritmo-pixi @typeonce/ritmo-render @typeonce/ritmo
@@ -24,6 +22,6 @@ const services = Game.Runtime.services(Game.Runtime.service(Sprites, sprites))
 
 Bring your own `pixi.js` application; the package does not import it.
 
-Released together with [`@typeonce/ritmo`](https://www.npmjs.com/package/@typeonce/ritmo), always with the same version.
+Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.
 
 Source: https://github.com/typeonce-dev/ritmo

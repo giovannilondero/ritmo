@@ -27,6 +27,7 @@
     "src/**/*.ts",
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "exports": {

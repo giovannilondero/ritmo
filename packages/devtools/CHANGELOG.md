@@ -24,7 +24,7 @@
   - **`Session.run` stops with `invariant-threw`** when an invariant throws, naming the invariant and the error, instead of throwing out of `run` and losing the run's text.
   - The `Snapshot` docs now say that unread `runtime.send` events survive a restore, as they always did.
 
-- 330246e: **Safety follow-ups from a second review.** Each closes a way a game could go wrong silently; see [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-090).
+- 330246e: **Safety follow-ups from a second review.** Each closes a way a game could go wrong silently; see Upgrading under 0.9.0 in the `@typeonce/ritmo` CHANGELOG.md.
 
   - **A `SpawnedId` is valid only in the run that spawned it.** Kept in a closure or resource and passed to `commands.despawn` / `commands.remove` in a later run, it could name an entity despawned meanwhile whose id was reused. Such a command is now skipped, traced as a `staleTarget` effect, and reported by the new `stale-target` lint (`Debug.StaleTarget`). Keep the entity id or a handle and resolve it through a query.
   - **`any` and `never` are not descriptor values.** `Descriptor.Component<any>()`, `Resource`, `Event`, `Service`, and the transient variants fail at the constructor: `any` turned off every check on the descriptor, and `never` erased the fragment listing it.
@@ -58,7 +58,7 @@
   - `RenderSync.system` now builds one query per sync system (an `anyOf` of its added and changed filters) instead of one query per trigger plus deduplication.
   - `Debug.QueryDescription` gains `anyOf` (one entry per `anyOf` filter, with its `added` and `changed` components); code that builds a `QueryDescription` by hand must add it. The text report prints it as `any of (...)`, and Monitor counts its components as reads.
 
-- 0b22113: **Breaking: required components; `insert` and `remove` take a query match.** See [MIGRATION.md](https://github.com/typeonce-dev/ritmo/blob/main/MIGRATION.md#upgrading-to-080).
+- 0b22113: **Breaking: required components; `insert` and `remove` take a query match.** See Upgrading under 0.8.0 in the `@typeonce/ritmo` CHANGELOG.md.
 
   A fragment declares what always comes together: `Schema.fragment({ components: { ... }, requires: [Schema.requires(Player, Position, Velocity)] })`. Requirements chain, may name components of other fragments of the same `Schema.bind` (checked there), and are never filled in with defaults.
 

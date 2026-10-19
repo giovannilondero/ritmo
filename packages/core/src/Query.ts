@@ -32,7 +32,7 @@
  *   without: [Frozen]
  * })
  *
- * const MoveActors = Game.System("MoveActors", {
+ * const MoveActors = Game.System("Game/MoveActors", {
  *   queries: { moving: MovingActors },
  *   resources: { dt: Game.System.readResource(DeltaTime) }
  * }, ({ queries, resources }) => {
@@ -535,7 +535,21 @@ export namespace Query {
   export type SingleError = NoEntitiesError | MultipleEntitiesError
 }
 
-/** Deep read projection used by every ECS read capability. */
+/**
+ * Deep read projection used by every ECS read capability: what `get()`
+ * returns.
+ *
+ * Helpers that take values read from cells type their parameter
+ * `ReadonlyValue<T>`, not `T`, so `get()` results pass in without a cast.
+ *
+ * @example
+ * ```ts
+ * import type { ReadonlyValue } from "@typeonce/ritmo/Query"
+ *
+ * const spawnRate = (tuning: ReadonlyValue<Tuning>) => tuning.waves[0]?.rate ?? 1
+ * spawnRate(resources.tuning.get())
+ * ```
+ */
 export type ReadonlyValue<T> =
   T extends string | number | boolean | bigint | symbol | null | undefined ? T
   : T extends (...args: ReadonlyArray<any>) => any ? T

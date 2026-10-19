@@ -12,6 +12,9 @@
  * directly, or a game-specific adapter that merges several devices. The
  * resource's value type must be exactly the snapshot type.
  *
+ * Its spec is erased, so it does not count as a writer of the resource for
+ * `Game.System.thisTick(...)` order checks: place it first yourself.
+ *
  * @module InputCapture
  * @docGroup browser
  *

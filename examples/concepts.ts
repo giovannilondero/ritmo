@@ -1,7 +1,8 @@
 /**
- * The program behind CONCEPTS.md. It is typechecked with the repository and
- * run by `packages/core/test/Concepts.test.ts`, so the guide cannot drift from
- * the API.
+ * One small program that touches every core concept: descriptors, a closed
+ * schema, systems, commands, handles, events, failures, change detection,
+ * machines, and schedules. It is typechecked with the repository and run by
+ * `packages/core/test/Concepts.test.ts`.
  */
 import { Decode, Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type { Query } from "@typeonce/ritmo/Query"
