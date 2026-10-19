@@ -14,7 +14,7 @@ Every report says what goes wrong and which Ritmo API to use instead.
 pnpm add -D @typeonce/oxlint-plugin-ritmo oxlint
 ```
 
-Released together with [`@typeonce/ritmo`](https://www.npmjs.com/package/@typeonce/ritmo), always with the same version. Requires oxlint 1.86 or newer.
+Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version. Requires oxlint 1.86 or newer.
 
 ## Setup
 
@@ -100,7 +100,7 @@ Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`. 
 
 ### `ritmo/use-ops-for-math`
 
-The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run. [`Ops`](https://www.npmjs.com/package/@typeonce/ritmo-math#determinism-across-devices) from `@typeonce/ritmo-math` has each of them as a port that returns the same bits everywhere.
+The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run. [`Ops`](https://github.com/typeonce-dev/ritmo/blob/main/packages/math/README.md#determinism-across-devices) from `@typeonce/ritmo-math` has each of them as a port that returns the same bits everywhere.
 
 ```ts
 const turn = Math.atan2(Math.sin(b - a), Math.cos(b - a))     // reported

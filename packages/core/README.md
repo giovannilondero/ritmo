@@ -22,11 +22,11 @@ The API reference is the JSDoc in `src/`: each module's header says what it is f
 
 Related packages, released together with the same version:
 
-- [`@typeonce/ritmo-math`](https://www.npmjs.com/package/@typeonce/ritmo-math): validated vectors, sizes, and bounding boxes
-- [`@typeonce/ritmo-browser`](https://www.npmjs.com/package/@typeonce/ritmo-browser): animation-frame ticks for the fixed-step loop, keyboard, pointer, and touch input
-- [`@typeonce/ritmo-render`](https://www.npmjs.com/package/@typeonce/ritmo-render): entity-to-node sync for any renderer
-- [`@typeonce/ritmo-pixi`](https://www.npmjs.com/package/@typeonce/ritmo-pixi): Pixi container adapter for the render-node registry
-- [`@typeonce/ritmo-devtools`](https://www.npmjs.com/package/@typeonce/ritmo-devtools): headless debug sessions and trace reports
-- [`@typeonce/oxlint-plugin-ritmo`](https://www.npmjs.com/package/@typeonce/oxlint-plugin-ritmo): oxlint rules that keep simulation code deterministic and headless
+- [`@typeonce/ritmo-math`](https://github.com/typeonce-dev/ritmo/blob/main/packages/math/README.md): validated vectors, sizes, and bounding boxes
+- [`@typeonce/ritmo-browser`](https://github.com/typeonce-dev/ritmo/blob/main/packages/browser/README.md): animation-frame ticks for the fixed-step loop, keyboard, pointer, and touch input
+- [`@typeonce/ritmo-render`](https://github.com/typeonce-dev/ritmo/blob/main/packages/render/README.md): entity-to-node sync for any renderer
+- [`@typeonce/ritmo-pixi`](https://github.com/typeonce-dev/ritmo/blob/main/packages/pixi/README.md): Pixi container adapter for the render-node registry
+- [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md): headless debug sessions and trace reports
+- [`@typeonce/oxlint-plugin-ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/oxlint-plugin/README.md): oxlint rules that keep simulation code deterministic and headless
 
 Source: https://github.com/typeonce-dev/ritmo

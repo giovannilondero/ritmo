@@ -31,7 +31,7 @@
 ## Docs
 - A game's agent sees only what npm ships: each package's `src` JSDoc, `README.md`, `CHANGELOG.md`, and the skill in [`packages/core/skills/ritmo`](./packages/core/skills/ritmo/SKILL.md). Guidance a game needs goes there, never in a repo-only file.
 - The root `README.md` is the only doc for humans. `AGENTS.md`, `ARCHITECTURE.md`, and `RELEASING.md` are for work on this repo.
-- Package READMEs link other packages by their npm URL, never by a relative path or into `examples/`, which do not ship.
+- Package READMEs link other packages' docs by their GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by a relative path or into `examples/`, which do not ship.
 - A changeset for a breaking change carries its fix (a short diff or the exact replacement), so the shipped `CHANGELOG.md` is the upgrade guide.
 - The skill holds only principles that change where code and state go in a game; anything a JSDoc, README, or lint message already says stays out of it.
 

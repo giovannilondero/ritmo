@@ -9,16 +9,13 @@
 
 **The agent-first, type-safe ECS runtime for games.**
 
-🎮 You direct the mechanics and feel.<br>
-🤖 Your coding agent writes the simulation.<br>
-🛡️ Ritmo keeps the agent on track:
+🎮 You direct the mechanics and feel. Your coding agent writes the simulation.
 
-- ✅ **Wrong code does not compile.** Undeclared access and missing
-  requirements are type errors, and each error names the fix.
-- 🔍 **Every run can be inspected.** Headless sessions show lints,
-  invariants, journals, and why each value changed.
-- 🎨 **Your renderer, your loop.** Ritmo brings simulation, input, timing,
-  math, and renderer bridges. Drawing stays in your game.
+Ritmo keeps the agent on track: wrong code does not compile and the error
+names the fix, and headless runs show lints, invariants, and why each value
+changed.
+
+Ritmo works with your renderer and game loop. Drawing stays in your game.
 
 <p align="center">
   <picture>
@@ -33,9 +30,8 @@
 pnpm add @typeonce/ritmo
 ```
 
-- Requires TypeScript 5.9 or newer (tested on every version from 5.9 up).
-- Leave `noErrorTruncation` off: errors name the fix near their start, and
-  an untruncated error can print a whole schema.
+Requires TypeScript 5.9 or newer. Leave `noErrorTruncation` off: errors name
+the fix near their start, and an untruncated one can print a whole schema.
 
 ```ts
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -139,24 +135,22 @@ structuring a game.
    ```
 
 3. Ask the agent to set up `.oxlintrc.json` from the
-   [oxlint plugin README](https://www.npmjs.com/package/@typeonce/oxlint-plugin-ritmo)
+   [oxlint plugin README](./packages/oxlint-plugin/README.md)
    and `ritmo-devtools lint` from the
-   [devtools README](https://www.npmjs.com/package/@typeonce/ritmo-devtools),
+   [devtools README](./packages/devtools/README.md),
    and to run both in the game's check.
 
 ## Guarantees
 
-- 🏷️ **Unique names.** A schema rejects two descriptors of one kind with the
-  same name at compile time.
-- ⏸️ **No hidden structural changes.** Commands and state transitions wait
-  for an explicit `applyDeferred()` or `applyStateTransitions(...)`.
-- 📬 **Every change seen once.** Each system sees what was published since
-  its own previous run, exactly once.
-- ↩️ **Failures are values.** A failing system rolls back its writes, and
-  the tick returns the failure.
-- ⚡ **Fast queries.** Queries visit only entities with their rarest
-  required component and cache their matches. CI fails on runtime
-  regressions over 25%.
+- A schema rejects two descriptors of one kind with the same name at compile
+  time.
+- Commands and state transitions wait for an explicit `applyDeferred()` or
+  `applyStateTransitions(...)` in the schedule.
+- Each system sees what was published since its own previous run, exactly
+  once.
+- A failing system rolls back its writes, and the tick returns the failure.
+- Queries visit only entities with their rarest required component and cache
+  their matches. CI fails on runtime regressions over 25%.
 
 Ritmo was previously named `bevy-ts`: see the [rename guide](./MIGRATION.md).
 
