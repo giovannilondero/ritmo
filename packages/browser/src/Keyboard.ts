@@ -132,11 +132,21 @@ export type Snapshot<B extends Bindings> = {
   readonly [Action in keyof B]: ActionState
 }
 
+/** New keys for the same actions, for {@link Actions.rebind}. */
+export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: readonly [KeyBinding, ...Array<KeyBinding>] }
+
 export interface Actions<B extends Bindings> {
   /**
    * Returns every action's state and starts a new press/release window.
    */
   snapshot(): Snapshot<B>
+  /**
+   * Binds the same actions to new keys, from the next snapshot, for a
+   * settings screen where players remap controls. An action held only
+   * through keys it lost reports `released`; a key held across the rebind
+   * that is newly bound counts once it is pressed again.
+   */
+  rebind(bindings: Rebinding<B>): void
   /**
    * Removes the event listeners.
    */
@@ -175,20 +185,25 @@ const bindingToken = (binding: KeyBinding): string => typeof binding === "string
  */
 export const actions = <const B extends Bindings>(
   host: KeyboardHost,
-  bindings: B,
+  initial: B,
   options: ActionsOptions = {}
 ): Actions<B> => {
   const preventDefault = options.preventDefault ?? true
-  const names = Object.keys(bindings) as Array<keyof B & string>
+  let bindings: Rebinding<B> = initial
+  let names = Object.keys(initial) as Array<keyof B & string>
   const actionsByToken = new Map<string, Array<keyof B & string>>()
-  for (const name of names) {
-    for (const binding of bindings[name]!) {
-      const token = bindingToken(binding)
-      const bound = actionsByToken.get(token)
-      if (bound) bound.push(name)
-      else actionsByToken.set(token, [name])
+  const index = (): void => {
+    actionsByToken.clear()
+    for (const name of names) {
+      for (const binding of bindings[name]!) {
+        const token = bindingToken(binding)
+        const bound = actionsByToken.get(token)
+        if (bound) bound.push(name)
+        else actionsByToken.set(token, [name])
+      }
     }
   }
+  index()
 
   const heldTokens = new Set<string>()
   /**
@@ -227,15 +242,15 @@ export const actions = <const B extends Bindings>(
       tokens.push(codeToken(event.code))
     }
     for (const token of tokens) {
-      const bound = actionsByToken.get(token)
-      if (!bound || !heldTokens.delete(token)) continue
-      for (const name of bound) released.add(name)
+      // A key stays tracked while held even if a rebind unbound it, so its release is still seen.
+      if (!heldTokens.delete(token)) continue
+      for (const name of actionsByToken.get(token) ?? []) released.add(name)
     }
   }
 
   const onBlur = (): void => {
     for (const token of heldTokens) {
-      for (const name of actionsByToken.get(token)!) released.add(name)
+      for (const name of actionsByToken.get(token) ?? []) released.add(name)
     }
     heldTokens.clear()
     keyTokenByCode.clear()
@@ -266,6 +281,13 @@ export const actions = <const B extends Bindings>(
       pressed.clear()
       released.clear()
       return snapshot
+    },
+    rebind(next) {
+      const before = names.filter(isHeld)
+      bindings = next
+      names = Object.keys(next) as Array<keyof B & string>
+      index()
+      for (const name of before) if (!isHeld(name)) released.add(name)
     },
     dispose() {
       host.removeEventListener("keydown", onKeyDown)
@@ -339,6 +361,8 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
       }
       return snapshot
     },
+    // A timeline names actions, not keys, so new keys change nothing.
+    rebind() {},
     dispose() {},
     frames: () => frame
   }
@@ -378,6 +402,9 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
       }
       frame += 1
       return snapshot
+    },
+    rebind(bindings) {
+      actions.rebind(bindings)
     },
     dispose() {
       actions.dispose()

@@ -195,3 +195,44 @@ describe("Keyboard physical keys", () => {
     expect(fake.prevented).toEqual(["k", " "])
   })
 })
+
+describe("Keyboard.rebind", () => {
+  it("binds the same actions to new keys from the next snapshot", () => {
+    const fake = makeHost()
+    const input = Keyboard.actions(fake.host, { jump: [" "], dash: ["Shift"] })
+
+    input.rebind({ jump: [Keyboard.code("KeyJ")], dash: [" "] })
+    fake.downCode("j", "KeyJ")
+    fake.down(" ")
+    const snapshot = input.snapshot()
+    expect(snapshot.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(snapshot.dash).toEqual({ held: true, pressed: true, released: false })
+  })
+
+  it("releases an action held only through keys it lost, and still sees the old key go up", () => {
+    const fake = makeHost()
+    const input = Keyboard.actions(fake.host, { jump: [" "], crouch: ["c"] })
+
+    fake.down(" ")
+    input.snapshot()
+    input.rebind({ jump: ["w"], crouch: [" "] })
+    const snapshot = input.snapshot()
+    expect(snapshot.jump).toEqual({ held: false, pressed: false, released: true })
+    expect(snapshot.crouch).toEqual({ held: true, pressed: false, released: false })
+    fake.up(" ")
+    expect(input.snapshot().crouch).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("keeps a recording's timeline by action, so a rebind does not change a replay", () => {
+    const fake = makeHost()
+    const bindings = { jump: [" "] } as const
+    const recorder = Keyboard.recording(Keyboard.actions(fake.host, bindings))
+
+    recorder.rebind({ jump: ["w"] })
+    fake.down("w")
+    recorder.snapshot()
+    const replay = Keyboard.scripted(bindings, recorder.timeline())
+    replay.rebind({ jump: ["x"] })
+    expect(replay.snapshot().jump.pressed).toBe(true)
+  })
+})

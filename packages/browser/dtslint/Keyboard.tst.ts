@@ -28,3 +28,11 @@ describe("Keyboard", () => {
     Keyboard.actions(host, { jump: [] })
   })
 })
+
+describe("Keyboard.rebind", () => {
+  it("rebinds the same actions only", () => {
+    const input = Keyboard.actions(host, { jump: [" "], left: ["a"] })
+    expect(input.rebind).type.toBeCallableWith({ jump: [Keyboard.code("KeyJ")], left: ["ArrowLeft"] })
+    expect(input.rebind).type.not.toBeCallableWith({ jump: ["j"] })
+  })
+})

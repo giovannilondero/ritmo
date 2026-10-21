@@ -1,6 +1,6 @@
 # `@typeonce/ritmo-browser`
 
-Browser integrations for ritmo: animation frames as a tick source for the core fixed-step loop (`BrowserTickSource`), keyboard actions with press/release edges, bound by character or by physical key (`Keyboard`), mouse and pen position and button edges over an element (`Pointer`), on-screen touch controls with a floating stick and drag-to-aim buttons (`Touch`), scripted and recorded keyboard and pointer timelines for tests and replays, and a system that copies input into a resource (`InputCapture`).
+Browser integrations for ritmo: animation frames as a tick source for the core fixed-step loop (`BrowserTickSource`), keyboard actions with press/release edges, bound by character or by physical key (`Keyboard`), gamepad actions by standard-mapping button names plus the sticks and triggers (`Gamepad`), both rebindable at runtime for a controls settings screen, mouse and pen position and button edges over an element (`Pointer`), on-screen touch controls with a floating stick and drag-to-aim buttons (`Touch`), scripted and recorded keyboard, pointer, and gamepad timelines for tests and replays, and a system that copies input into a resource (`InputCapture`).
 
 ```sh
 pnpm add @typeonce/ritmo-browser @typeonce/ritmo
