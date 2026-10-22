@@ -330,6 +330,52 @@ describe("Gamepad.recording release and press within one update", () => {
   })
 })
 
+describe("Gamepad timelines and disconnects", () => {
+  it("records a disconnect and a reconnect, and replays them", () => {
+    const pad = makePad()
+    const host = makeHost(pad)
+    const live = Gamepad.recording(Gamepad.actions(host.host, bindings))
+    const seen: Array<Gamepad.Snapshot<typeof bindings>> = []
+
+    pad.down("west")
+    pad.tilt("left", 1, 0)
+    seen.push(live.snapshot())
+    host.connected.length = 0
+    seen.push(live.snapshot())
+    seen.push(live.snapshot())
+    host.connected.push(pad.pad)
+    seen.push(live.snapshot())
+    expect(seen.map((snapshot) => snapshot.connected)).toEqual([true, false, false, true])
+    expect(live.timeline()[1]).toMatchObject({ frame: 1, release: ["west"], connected: false })
+    expect(live.timeline()[2]).toMatchObject({ frame: 3, press: ["west"], connected: true })
+
+    const parsed = Gamepad.parseTimeline(JSON.parse(JSON.stringify(live.timeline())))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    const replay = Gamepad.scripted(bindings, parsed.value)
+    for (const snapshot of seen) {
+      const replayed = replay.snapshot()
+      expect(replayed.actions).toEqual(snapshot.actions)
+      expect(replayed.buttons).toEqual(snapshot.buttons)
+      expect(replayed.left).toEqual(snapshot.left)
+      expect(replayed.connected).toBe(snapshot.connected)
+    }
+  })
+
+  it("releases everything and zeroes the sticks when a scripted pad disconnects", () => {
+    const replay = Gamepad.scripted(bindings, [
+      { frame: 0, press: ["west"], left: { x: 1, y: 0 }, rightTrigger: 1 },
+      { frame: 1, connected: false }
+    ])
+    replay.snapshot()
+    expect(replay.snapshot()).toEqual({ ...Gamepad.idle(bindings), actions: { ...Gamepad.idle(bindings).actions, attack: released }, buttons: { ...Gamepad.idle(bindings).buttons, west: released } })
+  })
+
+  it("rejects a connected flag that is not a boolean", () => {
+    expect(Gamepad.parseTimeline([{ frame: 0, connected: "yes" }])).toMatchObject({ ok: false, error: { path: "[0].connected" } })
+  })
+})
+
 describe("Gamepad.parseRebinding", () => {
   it("accepts the same actions bound to button names", () => {
     const parsed = Gamepad.parseRebinding(bindings, JSON.parse('{"attack":["north"],"dash":["south","east"],"ultimate":["leftTrigger"]}'))

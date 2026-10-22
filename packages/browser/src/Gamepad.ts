@@ -380,14 +380,20 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
 
 /**
  * Input changes applied just before one snapshot: the buttons, then the
- * sticks and triggers, which keep their value until set again. `frame` is the
- * snapshot's index, counting from 0 at the first `snapshot()` call. A button
- * in both `press` and `release` changed twice within the frame: a tap
- * shorter than a frame when it was up, a release and a new press when it was
- * held.
+ * sticks and triggers, which keep their value until set again, then
+ * `connected`. `frame` is the snapshot's index, counting from 0 at the first
+ * `snapshot()` call. A button in both `press` and `release` changed twice
+ * within the frame: a tap shorter than a frame when it was up, a release and
+ * a new press when it was held.
  */
 export interface TimelineEntry {
   readonly frame: number
+  /**
+   * Connects or disconnects the pad from this frame on. The first entry
+   * connects it unless it says otherwise. A disconnect releases every held
+   * button and zeroes the sticks and triggers, as with a live pad.
+   */
+  readonly connected?: boolean
   readonly press?: ReadonlyArray<Button>
   readonly release?: ReadonlyArray<Button>
   readonly left?: Vector
@@ -411,7 +417,8 @@ export interface Scripted<B extends Bindings> extends Actions<B> {
 
 /**
  * Plays `timeline`: before the snapshot at index `frame`, every entry for
- * that frame is applied. A pad counts as connected from the first entry on.
+ * that frame is applied. A pad counts as connected from the first entry on,
+ * until an entry says `connected: false`.
  * Buttons stay held from their press until their release; pressing a held
  * button is not a new press.
  */
@@ -424,7 +431,9 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
     else byFrame.set(entry.frame, [entry])
   }
   const first = timeline.reduce((earliest, entry) => Math.min(earliest, entry.frame), Number.POSITIVE_INFINITY)
-  let analog = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
+  const resting = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
+  let analog = resting
+  let connected = false
   let frame = 0
   return {
     snapshot() {
@@ -445,8 +454,12 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
           leftTrigger: entry.leftTrigger ?? analog.leftTrigger,
           rightTrigger: entry.rightTrigger ?? analog.rightTrigger
         }
+        connected = entry.connected ?? (frame === first ? true : connected)
+        if (!connected) {
+          state.upAll()
+          analog = resting
+        }
       }
-      const connected = frame >= first
       frame += 1
       return state.snapshot({ ...analog, connected, id: connected ? "scripted" : null })
     },
@@ -470,7 +483,7 @@ const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Pick<Snapshot<B>, "buttons" | "left" | "right" | "leftTrigger" | "rightTrigger"> = { buttons: idleButtons(), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
+  let previous: Omit<Snapshot<B>, "actions" | "id"> = { buttons: idleButtons(), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
   let frame = 0
   return {
     snapshot() {
@@ -484,7 +497,9 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
         ...(sameVector(snapshot.left, previous.left) ? {} : { left: snapshot.left }),
         ...(sameVector(snapshot.right, previous.right) ? {} : { right: snapshot.right }),
         ...(snapshot.leftTrigger === previous.leftTrigger ? {} : { leftTrigger: snapshot.leftTrigger }),
-        ...(snapshot.rightTrigger === previous.rightTrigger ? {} : { rightTrigger: snapshot.rightTrigger })
+        ...(snapshot.rightTrigger === previous.rightTrigger ? {} : { rightTrigger: snapshot.rightTrigger }),
+        // The first entry connects the pad by itself; later changes are written out.
+        ...(snapshot.connected === previous.connected || entries.length === 0 ? {} : { connected: snapshot.connected })
       }
       // The first entry also marks when a pad appeared, so a replay connects on the same frame.
       if (Object.keys(entry).length > 0 || (entries.length === 0 && snapshot.connected)) entries.push({ frame, ...entry })
@@ -517,7 +532,8 @@ export const isButton = (name: unknown): name is Button => typeof name === "stri
  * Validates untrusted data, such as a parsed JSON file, as a timeline: an
  * array of entries with a non-negative integer `frame`, optional
  * `press`/`release` arrays of button names, optional `left`/`right` vectors
- * of length at most 1, and optional triggers from 0 to 1.
+ * of length at most 1, optional triggers from 0 to 1, and an optional
+ * boolean `connected`.
  */
 export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTimeline> => {
   const invalid = (path: string, message: string) => Result.failure<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
@@ -554,6 +570,11 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
       if (value === undefined) continue
       if (typeof value !== "number" || !(value >= 0 && value <= 1)) return invalid(`${path}.${field}`, "expected a number from 0 to 1")
       parsed[field] = value
+    }
+    const connected = fields["connected"]
+    if (connected !== undefined) {
+      if (typeof connected !== "boolean") return invalid(`${path}.connected`, "expected a boolean")
+      parsed["connected"] = connected
     }
     entries.push(parsed as unknown as TimelineEntry)
   }

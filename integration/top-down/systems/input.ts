@@ -3,14 +3,22 @@ import {
   DeltaTime,
   FrameContext,
   Game,
+  GamepadInput,
   InputState,
-  KeyboardInput
+  KeyboardInput,
+  PadState
 } from "../schema.ts"
 
 export const CaptureInputSystem = InputCapture.system(Game, {
   name: "TopDown/CaptureInput",
   source: KeyboardInput,
   resource: InputState
+})
+
+export const CapturePadSystem = InputCapture.system(Game, {
+  name: "TopDown/CapturePad",
+  source: GamepadInput,
+  resource: PadState
 })
 
 export const CaptureFrameContextSystem = Game.System(
