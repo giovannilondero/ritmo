@@ -11,14 +11,14 @@
  * the timeline, the invariants, and the questions.
  */
 import { HostClock } from "@typeonce/ritmo"
-import { Keyboard } from "@typeonce/ritmo-browser"
+import { Gamepad, Keyboard } from "@typeonce/ritmo-browser"
 import { Invariant, Session } from "@typeonce/ritmo-devtools"
 
 import { WORLD_HEIGHT, WORLD_WIDTH } from "./constants.ts"
 import { PlayerPositionQuery } from "./queries.ts"
 import { Game, Player, Position } from "./schema.ts"
 import { createTopDownSimulation } from "./simulation.ts"
-import { inputBindings } from "./types.ts"
+import { inputBindings, padBindings } from "./types.ts"
 
 // Frame 0 is the first update. Press and release are applied before that
 // frame's input capture; a press and release in one frame is a tap.
@@ -30,7 +30,9 @@ const keyboard = Keyboard.scripted(inputBindings, [
 
 // A test clock keeps every timing at 0, so the output is the same on every run.
 const hostClock = HostClock.test()
-const simulation = createTopDownSimulation({ keyboard, hostClock })
+// No controller in this run; script one the same way, by button names.
+const gamepad = Gamepad.scripted(padBindings, [])
+const simulation = createTopDownSimulation({ keyboard, gamepad, hostClock })
 if (!simulation.ok) throw new Error(simulation.error.message)
 const { runtime, setup, update } = simulation.value
 

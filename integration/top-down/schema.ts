@@ -1,9 +1,11 @@
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
+import type { InputCapture } from "@typeonce/ritmo-browser"
 import * as Size2 from "@typeonce/ritmo-math/Size2"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 
 import type {
   FrameContextValue,
+  GamepadInput as GamepadInputValue,
   InputStateValue,
   KeyboardInput as KeyboardInputValue
 } from "./types.ts"
@@ -34,6 +36,9 @@ export const CollectedCount = Descriptor.Resource<number>()("TopDown/CollectedCo
 export const TotalCollectables = Descriptor.Resource<number>()("TopDown/TotalCollectables")
 
 export const KeyboardInput = Descriptor.Service<KeyboardInputValue>()("TopDown/KeyboardInput")
+export const GamepadInput = Descriptor.Service<GamepadInputValue>()("TopDown/GamepadInput")
+// Captured from the gamepad at the start of each update; its type is exactly what the source produces.
+export const PadState = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof GamepadInput>>()("TopDown/PadState")
 export const FrameContext = Descriptor.Service<FrameContextValue>()("TopDown/FrameContext")
 
 export const Game = Schema.bind(
@@ -56,6 +61,7 @@ export const Game = Schema.bind(
     resources: {
       DeltaTime,
       InputState,
+      PadState,
       FocusedCollectable,
       CollectedCount,
       TotalCollectables

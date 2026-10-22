@@ -1,6 +1,7 @@
 import {
   CaptureFrameContextSystem,
   CaptureInputSystem,
+  CapturePadSystem,
   CollectFocusedCollectableSystem,
   MovePlayerSystem,
   PlanPlayerVelocitySystem,
@@ -17,10 +18,11 @@ export const setupWorldSchedule = Game.Schedule(
   Game.Schedule.applyDeferred()
 )
 
-/** One fixed update. It needs only the keyboard and the frame context, so it runs headless (see `simulation.ts`). */
+/** One fixed update. It needs only the keyboard, the gamepad, and the frame context, so it runs headless (see `simulation.ts`). */
 export const simulationSchedule = Game.Schedule(
   CaptureFrameContextSystem,
   CaptureInputSystem,
+  CapturePadSystem,
   PlanPlayerVelocitySystem,
   MovePlayerSystem,
   UpdateFocusedCollectableSystem,

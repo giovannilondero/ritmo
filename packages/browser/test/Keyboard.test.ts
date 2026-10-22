@@ -195,3 +195,134 @@ describe("Keyboard physical keys", () => {
     expect(fake.prevented).toEqual(["k", " "])
   })
 })
+
+describe("Keyboard.rebind", () => {
+  it("binds the same actions to new keys from the next snapshot", () => {
+    const fake = makeHost()
+    const input = Keyboard.actions(fake.host, { jump: [" "], dash: ["Shift"] })
+
+    input.rebind({ jump: [Keyboard.code("KeyJ")], dash: [" "] })
+    fake.downCode("j", "KeyJ")
+    fake.down(" ")
+    const snapshot = input.snapshot()
+    expect(snapshot.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(snapshot.dash).toEqual({ held: true, pressed: true, released: false })
+  })
+
+  it("releases an action held only through keys it lost, and holds a newly bound one only after a fresh press", () => {
+    const fake = makeHost()
+    const input = Keyboard.actions(fake.host, { jump: [" "], crouch: ["c"] })
+    const idle = { held: false, pressed: false, released: false }
+
+    fake.down(" ")
+    input.snapshot()
+    input.rebind({ jump: ["w"], crouch: [" "] })
+    const snapshot = input.snapshot()
+    expect(snapshot.jump).toEqual({ held: false, pressed: false, released: true })
+    expect(snapshot.crouch).toEqual(idle)
+    fake.up(" ")
+    expect(input.snapshot().crouch).toEqual(idle)
+    fake.down(" ")
+    expect(input.snapshot().crouch).toEqual({ held: true, pressed: true, released: false })
+  })
+
+  it("keeps an action held through a key it kept", () => {
+    const fake = makeHost()
+    const input = Keyboard.actions(fake.host, { jump: [" "], crouch: ["c"] })
+
+    fake.down(" ")
+    input.snapshot()
+    input.rebind({ jump: [" ", "w"], crouch: ["x"] })
+    expect(input.snapshot().jump).toEqual({ held: true, pressed: false, released: false })
+    fake.up(" ")
+    expect(input.snapshot().jump).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("ignores actions a rebinding adds at runtime", () => {
+    const fake = makeHost()
+    const input = Keyboard.actions(fake.host, { jump: [" "] })
+    const next = { jump: ["w"], extra: ["x"] } as const
+
+    // The types reject it; the runtime ignores it too, for untyped callers.
+    // @ts-expect-error is not an action of these bindings
+    input.rebind(next)
+    expect(Object.keys(input.snapshot())).toEqual(["jump"])
+  })
+
+  it("keeps a recording's timeline by action, so a rebind does not change a replay", () => {
+    const fake = makeHost()
+    const bindings = { jump: [" "] } as const
+    const recorder = Keyboard.recording(Keyboard.actions(fake.host, bindings))
+
+    recorder.rebind({ jump: ["w"] })
+    fake.down("w")
+    recorder.snapshot()
+    const replay = Keyboard.scripted(bindings, recorder.timeline())
+    replay.rebind({ jump: ["x"] })
+    expect(replay.snapshot().jump.pressed).toBe(true)
+  })
+})
+
+describe("Keyboard.recording release and press within one update", () => {
+  it("replays an action released and pressed again between two snapshots", () => {
+    const fake = makeHost()
+    const bindings = { jump: [" "] } as const
+    const recorder = Keyboard.recording(Keyboard.actions(fake.host, bindings))
+    const live: Array<Keyboard.Snapshot<typeof bindings>> = []
+
+    fake.down(" ")
+    live.push(recorder.snapshot())
+    fake.up(" ")
+    fake.down(" ")
+    live.push(recorder.snapshot())
+    expect(live[1]!.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(recorder.timeline()).toEqual([{ frame: 0, press: ["jump"] }, { frame: 1, press: ["jump"], release: ["jump"] }])
+
+    const replay = Keyboard.scripted(bindings, recorder.timeline())
+    expect(live.map(() => replay.snapshot())).toEqual(live)
+  })
+})
+
+describe("Keyboard.presses", () => {
+  it("collects every key press, bound or not, once per snapshot and without repeats", () => {
+    const fake = makeHost()
+    const presses = Keyboard.presses(fake.host)
+
+    fake.downCode("j", "KeyJ")
+    fake.down("j", true)
+    fake.down("Escape")
+    expect(presses.snapshot()).toEqual([{ key: "j", code: "KeyJ" }, { key: "Escape", code: null }])
+    expect(presses.snapshot()).toEqual([])
+    presses.dispose()
+    expect(fake.listenerCount()).toBe(0)
+  })
+
+  it("does not prevent the browser default", () => {
+    const fake = makeHost()
+    Keyboard.presses(fake.host)
+    fake.down(" ")
+    expect(fake.prevented).toEqual([])
+  })
+})
+
+describe("Keyboard.parseRebinding", () => {
+  const bindings = { jump: [" "], left: ["a"] } as const
+
+  it("accepts the same actions bound to characters and physical keys", () => {
+    const parsed = Keyboard.parseRebinding(bindings, JSON.parse('{"jump":[{"code":"KeyJ"}],"left":["ArrowLeft","q"]}'))
+    expect(parsed).toMatchObject({ ok: true, value: { jump: [{ code: "KeyJ" }], left: ["ArrowLeft", "q"] } })
+  })
+
+  it("names the offending value", () => {
+    const fail = (data: unknown) => {
+      const parsed = Keyboard.parseRebinding(bindings, data)
+      return parsed.ok ? null : parsed.error.path
+    }
+    expect(fail(null)).toBe("")
+    expect(fail({ jump: ["j"] })).toBe("left")
+    expect(fail({ jump: [], left: ["a"] })).toBe("jump")
+    expect(fail({ jump: ["j", { key: "k" }], left: ["a"] })).toBe("jump[1]")
+    expect(fail({ jump: [""], left: ["a"] })).toBe("jump[0]")
+    expect(fail({ jump: ["j"], left: ["a"], fly: ["f"] })).toBe("fly")
+  })
+})
