@@ -600,14 +600,14 @@ export interface InvalidRebinding {
  * @example
  * ```ts
  * const saved = Gamepad.parseRebinding(bindings, JSON.parse(stored))
- * if (saved.ok) pad.rebind(saved.value)
+ * if (saved._tag === "Success") pad.rebind(saved.success)
  * ```
  */
 export const parseRebinding = <const B extends Bindings>(
   bindings: B,
   data: unknown
 ): Result.Result<Rebinding<B>, InvalidRebinding> => {
-  const invalid = (path: string, message: string) => Result.failure<InvalidRebinding>({ _tag: "InvalidRebinding", path, message })
+  const invalid = (path: string, message: string) => Result.fail<InvalidRebinding>({ _tag: "InvalidRebinding", path, message })
   if (typeof data !== "object" || data === null || Array.isArray(data)) return invalid("", "expected an object of action names")
   const fields = data as Readonly<Record<string, unknown>>
   const names = Object.keys(bindings)
@@ -623,5 +623,5 @@ export const parseRebinding = <const B extends Bindings>(
     }
     rebinding[name] = [...value]
   }
-  return Result.success(rebinding as unknown as Rebinding<B>)
+  return Result.succeed(rebinding as unknown as Rebinding<B>)
 }

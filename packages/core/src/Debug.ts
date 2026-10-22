@@ -630,7 +630,7 @@ export type HostEvent<S extends Schema.Any = Schema.Any, Root = unknown> =
       readonly type: "tick.end"
       readonly schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>
       readonly frame: number
-      /** `failed`: a system returned `Result.failure`; `defect`: one threw (rethrown after this event). */
+      /** `failed`: a system returned `Result.fail`; `defect`: one threw (rethrown after this event). */
       readonly outcome: "ok" | "failed" | "defect"
       readonly error?: unknown
     }

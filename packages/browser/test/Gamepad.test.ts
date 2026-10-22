@@ -350,9 +350,9 @@ describe("Gamepad timelines and disconnects", () => {
     expect(live.timeline()[2]).toMatchObject({ frame: 3, press: ["west"], connected: true })
 
     const parsed = Gamepad.parseTimeline(JSON.parse(JSON.stringify(live.timeline())))
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) return
-    const replay = Gamepad.scripted(bindings, parsed.value)
+    expect(parsed._tag).toBe("Success")
+    if (parsed._tag === "Failure") return
+    const replay = Gamepad.scripted(bindings, parsed.success)
     for (const snapshot of seen) {
       const replayed = replay.snapshot()
       expect(replayed.actions).toEqual(snapshot.actions)
@@ -372,20 +372,20 @@ describe("Gamepad timelines and disconnects", () => {
   })
 
   it("rejects a connected flag that is not a boolean", () => {
-    expect(Gamepad.parseTimeline([{ frame: 0, connected: "yes" }])).toMatchObject({ ok: false, error: { path: "[0].connected" } })
+    expect(Gamepad.parseTimeline([{ frame: 0, connected: "yes" }])).toMatchObject({ _tag: "Failure", failure: { path: "[0].connected" } })
   })
 })
 
 describe("Gamepad.parseRebinding", () => {
   it("accepts the same actions bound to button names", () => {
     const parsed = Gamepad.parseRebinding(bindings, JSON.parse('{"attack":["north"],"dash":["south","east"],"ultimate":["leftTrigger"]}'))
-    expect(parsed).toMatchObject({ ok: true, value: { attack: ["north"], dash: ["south", "east"], ultimate: ["leftTrigger"] } })
+    expect(parsed).toMatchObject({ _tag: "Success", success: { attack: ["north"], dash: ["south", "east"], ultimate: ["leftTrigger"] } })
   })
 
   it("names the offending value", () => {
     const fail = (data: unknown) => {
       const parsed = Gamepad.parseRebinding(bindings, data)
-      return parsed.ok ? null : parsed.error.path
+      return parsed._tag === "Success" ? null : parsed.failure.path
     }
     expect(fail([])).toBe("")
     expect(fail({ attack: ["north"], dash: ["south"] })).toBe("ultimate")

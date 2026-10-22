@@ -6,7 +6,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Position: Descriptor.Co
 
 // Each job has one API. These tests keep the removed second ways removed.
 describe("one way to do each thing", () => {
-  it("signals expected failure with Result.failure, not an effect type", () => {
+  it("signals expected failure with Result.fail, not an effect type", () => {
     expect(Core).type.not.toHaveProperty("Fx")
     expect(Core).type.toHaveProperty("Result")
   })

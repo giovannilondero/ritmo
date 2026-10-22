@@ -30,7 +30,7 @@ describe("stability types", () => {
     >()
   })
 
-  it("infers the failure union from early Result.failure returns in an otherwise plain system", () => {
+  it("infers the failure union from early Result.fail returns in an otherwise plain system", () => {
     const Spend = Game.System(
       "StabilityTypes/Spend",
       { resources: { value: Game.System.writeResource(Value) } },

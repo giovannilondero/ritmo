@@ -310,13 +310,13 @@ describe("Keyboard.parseRebinding", () => {
 
   it("accepts the same actions bound to characters and physical keys", () => {
     const parsed = Keyboard.parseRebinding(bindings, JSON.parse('{"jump":[{"code":"KeyJ"}],"left":["ArrowLeft","q"]}'))
-    expect(parsed).toMatchObject({ ok: true, value: { jump: [{ code: "KeyJ" }], left: ["ArrowLeft", "q"] } })
+    expect(parsed).toMatchObject({ _tag: "Success", success: { jump: [{ code: "KeyJ" }], left: ["ArrowLeft", "q"] } })
   })
 
   it("names the offending value", () => {
     const fail = (data: unknown) => {
       const parsed = Keyboard.parseRebinding(bindings, data)
-      return parsed.ok ? null : parsed.error.path
+      return parsed._tag === "Success" ? null : parsed.failure.path
     }
     expect(fail(null)).toBe("")
     expect(fail({ jump: ["j"] })).toBe("left")

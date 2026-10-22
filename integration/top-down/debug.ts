@@ -33,8 +33,8 @@ const hostClock = HostClock.test()
 // No controller in this run; script one the same way, by button names.
 const gamepad = Gamepad.scripted(padBindings, [])
 const simulation = createTopDownSimulation({ keyboard, gamepad, hostClock })
-if (!simulation.ok) throw new Error(simulation.error.message)
-const { runtime, setup, update } = simulation.value
+if (simulation._tag === "Failure") throw new Error(simulation.failure.message)
+const { runtime, setup, update } = simulation.success
 
 // An invariant is an inspector that returns a violation message, or
 // `undefined` while it holds. It declares its reads like a system, so

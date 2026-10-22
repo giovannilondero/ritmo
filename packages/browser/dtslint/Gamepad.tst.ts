@@ -65,14 +65,14 @@ describe("Gamepad.parseRebinding", () => {
       Result.Result<Gamepad.Rebinding<{ readonly attack: readonly ["west"]; readonly dash: readonly ["south"] }>, Gamepad.InvalidRebinding>
     >()
     const parsed = Gamepad.parseRebinding(bindings, null)
-    if (parsed.ok) Gamepad.actions(host, bindings).rebind(parsed.value)
+    if (parsed._tag === "Success") Gamepad.actions(host, bindings).rebind(parsed.success)
   })
 
   it("rejects a rebinding parsed for other actions", () => {
     const parsed = Gamepad.parseRebinding({ attack: ["west"] }, null)
-    if (parsed.ok) {
+    if (parsed._tag === "Success") {
       // @ts-expect-error Property 'dash' is missing
-      Gamepad.actions(host, { attack: ["west"], dash: ["south"] }).rebind(parsed.value)
+      Gamepad.actions(host, { attack: ["west"], dash: ["south"] }).rebind(parsed.success)
     }
   })
 })

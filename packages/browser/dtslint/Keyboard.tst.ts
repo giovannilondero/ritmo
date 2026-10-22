@@ -65,14 +65,14 @@ describe("Keyboard.parseRebinding", () => {
       Result.Result<Keyboard.Rebinding<{ readonly jump: readonly [" "]; readonly left: readonly ["a"] }>, Keyboard.InvalidRebinding>
     >()
     const parsed = Keyboard.parseRebinding(bindings, null)
-    if (parsed.ok) Keyboard.actions(host, bindings).rebind(parsed.value)
+    if (parsed._tag === "Success") Keyboard.actions(host, bindings).rebind(parsed.success)
   })
 
   it("rejects a rebinding parsed for other actions", () => {
     const parsed = Keyboard.parseRebinding({ jump: [" "] }, null)
-    if (parsed.ok) {
+    if (parsed._tag === "Success") {
       // @ts-expect-error Property 'left' is missing
-      Keyboard.actions(host, { jump: [" "], left: ["a"] }).rebind(parsed.value)
+      Keyboard.actions(host, { jump: [" "], left: ["a"] }).rebind(parsed.success)
     }
   })
 })
