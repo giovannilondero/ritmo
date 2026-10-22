@@ -536,7 +536,7 @@ export const isButton = (name: unknown): name is Button => typeof name === "stri
  * boolean `connected`.
  */
 export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTimeline> => {
-  const invalid = (path: string, message: string) => Result.failure<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
+  const invalid = (path: string, message: string) => Result.fail<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
   if (!Array.isArray(data)) return invalid("", "expected an array of entries")
   const entries: Array<TimelineEntry> = []
   for (let index = 0; index < data.length; index++) {
@@ -578,7 +578,7 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
     }
     entries.push(parsed as unknown as TimelineEntry)
   }
-  return Result.success(entries)
+  return Result.succeed(entries)
 }
 
 /**
