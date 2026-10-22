@@ -15,7 +15,8 @@
  * read by the same indices, which may not match its labels: let players
  * remap (`rebind`). The snapshot also reports every `button` by name,
  * whatever the bindings, for fixed menu navigation and for a settings screen
- * that waits for the button to bind.
+ * that waits for the button to bind; `parseRebinding(...)` validates
+ * bindings saved as JSON.
  *
  * Polling happens on every `snapshot()`. A press and release that both fall
  * between two snapshots is missed unless the host also calls `poll()` more
@@ -90,7 +91,10 @@ export type Button = (typeof buttonNames)[number]
  */
 export type Bindings = Readonly<Record<string, readonly [Button, ...Array<Button>]>>
 
-/** New buttons for the same actions, for {@link Actions.rebind}. */
+/**
+ * New buttons for the same actions, for {@link Actions.rebind}. Load saved
+ * ones with {@link parseRebinding}.
+ */
 export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: readonly [Button, ...Array<Button>] }
 
 /** One button's reading, the subset of the browser's `GamepadButton` the module reads. */
@@ -142,8 +146,13 @@ export interface Actions<B extends Bindings> {
   /** Reads the pads now, so a press shorter than one update still counts. `snapshot()` polls too. */
   poll(): void
   /**
-   * Binds the same actions to new buttons, from the next snapshot. An action
-   * held only through buttons it lost reports `released`.
+   * Binds the same actions to new buttons, from the next snapshot, for a
+   * settings screen where players remap controls (capture the button to bind
+   * from the snapshot's `buttons`). An action held only through buttons it
+   * lost reports `released`. A button held across the rebind holds a newly
+   * bound action only once it is pressed again, so an action never turns
+   * held without a press. Buttons outside the actions it was made with are
+   * ignored.
    */
   rebind(bindings: Rebinding<B>): void
   /** Stops reading pads. */
@@ -189,33 +198,62 @@ const stick = (x: number, y: number, deadZone: number): Vector => {
  * and scripted actions so both build snapshots the same way.
  */
 const tracker = <B extends Bindings>(initial: B) => {
+  // Fixed at creation: a rebind swaps buttons, never the actions.
+  const names = Object.keys(initial) as Array<keyof B & string>
   let bindings: Rebinding<B> = initial
-  let names = Object.keys(initial) as Array<keyof B & string>
+  const actionsByButton = new Map<Button, Array<keyof B & string>>()
+  const index = (): void => {
+    actionsByButton.clear()
+    for (const name of names) {
+      for (const button of bindings[name]!) {
+        const bound = actionsByButton.get(button)
+        if (bound) bound.push(name)
+        else actionsByButton.set(button, [name])
+      }
+    }
+  }
+  index()
   const held = new Set<Button>()
   const pressed = new Set<Button>()
   const released = new Set<Button>()
-  /** Actions that lost their held buttons in a rebind, reported released on the next snapshot. */
-  const droppedActions = new Set<keyof B>()
-  const isHeld = (name: keyof B & string): boolean => bindings[name]!.some((button) => held.has(button))
+  /**
+   * Each held button and the actions it holds: those bound to it when it
+   * went down that are still bound to it.
+   */
+  const holding = new Map<Button, Set<keyof B & string>>()
+  const pressedActions = new Set<keyof B>()
+  const releasedActions = new Set<keyof B>()
+  const isHeld = (name: keyof B & string): boolean => bindings[name]!.some((button) => holding.get(button)?.has(name) === true)
+  const up = (button: Button): void => {
+    if (!held.delete(button)) return
+    released.add(button)
+    for (const name of holding.get(button) ?? []) releasedActions.add(name)
+    holding.delete(button)
+  }
   return {
     held,
     down(button: Button) {
       if (held.has(button)) return
       held.add(button)
       pressed.add(button)
+      const bound = actionsByButton.get(button) ?? []
+      holding.set(button, new Set(bound))
+      for (const name of bound) pressedActions.add(name)
     },
-    up(button: Button) {
-      if (held.delete(button)) released.add(button)
-    },
+    up,
     upAll() {
-      for (const button of held) released.add(button)
-      held.clear()
+      for (const button of [...held]) up(button)
     },
     rebind(next: Rebinding<B>) {
       const before = names.filter(isHeld)
       bindings = next
-      names = Object.keys(next) as Array<keyof B & string>
-      for (const name of before) if (!isHeld(name)) droppedActions.add(name)
+      index()
+      // A held button keeps only the actions still bound to it; new ones wait for a fresh press.
+      for (const [button, actions] of holding) {
+        const bound = actionsByButton.get(button) ?? []
+        for (const name of actions) if (!bound.includes(name)) actions.delete(name)
+      }
+      for (const name of before) if (!isHeld(name)) releasedActions.add(name)
     },
     snapshot(analog: Pick<Snapshot<B>, "left" | "right" | "leftTrigger" | "rightTrigger" | "connected" | "id">): Snapshot<B> {
       const buttons = {} as Record<Button, ActionState>
@@ -227,17 +265,13 @@ const tracker = <B extends Bindings>(initial: B) => {
       }
       const actions = {} as Record<keyof B, ActionState>
       for (const name of names) {
-        const bound = bindings[name]!
-        const isDown = bound.some((button) => held.has(button))
-        actions[name] = {
-          held: isDown,
-          pressed: bound.some((button) => pressed.has(button)),
-          released: !isDown && (droppedActions.has(name) || bound.some((button) => released.has(button)))
-        }
+        const isDown = isHeld(name)
+        actions[name] = { held: isDown, pressed: pressedActions.has(name), released: releasedActions.has(name) && !isDown }
       }
       pressed.clear()
       released.clear()
-      droppedActions.clear()
+      pressedActions.clear()
+      releasedActions.clear()
       return { actions, buttons, ...analog }
     }
   }
@@ -323,11 +357,12 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
 }
 
 /**
- * Input changes applied just before one snapshot: presses first, then
- * releases, then the sticks and triggers, which keep their value until set
- * again. `frame` is the snapshot's index, counting from 0 at the first
- * `snapshot()` call. A button both pressed and released in one frame is a
- * tap shorter than a frame.
+ * Input changes applied just before one snapshot: the buttons, then the
+ * sticks and triggers, which keep their value until set again. `frame` is the
+ * snapshot's index, counting from 0 at the first `snapshot()` call. A button
+ * in both `press` and `release` changed twice within the frame: a tap
+ * shorter than a frame when it was up, a release and a new press when it was
+ * held.
  */
 export interface TimelineEntry {
   readonly frame: number
@@ -372,8 +407,16 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
   return {
     snapshot() {
       for (const entry of byFrame.get(frame) ?? []) {
-        for (const button of entry.press ?? []) state.down(button)
-        for (const button of entry.release ?? []) state.up(button)
+        const releases = new Set(entry.release ?? [])
+        for (const button of entry.press ?? []) {
+          if (state.held.has(button) && releases.has(button)) {
+            // Released and pressed again within the frame.
+            releases.delete(button)
+            state.up(button)
+          }
+          state.down(button)
+        }
+        for (const button of releases) state.up(button)
         analog = {
           left: entry.left ?? analog.left,
           right: entry.right ?? analog.right,
@@ -406,13 +449,14 @@ const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Pick<Snapshot<B>, "left" | "right" | "leftTrigger" | "rightTrigger"> = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
+  let previous: Pick<Snapshot<B>, "buttons" | "left" | "right" | "leftTrigger" | "rightTrigger"> = { buttons: idleButtons(), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
   let frame = 0
   return {
     snapshot() {
       const snapshot = actions.snapshot()
       const press = buttonNames.filter((name) => snapshot.buttons[name].pressed)
-      const release = buttonNames.filter((name) => snapshot.buttons[name].released)
+      // A press of a button held at the previous snapshot means it was released in between.
+      const release = buttonNames.filter((name) => snapshot.buttons[name].released || (snapshot.buttons[name].pressed && previous.buttons[name].held))
       const entry: Record<string, unknown> = {
         ...(press.length > 0 ? { press } : {}),
         ...(release.length > 0 ? { release } : {}),
@@ -494,4 +538,49 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
     entries.push(parsed as unknown as TimelineEntry)
   }
   return Result.success(entries)
+}
+
+/**
+ * Why loaded data is not a rebinding for the bindings. `path` points at the
+ * offending value, for example `attack[1]`.
+ */
+export interface InvalidRebinding {
+  readonly _tag: "InvalidRebinding"
+  readonly path: string
+  readonly message: string
+}
+
+/**
+ * Validates untrusted data, such as saved settings parsed from JSON, as new
+ * buttons for `bindings`: an object with exactly the same action names, each
+ * mapped to a non-empty array of button names. Pass the result to
+ * {@link Actions.rebind}; on failure, keep the defaults.
+ *
+ * @example
+ * ```ts
+ * const saved = Gamepad.parseRebinding(bindings, JSON.parse(stored))
+ * if (saved.ok) pad.rebind(saved.value)
+ * ```
+ */
+export const parseRebinding = <const B extends Bindings>(
+  bindings: B,
+  data: unknown
+): Result.Result<Rebinding<B>, InvalidRebinding> => {
+  const invalid = (path: string, message: string) => Result.failure<InvalidRebinding>({ _tag: "InvalidRebinding", path, message })
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return invalid("", "expected an object of action names")
+  const fields = data as Readonly<Record<string, unknown>>
+  const names = Object.keys(bindings)
+  for (const name of Object.keys(fields)) {
+    if (!names.includes(name)) return invalid(name, `unknown action, expected one of ${names.join(", ")}`)
+  }
+  const rebinding: Record<string, ReadonlyArray<Button>> = {}
+  for (const name of names) {
+    const value = fields[name]
+    if (!Array.isArray(value) || value.length === 0) return invalid(name, "expected a non-empty array of button names")
+    for (let offset = 0; offset < value.length; offset++) {
+      if (!isButton(value[offset])) return invalid(`${name}[${offset}]`, `expected one of ${buttonNames.join(", ")}`)
+    }
+    rebinding[name] = [...value]
+  }
+  return Result.success(rebinding as unknown as Rebinding<B>)
 }

@@ -1,3 +1,4 @@
+import { Result } from "@typeonce/ritmo"
 import { Keyboard } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
@@ -34,5 +35,31 @@ describe("Keyboard.rebind", () => {
     const input = Keyboard.actions(host, { jump: [" "], left: ["a"] })
     expect(input.rebind).type.toBeCallableWith({ jump: [Keyboard.code("KeyJ")], left: ["ArrowLeft"] })
     expect(input.rebind).type.not.toBeCallableWith({ jump: ["j"] })
+  })
+})
+
+describe("Keyboard.presses", () => {
+  it("returns the keys pressed since the previous snapshot", () => {
+    expect(Keyboard.presses(host).snapshot()).type.toBe<ReadonlyArray<Keyboard.KeyPress>>()
+    expect(Keyboard.presses(host).snapshot()[0]?.code).type.toBe<string | null | undefined>()
+  })
+})
+
+describe("Keyboard.parseRebinding", () => {
+  it("parses into a rebinding for the same actions", () => {
+    const bindings = { jump: [" "], left: ["a"] } as const
+    expect(Keyboard.parseRebinding(bindings, null)).type.toBe<
+      Result.Result<Keyboard.Rebinding<{ readonly jump: readonly [" "]; readonly left: readonly ["a"] }>, Keyboard.InvalidRebinding>
+    >()
+    const parsed = Keyboard.parseRebinding(bindings, null)
+    if (parsed.ok) Keyboard.actions(host, bindings).rebind(parsed.value)
+  })
+
+  it("rejects a rebinding parsed for other actions", () => {
+    const parsed = Keyboard.parseRebinding({ jump: [" "] }, null)
+    if (parsed.ok) {
+      // @ts-expect-error Property 'left' is missing
+      Keyboard.actions(host, { jump: [" "], left: ["a"] }).rebind(parsed.value)
+    }
   })
 })

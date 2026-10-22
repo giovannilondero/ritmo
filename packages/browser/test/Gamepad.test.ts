@@ -161,9 +161,48 @@ describe("Gamepad.actions", () => {
     input.rebind({ attack: ["north"], dash: ["west"], ultimate: ["rightTrigger"] })
     const snapshot = input.snapshot()
     expect(snapshot.actions.attack).toEqual(released)
-    expect(snapshot.actions.dash).toEqual({ held: true, pressed: false, released: false })
+    // West is still down, but dash waits for a fresh press of it.
+    expect(snapshot.actions.dash).toEqual(idle)
     pad.down("north")
     expect(input.snapshot().actions.attack).toEqual({ held: true, pressed: true, released: false })
+    pad.up("west")
+    expect(input.snapshot().actions.dash).toEqual(idle)
+    pad.down("west")
+    expect(input.snapshot().actions.dash).toEqual({ held: true, pressed: true, released: false })
+  })
+
+  it("does not hold a newly bound action through the button that was pressed to bind it", () => {
+    const pad = makePad()
+    const input = Gamepad.actions(makeHost(pad).host, bindings)
+
+    pad.down("north")
+    const waiting = input.snapshot()
+    expect(waiting.buttons.north.pressed).toBe(true)
+    input.rebind({ attack: ["north"], dash: ["south"], ultimate: ["rightTrigger"] })
+    expect(input.snapshot().actions.attack).toEqual(idle)
+    pad.up("north")
+    expect(input.snapshot().actions.attack).toEqual(idle)
+  })
+
+  it("keeps an action held through a button it kept", () => {
+    const pad = makePad()
+    const input = Gamepad.actions(makeHost(pad).host, bindings)
+
+    pad.down("south")
+    input.snapshot()
+    input.rebind({ attack: ["west"], dash: ["south"], ultimate: ["north"] })
+    expect(input.snapshot().actions.dash).toEqual({ held: true, pressed: false, released: false })
+    pad.up("south")
+    expect(input.snapshot().actions.dash).toEqual(released)
+  })
+
+  it("ignores actions a rebinding adds", () => {
+    const pad = makePad()
+    const input = Gamepad.actions(makeHost(pad).host, bindings)
+    const next = { attack: ["west"], dash: ["south"], ultimate: ["rightTrigger"], extra: ["north"] } as const
+
+    input.rebind(next)
+    expect(Object.keys(input.snapshot().actions)).toEqual(["attack", "dash", "ultimate"])
   })
 
   it("stops reading after dispose", () => {
@@ -226,6 +265,51 @@ describe("Gamepad.recording", () => {
       const { id: __, ...expected } = snapshot
       expect(rest).toEqual(expected)
     }
+  })
+})
+
+describe("Gamepad.recording release and press within one update", () => {
+  it("replays a button released and pressed again between two snapshots", () => {
+    const pad = makePad()
+    const live = Gamepad.recording(Gamepad.actions(makeHost(pad).host, bindings))
+    const seen: Array<Gamepad.Snapshot<typeof bindings>> = []
+
+    pad.down("west")
+    seen.push(live.snapshot())
+    pad.up("west")
+    live.poll()
+    pad.down("west")
+    live.poll()
+    seen.push(live.snapshot())
+    expect(seen[1]!.actions.attack).toEqual({ held: true, pressed: true, released: false })
+    expect(live.timeline()).toEqual([{ frame: 0, press: ["west"] }, { frame: 1, press: ["west"], release: ["west"] }])
+
+    const replay = Gamepad.scripted(bindings, live.timeline())
+    for (const snapshot of seen) expect(replay.snapshot().actions).toEqual(snapshot.actions)
+  })
+
+  it("plays a button in both lists as a tap when it was up", () => {
+    const replay = Gamepad.scripted(bindings, [{ frame: 0, press: ["west"], release: ["west"] }])
+    expect(replay.snapshot().actions.attack).toEqual({ held: false, pressed: true, released: true })
+  })
+})
+
+describe("Gamepad.parseRebinding", () => {
+  it("accepts the same actions bound to button names", () => {
+    const parsed = Gamepad.parseRebinding(bindings, JSON.parse('{"attack":["north"],"dash":["south","east"],"ultimate":["leftTrigger"]}'))
+    expect(parsed).toMatchObject({ ok: true, value: { attack: ["north"], dash: ["south", "east"], ultimate: ["leftTrigger"] } })
+  })
+
+  it("names the offending value", () => {
+    const fail = (data: unknown) => {
+      const parsed = Gamepad.parseRebinding(bindings, data)
+      return parsed.ok ? null : parsed.error.path
+    }
+    expect(fail([])).toBe("")
+    expect(fail({ attack: ["north"], dash: ["south"] })).toBe("ultimate")
+    expect(fail({ attack: ["north"], dash: ["south"], ultimate: [], })).toBe("ultimate")
+    expect(fail({ attack: ["north", "A"], dash: ["south"], ultimate: ["east"] })).toBe("attack[1]")
+    expect(fail({ attack: ["north"], dash: ["south"], ultimate: ["east"], jump: ["west"] })).toBe("jump")
   })
 })
 

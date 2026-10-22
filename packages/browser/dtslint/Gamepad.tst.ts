@@ -1,3 +1,4 @@
+import { Result } from "@typeonce/ritmo"
 import { Gamepad } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
@@ -34,5 +35,24 @@ describe("Gamepad", () => {
   it("narrows stored names with isButton", () => {
     const name: unknown = "south"
     if (Gamepad.isButton(name)) expect(name).type.toBe<Gamepad.Button>()
+  })
+})
+
+describe("Gamepad.parseRebinding", () => {
+  it("parses into a rebinding for the same actions", () => {
+    const bindings = { attack: ["west"], dash: ["south"] } as const
+    expect(Gamepad.parseRebinding(bindings, null)).type.toBe<
+      Result.Result<Gamepad.Rebinding<{ readonly attack: readonly ["west"]; readonly dash: readonly ["south"] }>, Gamepad.InvalidRebinding>
+    >()
+    const parsed = Gamepad.parseRebinding(bindings, null)
+    if (parsed.ok) Gamepad.actions(host, bindings).rebind(parsed.value)
+  })
+
+  it("rejects a rebinding parsed for other actions", () => {
+    const parsed = Gamepad.parseRebinding({ attack: ["west"] }, null)
+    if (parsed.ok) {
+      // @ts-expect-error Property 'dash' is missing
+      Gamepad.actions(host, { attack: ["west"], dash: ["south"] }).rebind(parsed.value)
+    }
   })
 })
