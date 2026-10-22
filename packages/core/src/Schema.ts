@@ -834,6 +834,7 @@ export namespace Schema {
         read: Read
       ) => Read & System.ThisTick
       service: typeof System.service
+      consumeService: typeof System.consumeService
       machine: <M extends BoundStateMachine<Root>>(machine: M) => Machine.MachineRead<M>
       nextState: <M extends BoundStateMachine<Root>>(machine: M) => Machine.NextMachineWrite<M>
       readTransitionEvent: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionEventRead<M>

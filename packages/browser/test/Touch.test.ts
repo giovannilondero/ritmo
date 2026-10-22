@@ -72,7 +72,7 @@ describe("Touch.track", () => {
     expect(touch.view().stick).toEqual({ origin: { x: 100, y: 200 }, knob: { x: 100, y: 250 } })
     fake.up(1, 100, 400)
     expect(touch.snapshot().stick).toEqual({ active: false, vector: { x: 0, y: 0 } })
-    expect(touch.snapshot().touched).toBe(true)
+    expect(touch.snapshot().used).toBe(false)
   })
 
   it("gives each finger to one control: move and attack at the same time", () => {
@@ -83,13 +83,13 @@ describe("Touch.track", () => {
     fake.down(2, 700, 300)
     const both = touch.snapshot()
     expect(both.stick.vector.x).toBeCloseTo(1, 9)
-    expect(both.buttons.attack).toEqual({ held: true, pressed: true, released: false, aim: null, cancelled: false })
+    expect(both.actions.attack).toEqual({ held: true, pressed: true, released: false, aim: null, cancelled: false })
     // The stick's finger crossing into a button does not press it.
     fake.move(1, 700, 300)
     fake.up(2, 700, 300)
     const after = touch.snapshot()
     expect(after.stick.active).toBe(true)
-    expect(after.buttons.attack).toMatchObject({ held: false, released: true })
+    expect(after.actions.attack).toMatchObject({ held: false, released: true })
     // A second finger in the stick region while the stick is held is ignored.
     fake.down(3, 50, 50)
     expect(touch.view().stick?.origin).toEqual({ x: 100, y: 200 })
@@ -99,11 +99,11 @@ describe("Touch.track", () => {
     const fake = makeTarget()
     const touch = Touch.track(fake.target, fake.blurHost, layout)
     fake.down(1, 700, 300)
-    expect(touch.snapshot().buttons.attack.held).toBe(true)
+    expect(touch.snapshot().actions.attack.held).toBe(true)
     // The up was lost; the same id now lands in the stick region.
     fake.down(1, 100, 200)
     const after = touch.snapshot()
-    expect(after.buttons.attack).toMatchObject({ held: false, released: true, cancelled: true })
+    expect(after.actions.attack).toMatchObject({ held: false, released: true, cancelled: true })
     expect(after.stick.active).toBe(true)
     fake.up(1, 100, 200)
     expect(touch.snapshot().stick.active).toBe(false)
@@ -114,21 +114,21 @@ describe("Touch.track", () => {
     const touch = Touch.track(fake.target, fake.blurHost, layout)
     fake.down(2, 700, 300)
     fake.move(2, 700, 250)
-    expect(touch.snapshot().buttons.attack.aim).toEqual({ x: 0, y: -0.5 })
+    expect(touch.snapshot().actions.attack.aim).toEqual({ x: 0, y: -0.5 })
     fake.move(2, 900, 300)
     fake.up(2, 900, 300)
-    expect(touch.snapshot().buttons.attack).toEqual({ held: false, pressed: false, released: true, aim: { x: 1, y: 0 }, cancelled: false })
-    expect(touch.snapshot().buttons.attack.aim).toBeNull()
+    expect(touch.snapshot().actions.attack).toEqual({ held: false, pressed: false, released: true, aim: { x: 1, y: 0 }, cancelled: false })
+    expect(touch.snapshot().actions.attack.aim).toBeNull()
 
     // Pressed, dragged, and lifted between two snapshots.
     fake.down(4, 700, 300)
     fake.up(4, 640, 300)
-    expect(touch.snapshot().buttons.attack).toEqual({ held: false, pressed: true, released: true, aim: { x: -0.6, y: 0 }, cancelled: false })
+    expect(touch.snapshot().actions.attack).toEqual({ held: false, pressed: true, released: true, aim: { x: -0.6, y: 0 }, cancelled: false })
 
     // A button without aimRadius never aims.
     fake.down(5, 550, 340)
     fake.up(5, 570, 340)
-    expect(touch.snapshot().buttons.dash).toMatchObject({ pressed: true, released: true, aim: null })
+    expect(touch.snapshot().actions.dash).toMatchObject({ pressed: true, released: true, aim: null })
   })
 
   it("cancels on pointercancel and blur, so games can skip firing", () => {
@@ -137,14 +137,14 @@ describe("Touch.track", () => {
     fake.down(2, 700, 300)
     touch.snapshot()
     fake.cancel(2, 700, 300)
-    expect(touch.snapshot().buttons.attack).toMatchObject({ released: true, cancelled: true })
+    expect(touch.snapshot().actions.attack).toMatchObject({ released: true, cancelled: true })
     fake.down(1, 100, 200)
     fake.down(2, 700, 300)
     touch.snapshot()
     fake.blur()
     const snapshot = touch.snapshot()
     expect(snapshot.stick.active).toBe(false)
-    expect(snapshot.buttons.attack).toMatchObject({ held: false, released: true, cancelled: true })
+    expect(snapshot.actions.attack).toMatchObject({ held: false, released: true, cancelled: true })
   })
 
   it("ignores other pointer types unless asked, and cleans up", () => {
@@ -152,14 +152,14 @@ describe("Touch.track", () => {
     const touch = Touch.track(fake.target, fake.blurHost, layout)
     expect(fake.style.touchAction).toBe("none")
     fake.down(1, 700, 300, "mouse")
-    expect(touch.snapshot().buttons.attack.held).toBe(false)
+    expect(touch.snapshot().actions.attack.held).toBe(false)
     touch.dispose()
     expect(fake.listenerCount()).toBe(0)
     expect(fake.style.touchAction).toBe("auto")
 
     const withMouse = Touch.track(fake.target, fake.blurHost, layout, { pointerTypes: ["touch", "mouse"] })
     fake.down(1, 700, 300, "mouse")
-    expect(withMouse.snapshot().buttons.attack.held).toBe(true)
+    expect(withMouse.snapshot().actions.attack.held).toBe(true)
   })
 
   it("leaves touches out of Pointer by default", () => {
@@ -206,7 +206,7 @@ describe("Touch.track swipe", () => {
     fake.move(3, 340, 100)
     const snapshot = touch.snapshot()
     expect(snapshot.stick.vector.x).toBeCloseTo(1, 9)
-    expect(snapshot.buttons.attack.held).toBe(true)
+    expect(snapshot.actions.attack.held).toBe(true)
     expect(snapshot.swipe).toEqual({ active: true, delta: { x: 40, y: 0 } })
     // A fourth finger does not take over the swipe.
     fake.down(4, 500, 50)
@@ -235,10 +235,10 @@ describe("Touch.scripted", () => {
       { frame: 3, stick: null }
     ])
     expect(touch.snapshot().stick).toEqual({ active: true, vector: { x: 0.6, y: 0.8 } })
-    expect(touch.snapshot().buttons.attack).toEqual({ held: true, pressed: true, released: false, aim: { x: 0, y: -1 }, cancelled: false })
+    expect(touch.snapshot().actions.attack).toEqual({ held: true, pressed: true, released: false, aim: { x: 0, y: -1 }, cancelled: false })
     const lifted = touch.snapshot()
-    expect(lifted.buttons.attack).toEqual({ held: false, pressed: false, released: true, aim: { x: 0, y: -1 }, cancelled: false })
-    expect(lifted.buttons.skill).toMatchObject({ pressed: true, released: true, cancelled: true })
+    expect(lifted.actions.attack).toEqual({ held: false, pressed: false, released: true, aim: { x: 0, y: -1 }, cancelled: false })
+    expect(lifted.actions.skill).toMatchObject({ pressed: true, released: true, cancelled: true })
     expect(touch.snapshot().stick.active).toBe(false)
     expect(touch.frames()).toBe(4)
   })

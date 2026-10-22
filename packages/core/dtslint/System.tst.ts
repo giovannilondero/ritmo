@@ -220,3 +220,15 @@ describe("redundant resource and event slots", () => {
   })
 })
 
+describe("Game.System.consumeService", () => {
+  it("gives the same typed access as service", () => {
+    const Bound = Schema.bind(Schema.fragment({}))
+    expect(Bound.System.consumeService(Logger)).type.toBe<System.ServiceRead<typeof Logger>>()
+    Bound.System("Consume/Drain", { services: { logger: Bound.System.consumeService(Logger) } }, ({ services }) => {
+      expect(services.logger.log).type.toBe<(message: string) => void>()
+    })
+    // @ts-expect-error Argument of type 'DecodableDescriptor<"resource"
+    Bound.System.consumeService(Viewport)
+  })
+})
+

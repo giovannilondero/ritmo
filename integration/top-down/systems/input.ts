@@ -1,24 +1,10 @@
 import { InputCapture } from "@typeonce/ritmo-browser"
-import {
-  DeltaTime,
-  FrameContext,
-  Game,
-  GamepadInput,
-  InputState,
-  KeyboardInput,
-  PadState
-} from "../schema.ts"
+import { ControlsInput, DeltaTime, FrameContext, Game, InputState } from "../schema.ts"
 
 export const CaptureInputSystem = InputCapture.system(Game, {
   name: "TopDown/CaptureInput",
-  source: KeyboardInput,
+  source: ControlsInput,
   resource: InputState
-})
-
-export const CapturePadSystem = InputCapture.system(Game, {
-  name: "TopDown/CapturePad",
-  source: GamepadInput,
-  resource: PadState
 })
 
 export const CaptureFrameContextSystem = Game.System(

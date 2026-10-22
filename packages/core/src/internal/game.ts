@@ -151,6 +151,7 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         despawnsScope: Command.despawnsScope,
         relates: Command.relates,
         service: System.service,
+        consumeService: System.consumeService,
         machine: System.machine,
         nextState: System.nextState,
         readTransitionEvent: System.readTransitionEvent,

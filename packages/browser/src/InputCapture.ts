@@ -8,14 +8,18 @@
  * every system in that run reads the same snapshot and press edges are
  * observed exactly once per run.
  *
- * The source is any service with `snapshot()`: `Keyboard.actions(...)`
- * directly, or a game-specific adapter that merges several devices. The
- * resource's value type must be exactly the snapshot type (declare it as
+ * The source is any service with `snapshot()`: one device such as
+ * `Keyboard.actions(...)`, or `Controls` merging several. The resource's
+ * value type must be exactly the snapshot type (declare it as
  * `InputCapture.SnapshotOf<typeof Source>`): not a wider type, and not one
  * with extra optional fields.
  *
- * Its spec is erased, so it does not count as a writer of the resource for
- * `Game.System.thisTick(...)` order checks: place it first yourself.
+ * The system declares its access like any other: it writes the resource, so
+ * a reader declared with `Game.System.thisTick(...)` placed before it does
+ * not compile, and it consumes the source (`Game.System.consumeService`), so
+ * `describe()` warns with `service-consumed-twice` when one source is
+ * captured at more than one placement. Capture each source once and read
+ * the resource everywhere else.
  *
  * @module InputCapture
  * @docGroup browser
@@ -37,7 +41,7 @@
  * ```
  */
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
-import type { Condition, ConditionNeedsFromConditions } from "@typeonce/ritmo/Machine"
+import type { Condition } from "@typeonce/ritmo/Machine"
 import type { Schema } from "@typeonce/ritmo/Schema"
 
 /**
@@ -70,10 +74,11 @@ export interface Options<
   S extends Schema.Any,
   Service extends ServiceDescriptor,
   Resource extends Schema.ResourceDescriptor<S>,
-  When extends ReadonlyArray<Condition> = readonly []
+  When extends ReadonlyArray<Condition> = readonly [],
+  Name extends string = string
 > {
   /** The system name. */
-  readonly name: string
+  readonly name: Name
   /** The service to read snapshots from; its value must have `snapshot()`. */
   readonly source: Descriptor.Value<Service> extends Source<any> ? Service : "The source service must provide snapshot()"
   /** The resource to write each snapshot into; its value type must be exactly the snapshot type. */
@@ -87,12 +92,6 @@ export interface Options<
 }
 
 /**
- * The generated system. It requires the source service and the resource.
- */
-export type CaptureSystem<S extends Schema.Any, Root, Needs extends ServiceDescriptor | ResourceDescriptor | ConditionNeedsFromConditions<ReadonlyArray<Condition>>> =
-  Schema.BoundSystem<S, Root, any, never, string, Needs>
-
-/**
  * Builds the system that writes `source.snapshot()` into `resource`.
  */
 export const system = <
@@ -100,15 +99,16 @@ export const system = <
   Root,
   const Service extends ServiceDescriptor,
   const Resource extends Schema.ResourceDescriptor<S>,
-  const When extends ReadonlyArray<Condition<Root>> = readonly []
+  const When extends ReadonlyArray<Condition<Root>> = readonly [],
+  const Name extends string = string
 >(
   Game: Schema.Game<S, Root>,
-  options: Options<S, Service, Resource, When>
-): CaptureSystem<S, Root, Service | Resource | ConditionNeedsFromConditions<When>> =>
+  options: Options<S, Service, Resource, When, Name>
+) =>
   Game.System(options.name, {
     resources: { input: Game.System.writeResource(options.resource as Resource) },
-    services: { source: Game.System.service(options.source as Service) },
-    when: (options.when ?? []) as ReadonlyArray<Condition<Root>>
+    services: { source: Game.System.consumeService(options.source as Service) },
+    when: (options.when ?? []) as When
   }, ({ resources, services }) => {
     resources.input.set(services.source.snapshot() as never)
-  }) as unknown as CaptureSystem<S, Root, Service | Resource | ConditionNeedsFromConditions<When>>
+  })

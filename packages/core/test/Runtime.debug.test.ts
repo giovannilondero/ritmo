@@ -485,6 +485,41 @@ describe("Runtime debug handle: population and ordering lints", () => {
     expect(entries.map((system) => system.placements)).toEqual([["plain#0", "gated#0"]])
   })
 
+  it("warns when a consumed service is consumed at more than one placement", () => {
+    const runtime = makeRuntime()
+    const Drain = Game.System("Debug/Drain", { services: { clock: Game.System.consumeService(Clock) } }, () => {})
+    const Peek = Game.System("Debug/Peek", { services: { clock: Game.System.service(Clock) } }, () => {})
+    runtime.debug.nameSchedules({ fixed: Game.Schedule(Drain, Peek), render: Game.Schedule(Peek) })
+    const once = runtime.debug.describe()
+    expect(once.systems.find((system) => system.name === "Debug/Drain")?.consumes).toEqual(["Debug/Clock"])
+    expect(once.systems.find((system) => system.name === "Debug/Peek")?.consumes).toEqual([])
+    expect(once.lints.filter((lint) => lint.code === "service-consumed-twice")).toEqual([])
+
+    runtime.debug.nameSchedules({ fixed: Game.Schedule(Drain, Peek), render: Game.Schedule(Drain) })
+    expect(runtime.debug.describe().lints.filter((lint) => lint.code === "service-consumed-twice")).toEqual([{
+      severity: "warning",
+      code: "service-consumed-twice",
+      subject: "Debug/Clock",
+      message: "Debug/Clock is consumed by Debug/Drain (fixed#0) and Debug/Drain (render#0): each run takes what arrived since the previous one, so each sees only what the others left (an input press reaches one of them)",
+      fix: "consume Debug/Clock in one system placed once (InputCapture.system for an input source), write what it takes to a resource, and read the resource everywhere else"
+    }])
+  })
+
+  it("adds the findings a provided service reports", () => {
+    const Reporting = Descriptor.Service<Debug.ReportsLints>()("Debug/Reporting")
+    const runtime = Game.Runtime.make({
+      services: Game.Runtime.services(
+        Game.Runtime.service(Clock, { now: () => 0 }),
+        Game.Runtime.service(Reporting, { [Debug.serviceLints]: () => [{ severity: "info", message: "touch lacks pause", fix: "bind it" }] })
+      ),
+      resources: { Score: 0 },
+      debug: { hostClock }
+    }).value
+    expect(runtime.debug.describe().lints.filter((lint) => lint.code === "service-lint")).toEqual([
+      { severity: "info", code: "service-lint", subject: "Debug/Reporting", message: "touch lacks pause", fix: "bind it" }
+    ])
+  })
+
   it("notes systems that read something before the schedule's first writer of it", () => {
     const runtime = makeRuntime()
     const ReadAll = Game.System("Debug/ReadAll", {

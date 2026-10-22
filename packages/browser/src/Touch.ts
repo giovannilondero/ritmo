@@ -37,14 +37,15 @@
  * }))
  *
  * // Once per update:
- * const { stick, buttons } = touch.snapshot()
+ * const { stick, actions } = touch.snapshot()
  * move(stick.vector)
- * if (buttons.attack.released && !buttons.attack.cancelled) fire(buttons.attack.aim)
+ * if (actions.attack.released && !actions.attack.cancelled) fire(actions.attack.aim)
  * ```
  *
  * For tests and headless runs, `scripted(...)` plays a timeline of stick
  * vectors, presses, drags, and releases.
  */
+import { anyUsed } from "./internal/used.ts"
 import type { ActionState } from "./Keyboard.ts"
 
 /** A position in CSS pixels relative to the element's top-left corner. */
@@ -128,13 +129,28 @@ export interface Swipe {
   readonly delta: Vector
 }
 
+/**
+ * The controls' state. Each button is an action named like it, so the
+ * snapshot has the same core as the other devices' (`actions` and `used`)
+ * and `Controls` can merge it.
+ */
 export interface Snapshot<B extends string> {
   readonly stick: Stick
-  readonly buttons: { readonly [K in B]: ButtonState }
+  readonly actions: { readonly [K in B]: ButtonState }
   readonly swipe: Swipe
-  /** Whether any tracked touch has been seen, for switching controls on. */
-  readonly touched: boolean
+  /**
+   * A button was pressed in this window or is held, or a finger is on the
+   * stick or the swipe area: the player is using the touch controls.
+   */
+  readonly used: boolean
 }
+
+const snapshotOf = <B extends string>(stick: Stick, actions: { readonly [K in B]: ButtonState }, swipe: Swipe): Snapshot<B> => ({
+  stick,
+  actions,
+  swipe,
+  used: stick.active || swipe.active || anyUsed(actions)
+})
 
 /** Live control positions for drawing, in CSS pixels. Reading it consumes nothing. */
 export interface View<B extends string> {
@@ -189,9 +205,9 @@ const released = (): ButtonState => ({ held: false, pressed: false, released: fa
 /** A snapshot with nothing held, for initializing an input resource before the first capture. */
 export const idle = <const B extends string>(buttons: ReadonlyArray<B>): Snapshot<B> => ({
   stick: { active: false, vector: zero },
-  buttons: Object.fromEntries(buttons.map((button) => [button, released()])) as { readonly [K in B]: ButtonState },
+  actions: Object.fromEntries(buttons.map((button) => [button, released()])) as { readonly [K in B]: ButtonState },
   swipe: { active: false, delta: zero },
-  touched: false
+  used: false
 })
 
 /** `offset / radius`, clamped to length 1, with the inner `deadZone` fraction mapped to zero. */
@@ -277,7 +293,6 @@ export const track = <const B extends string>(
   let current = layout(sizeOf())
   const names = Object.keys(current.buttons) as Array<B>
   const buttons = makeButtonTracks(names)
-  let touched = false
   let stick: { readonly pointerId: number; readonly origin: Position; knob: Position } | undefined
   /** Which button each finger holds. */
   const fingers = new Map<number, B>()
@@ -298,7 +313,6 @@ export const track = <const B extends string>(
     // A pointer id that comes down again without an up in between (the up
     // was lost) releases what it held first, as a cancel.
     end(event, true)
-    touched = true
     current = layout(sizeOf())
     const at = locate(event)
     for (const name of names) {
@@ -382,12 +396,11 @@ export const track = <const B extends string>(
 
   return {
     snapshot() {
-      const snapshot: Snapshot<B> = {
-        stick: stickState(),
-        buttons: Object.fromEntries(names.map((name) => [name, buttonSnapshot(buttons.get(name)!)])) as { readonly [K in B]: ButtonState },
-        swipe: { active: swipe !== undefined, delta: swiped },
-        touched
-      }
+      const snapshot = snapshotOf<B>(
+        stickState(),
+        Object.fromEntries(names.map((name) => [name, buttonSnapshot(buttons.get(name)!)])) as { readonly [K in B]: ButtonState },
+        { active: swipe !== undefined, delta: swiped }
+      )
       for (const button of buttons.values()) startWindow(button)
       swiped = zero
       return snapshot
@@ -453,7 +466,7 @@ export interface Scripted<B extends string> extends Touch<B> {
 /**
  * Plays `timeline` over controls named `buttons`: before the snapshot at index
  * `frame`, every entry for that frame is applied. Vectors longer than 1 are
- * clamped. Scripted controls report `touched` from the first entry on.
+ * clamped.
  */
 export const scripted = <const B extends string>(buttons: ReadonlyArray<B>, timeline: Timeline<NoInfer<B>>): Scripted<B> => {
   const byFrame = new Map<number, Array<TimelineEntry<B>>>()
@@ -468,7 +481,6 @@ export const scripted = <const B extends string>(buttons: ReadonlyArray<B>, time
   }
   const tracks = makeButtonTracks(buttons)
   let stick: Vector | null = null
-  let touched = false
   let frame = 0
   const layout: Layout<B> = {
     stick: { region: { left: 0, top: 0, width: 0, height: 0 }, radius: 1 },
@@ -479,7 +491,6 @@ export const scripted = <const B extends string>(buttons: ReadonlyArray<B>, time
       for (const track of tracks.values()) startWindow(track)
       const swipe = { active: false, x: 0, y: 0 }
       for (const entry of byFrame.get(frame) ?? []) {
-        touched = true
         if (entry.swipe !== undefined) {
           swipe.active = true
           swipe.x += entry.swipe.x
@@ -495,12 +506,11 @@ export const scripted = <const B extends string>(buttons: ReadonlyArray<B>, time
         for (const name of entry.cancel ?? []) lift(tracks.get(name)!, true)
       }
       frame += 1
-      return {
-        stick: { active: stick !== null, vector: stick ?? zero },
-        buttons: Object.fromEntries(buttons.map((name) => [name, buttonSnapshot(tracks.get(name)!)])) as { readonly [K in B]: ButtonState },
-        swipe: { active: swipe.active, delta: { x: swipe.x, y: swipe.y } },
-        touched
-      }
+      return snapshotOf<B>(
+        { active: stick !== null, vector: stick ?? zero },
+        Object.fromEntries(buttons.map((name) => [name, buttonSnapshot(tracks.get(name)!)])) as { readonly [K in B]: ButtonState },
+        { active: swipe.active, delta: { x: swipe.x, y: swipe.y } }
+      )
     },
     view() {
       return {

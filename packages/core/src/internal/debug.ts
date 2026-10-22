@@ -190,6 +190,9 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
         .map(([slot]) => `queries.${slot}`)
     ],
     services: names(spec.services as Record<string, { readonly descriptor: Descriptor.Any }>, (access) => access.descriptor.name),
+    consumes: Object.values(spec.services as Record<string, { readonly descriptor: Descriptor.Any; readonly consumes?: true }>)
+      .filter((access) => access.consumes === true)
+      .map((access) => access.descriptor.name),
     commands: permissionsOf(spec.commands as CommandAccess | undefined),
     when: (spec.when as ReadonlyArray<Machine.Condition>).map(renderCondition),
     pauseWhen: (spec.pauseWhen as ReadonlyArray<Machine.Condition>).map(renderCondition),
@@ -273,6 +276,8 @@ export interface DescribeInput {
   /** Every scope defined through the game, with its despawn triggers. */
   readonly scopes: ReadonlyArray<EntityScope.EntityScope.Any>
   readonly providedServices: ReadonlyArray<string>
+  /** Findings provided services report through `Debug.serviceLints`, by service name. */
+  readonly serviceLints: ReadonlyArray<readonly [string, ReadonlyArray<Debug.ServiceLint>]>
   readonly externallyWrittenEvents: ReadonlySet<string>
   /** Relations commands have tried to relate or reorder, by the queuing systems. */
   readonly relationMutations: ReadonlyMap<string, ReadonlySet<string>>
@@ -452,6 +457,21 @@ export const describe = (input: DescribeInput): Debug.Description => {
         message: `${name} is read with changedResource by ${readers.join(", ")}, but no described system writes it, so changed() is true only on the first run`
       })
     }
+    const consumers = new Map<string, Array<string>>()
+    for (const system of systems) {
+      for (const name of system.consumes) {
+        consumers.set(name, [...(consumers.get(name) ?? []), ...system.placements.map((placement) => `${system.name} (${placement})`)])
+      }
+    }
+    for (const [name, where] of consumers) {
+      if (where.length < 2) continue
+      lints.push({
+        severity: "warning",
+        code: "service-consumed-twice",
+        subject: name,
+        message: `${name} is consumed by ${where.join(" and ")}: each run takes what arrived since the previous one, so each sees only what the others left (an input press reaches one of them)`
+      })
+    }
     lints.push(...readBeforeWriteLints(schedules, described, input.externallyWrittenEvents))
     // Each named schedule is checked as one tick; `tick` checks this at compile time.
     for (const [name, schedule] of input.schedules) {
@@ -571,7 +591,11 @@ export const describe = (input: DescribeInput): Debug.Description => {
       resources: resources.list(),
       events: events.list()
     },
-    lints: lints.map((lint) => ({ ...lint, fix: fixFor(lint.code, lint.subject) }))
+    lints: [
+      ...lints.map((lint) => ({ ...lint, fix: fixFor(lint.code, lint.subject) })),
+      ...input.serviceLints.flatMap(([service, reported]) =>
+        reported.map((lint) => ({ severity: lint.severity, code: "service-lint" as const, subject: service, message: lint.message, fix: lint.fix })))
+    ]
   }
 }
 
@@ -615,6 +639,10 @@ const fixFor = (code: Debug.Lint["code"], subject: string): string => {
       return "decide between the values in one system, or check whether a next state is already queued (nextMachines.x.getPending()) before setting another"
     case "command-permission-unused":
       return `fine if the session did not reach the case where ${subject} uses it; otherwise drop the permission from its Game.System.commands(...)`
+    case "service-consumed-twice":
+      return `consume ${subject} in one system placed once (InputCapture.system for an input source), write what it takes to a resource, and read the resource everywhere else`
+    case "service-lint":
+      return "follow the fix the service reports"
     case "read-before-write":
       return "fine when a one-run lag is intended (input before movement); otherwise move the reader after the writer, or read with Game.System.thisTick to make it an error"
   }

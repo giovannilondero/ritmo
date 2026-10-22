@@ -75,3 +75,12 @@ describe("Ignored tick failures", () => {
     expect<Debug.Handle["checkIgnoredFailures"]>().type.toBe<() => void>()
   })
 })
+
+describe("Debug.serviceLints", () => {
+  it("types the findings a service reports", () => {
+    const Reporting = Descriptor.Service<Debug.ReportsLints>()("DebugTypes/Reporting")
+    expect(Game.Runtime.service).type.toBeCallableWith(Reporting, { [Debug.serviceLints]: () => [{ severity: "info", message: "m", fix: "f" }] })
+    expect(Game.Runtime.service).type.not.toBeCallableWith(Reporting, { [Debug.serviceLints]: () => [{ severity: "error", message: "m", fix: "f" }] })
+  })
+})
+

@@ -3,7 +3,7 @@ import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { PLAYER_SPEED } from "../constants.ts"
 import { normalizeMovement, resolveHorizontalMovement, resolveVerticalMovement } from "../math.ts"
 import { PlayerMovementQuery, WallCollisionQuery } from "../queries.ts"
-import { DeltaTime, Game, InputState, PadState } from "../schema.ts"
+import { DeltaTime, Game, InputState } from "../schema.ts"
 
 export const PlanPlayerVelocitySystem = Game.System(
   "TopDown/PlanPlayerVelocity",
@@ -12,8 +12,7 @@ export const PlanPlayerVelocitySystem = Game.System(
       player: PlayerMovementQuery
     },
     resources: {
-      input: Game.System.readResource(InputState),
-      pad: Game.System.readResource(PadState)
+      input: Game.System.readResource(InputState)
     }
   },
   ({ queries, resources }) =>
@@ -23,7 +22,7 @@ export const PlanPlayerVelocitySystem = Game.System(
         return
       }
 
-      const direction = normalizeMovement(resources.input.get(), resources.pad.get())
+      const direction = normalizeMovement(resources.input.get())
       player.value.data.velocity.updateRaw(() =>
         ({
           x: direction.x * PLAYER_SPEED,
