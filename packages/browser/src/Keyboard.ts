@@ -143,6 +143,14 @@ export type Snapshot<B extends Bindings> = {
  */
 export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: readonly [KeyBinding, ...Array<KeyBinding>] }
 
+/**
+ * Rejects actions a rebinding names that the bindings do not have, so
+ * {@link Actions.rebind} takes exactly the actions it was made with.
+ */
+export type OnlyActionsOf<R, B extends Bindings> = {
+  readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
+}
+
 export interface Actions<B extends Bindings> {
   /**
    * Returns every action's state and starts a new press/release window.
@@ -154,9 +162,9 @@ export interface Actions<B extends Bindings> {
    * with {@link presses}). An action held only through keys it lost reports
    * `released`. A key held across the rebind holds a newly bound action only
    * once it is pressed again, so an action never turns held without a
-   * press. Keys outside the actions it was made with are ignored.
+   * press. It takes exactly the actions the source was made with.
    */
-  rebind(bindings: Rebinding<B>): void
+  rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
   /**
    * Removes the event listeners.
    */

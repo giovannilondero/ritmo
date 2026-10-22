@@ -28,8 +28,28 @@ describe("Gamepad", () => {
     expect(input.rebind).type.not.toBeCallableWith({ attack: ["north"], dash: ["east"], jump: ["south"] })
   })
 
-  it("accepts the browser's navigator as a host", () => {
-    expect<Navigator>().type.toBeAssignableTo<Gamepad.GamepadHost>()
+  it("rejects extra actions even from an object that is not written inline", () => {
+    const input = Gamepad.actions(host, { attack: ["west"], dash: ["south"] })
+    const next = { attack: ["north"], dash: ["east"], jump: ["south"] } as const
+    // @ts-expect-error jump is not an action of these bindings
+    input.rebind(next)
+    const wide: Record<string, readonly ["north"]> = {}
+    expect(input.rebind).type.not.toBeCallableWith(wide)
+    let current: Gamepad.Rebinding<{ readonly attack: readonly ["west"]; readonly dash: readonly ["south"] }> = { attack: ["west"], dash: ["south"] }
+    current = { ...current, attack: ["north"] }
+    expect(input.rebind).type.toBeCallableWith(current)
+    expect(Gamepad.recording(input).rebind).type.not.toBeCallableWith(next)
+  })
+
+  it("accepts the browser's window as a host", () => {
+    expect<Window>().type.toBeAssignableTo<Gamepad.GamepadHost>()
+    // @ts-expect-error is missing the following properties from type 'GamepadHost': navigator
+    Gamepad.actions(navigator, { attack: ["west"] })
+  })
+
+  it("has no poll(): the pads are read on every animation frame", () => {
+    // @ts-expect-error Property 'poll' does not exist
+    Gamepad.actions(host, { attack: ["west"] }).poll()
   })
 
   it("narrows stored names with isButton", () => {

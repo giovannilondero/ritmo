@@ -18,9 +18,9 @@
  * that waits for the button to bind; `parseRebinding(...)` validates
  * bindings saved as JSON.
  *
- * Polling happens on every `snapshot()`. A press and release that both fall
- * between two snapshots is missed unless the host also calls `poll()` more
- * often (each animation frame, for example). Browsers expose a pad only after
+ * The Gamepad API has no button events, so the pads are read on every
+ * animation frame and on every `snapshot()`; a tap that starts and ends
+ * between two updates still counts. Browsers expose a pad only after
  * a button is pressed on it, and only in a secure context (HTTPS or
  * localhost); elsewhere `navigator.getGamepads` is missing, and a game uses
  * `scripted(bindings, [])` as an idle stand-in.
@@ -30,14 +30,11 @@
  *
  * @example
  * ```ts
- * const pad = Gamepad.actions(navigator, {
+ * const pad = Gamepad.actions(window, {
  *   attack: ["west"],
  *   dash: ["south"],
  *   pause: ["start"]
  * })
- *
- * // Each animation frame (optional), so taps shorter than an update count:
- * pad.poll()
  *
  * // Once per update:
  * const snapshot = pad.snapshot()
@@ -55,6 +52,7 @@
  */
 import * as Result from "@typeonce/ritmo/Result"
 
+import type * as BrowserTickSource from "./BrowserTickSource.ts"
 import type { ActionState } from "./Keyboard.ts"
 
 /**
@@ -113,9 +111,17 @@ export interface PadReading {
   readonly axes: ReadonlyArray<number>
 }
 
-/** Where pads are read from, usually `navigator`. */
-export interface GamepadHost {
+/** Where pads are read from, the subset of the browser's `navigator` the module reads. */
+export interface GamepadNavigator {
   getGamepads(): ReadonlyArray<PadReading | null>
+}
+
+/**
+ * What live actions need from the window: the pads, and animation frames to
+ * read them on, since the Gamepad API has no button events.
+ */
+export interface GamepadHost extends BrowserTickSource.Host {
+  readonly navigator: GamepadNavigator
 }
 
 /** A stick's tilt with the dead zone removed: zero at rest, length 1 at full tilt. `y` grows down, as on screen. */
@@ -140,22 +146,28 @@ export interface Snapshot<B extends Bindings> {
   readonly id: string | null
 }
 
+/**
+ * Rejects actions a rebinding names that the bindings do not have, so
+ * {@link Actions.rebind} takes exactly the actions it was made with.
+ */
+export type OnlyActionsOf<R, B extends Bindings> = {
+  readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
+}
+
 export interface Actions<B extends Bindings> {
   /** Returns the input state and starts a new press/release window. */
   snapshot(): Snapshot<B>
-  /** Reads the pads now, so a press shorter than one update still counts. `snapshot()` polls too. */
-  poll(): void
   /**
    * Binds the same actions to new buttons, from the next snapshot, for a
    * settings screen where players remap controls (capture the button to bind
    * from the snapshot's `buttons`). An action held only through buttons it
    * lost reports `released`. A button held across the rebind holds a newly
    * bound action only once it is pressed again, so an action never turns
-   * held without a press. Buttons outside the actions it was made with are
-   * ignored.
+   * held without a press. It takes exactly the actions the source was made
+   * with.
    */
-  rebind(bindings: Rebinding<B>): void
-  /** Stops reading pads. */
+  rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
+  /** Stops reading pads and cancels the animation frame. */
   dispose(): void
 }
 
@@ -291,15 +303,16 @@ const isDown = (button: ButtonReading, index: number, triggerThreshold: number):
 /** Reads the pads, treating a host that throws (a blocked permission policy) as having none. */
 const readPads = (host: GamepadHost): ReadonlyArray<PadReading | null> => {
   try {
-    return host.getGamepads()
+    return host.navigator.getGamepads()
   } catch {
     return []
   }
 }
 
 /**
- * Starts reading pads from `host`. With several pads connected it follows
- * the one used last; a pad that disconnects releases everything it held.
+ * Starts reading pads from `host`, usually `window`, on every animation
+ * frame until `dispose()`. With several pads connected it follows the one
+ * used last; a pad that disconnects releases everything it held.
  */
 export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B, options: ActionsOptions = {}): Actions<B> => {
   const deadZone = options.deadZone ?? 0.15
@@ -308,6 +321,7 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
   let followed: number | null = null
   let disposed = false
   let reading: PadReading | null = null
+  let frame = 0
 
   const poll = (): void => {
     if (disposed) return
@@ -330,6 +344,13 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
     }
   }
 
+  const onFrame = (): void => {
+    if (disposed) return
+    poll()
+    frame = host.requestAnimationFrame(onFrame)
+  }
+  frame = host.requestAnimationFrame(onFrame)
+
   return {
     snapshot() {
       poll()
@@ -346,10 +367,11 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
         id: pad.id
       })
     },
-    poll,
     rebind: state.rebind,
     dispose() {
+      if (disposed) return
       disposed = true
+      host.cancelAnimationFrame(frame)
       reading = null
       state.upAll()
     }
@@ -428,7 +450,6 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
       frame += 1
       return state.snapshot({ ...analog, connected, id: connected ? "scripted" : null })
     },
-    poll() {},
     rebind: state.rebind,
     dispose() {},
     frames: () => frame
@@ -471,7 +492,6 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
       frame += 1
       return snapshot
     },
-    poll: () => actions.poll(),
     rebind: (bindings) => actions.rebind(bindings),
     dispose: () => actions.dispose(),
     timeline: () => [...entries]

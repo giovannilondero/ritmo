@@ -10,7 +10,9 @@
  *
  * The source is any service with `snapshot()`: `Keyboard.actions(...)`
  * directly, or a game-specific adapter that merges several devices. The
- * resource's value type must be exactly the snapshot type.
+ * resource's value type must be exactly the snapshot type (declare it as
+ * `InputCapture.SnapshotOf<typeof Source>`): not a wider type, and not one
+ * with extra optional fields.
  *
  * Its spec is erased, so it does not count as a writer of the resource for
  * `Game.System.thisTick(...)` order checks: place it first yourself.
@@ -55,6 +57,15 @@ type ResourceDescriptor = Descriptor<"resource", string, any>
 export type SnapshotOf<Service extends ServiceDescriptor> =
   Descriptor.Value<Service> extends Source<infer Value> ? Value : never
 
+/** Whether `A` and `B` are the same type, not merely assignable both ways. */
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
+
+/** The resource when its value type is exactly the source's snapshot type, otherwise an error naming the fix. */
+type MatchingResource<Resource extends ResourceDescriptor, Service extends ServiceDescriptor> =
+  Same<Descriptor.Value<Resource>, SnapshotOf<Service>> extends true
+    ? Resource
+    : "The resource's value type must be exactly the source's snapshot type: declare it with InputCapture.SnapshotOf<typeof Source>"
+
 export interface Options<
   S extends Schema.Any,
   Service extends ServiceDescriptor,
@@ -66,7 +77,7 @@ export interface Options<
   /** The service to read snapshots from; its value must have `snapshot()`. */
   readonly source: Descriptor.Value<Service> extends Source<any> ? Service : "The source service must provide snapshot()"
   /** The resource to write each snapshot into; its value type must be exactly the snapshot type. */
-  readonly resource: Resource & Descriptor<"resource", string, SnapshotOf<Service>>
+  readonly resource: MatchingResource<Resource, Service>
   /**
    * Run conditions, like a system's `when`. While they fail, snapshots are
    * not taken, so presses stay in the device until capture resumes (for
@@ -95,7 +106,7 @@ export const system = <
   options: Options<S, Service, Resource, When>
 ): CaptureSystem<S, Root, Service | Resource | ConditionNeedsFromConditions<When>> =>
   Game.System(options.name, {
-    resources: { input: Game.System.writeResource(options.resource) },
+    resources: { input: Game.System.writeResource(options.resource as Resource) },
     services: { source: Game.System.service(options.source as Service) },
     when: (options.when ?? []) as ReadonlyArray<Condition<Root>>
   }, ({ resources, services }) => {

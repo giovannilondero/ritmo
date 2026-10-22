@@ -24,10 +24,28 @@ const makePad = (index = 0, id = `pad ${index}`) => {
   }
 }
 
+/** A window whose pads the test sets and whose animation frames the test runs with `frame()`. */
 const makeHost = (...pads: Array<ReturnType<typeof makePad>>) => {
   const connected: Array<Gamepad.PadReading | null> = pads.map(({ pad }) => pad)
-  const host: Gamepad.GamepadHost = { getGamepads: () => connected }
-  return { host, connected }
+  const frames = new Map<number, (timestamp: number) => void>()
+  let next = 0
+  const host: Gamepad.GamepadHost = {
+    navigator: { getGamepads: () => connected },
+    requestAnimationFrame: (callback) => {
+      next += 1
+      frames.set(next, callback)
+      return next
+    },
+    cancelAnimationFrame: (handle) => {
+      frames.delete(handle)
+    }
+  }
+  const frame = () => {
+    const pending = [...frames.values()]
+    frames.clear()
+    for (const callback of pending) callback(0)
+  }
+  return { host, connected, frame, scheduled: () => frames.size }
 }
 
 const bindings = { attack: ["west"], dash: ["south", "rightBumper"], ultimate: ["rightTrigger"] } as const
@@ -58,12 +76,13 @@ describe("Gamepad.actions", () => {
     expect(input.snapshot().actions.dash).toEqual(released)
   })
 
-  it("keeps a tap that starts and ends between two snapshots when polled", () => {
+  it("keeps a tap that starts and ends between two snapshots, read on an animation frame", () => {
     const pad = makePad()
-    const input = Gamepad.actions(makeHost(pad).host, bindings)
+    const host = makeHost(pad)
+    const input = Gamepad.actions(host.host, bindings)
 
     pad.down("west")
-    input.poll()
+    host.frame()
     pad.up("west")
 
     expect(input.snapshot().actions.attack).toEqual({ held: false, pressed: true, released: true })
@@ -148,7 +167,8 @@ describe("Gamepad.actions", () => {
   })
 
   it("treats a host that throws as having no pads", () => {
-    const input = Gamepad.actions({ getGamepads: () => { throw new Error("blocked") } }, bindings)
+    const { host } = makeHost()
+    const input = Gamepad.actions({ ...host, navigator: { getGamepads: () => { throw new Error("blocked") } } }, bindings)
     expect(input.snapshot().connected).toBe(false)
   })
 
@@ -196,13 +216,28 @@ describe("Gamepad.actions", () => {
     expect(input.snapshot().actions.dash).toEqual(released)
   })
 
-  it("ignores actions a rebinding adds", () => {
+  it("ignores actions a rebinding adds at runtime", () => {
     const pad = makePad()
     const input = Gamepad.actions(makeHost(pad).host, bindings)
     const next = { attack: ["west"], dash: ["south"], ultimate: ["rightTrigger"], extra: ["north"] } as const
 
+    // The types reject it; the runtime ignores it too, for untyped callers.
+    // @ts-expect-error is not an action of these bindings
     input.rebind(next)
     expect(Object.keys(input.snapshot().actions)).toEqual(["attack", "dash", "ultimate"])
+  })
+
+  it("reads on every animation frame until dispose, which cancels the frame", () => {
+    const pad = makePad()
+    const host = makeHost(pad)
+    const input = Gamepad.actions(host.host, bindings)
+
+    expect(host.scheduled()).toBe(1)
+    host.frame()
+    host.frame()
+    expect(host.scheduled()).toBe(1)
+    input.dispose()
+    expect(host.scheduled()).toBe(0)
   })
 
   it("stops reading after dispose", () => {
@@ -271,15 +306,16 @@ describe("Gamepad.recording", () => {
 describe("Gamepad.recording release and press within one update", () => {
   it("replays a button released and pressed again between two snapshots", () => {
     const pad = makePad()
-    const live = Gamepad.recording(Gamepad.actions(makeHost(pad).host, bindings))
+    const host = makeHost(pad)
+    const live = Gamepad.recording(Gamepad.actions(host.host, bindings))
     const seen: Array<Gamepad.Snapshot<typeof bindings>> = []
 
     pad.down("west")
     seen.push(live.snapshot())
     pad.up("west")
-    live.poll()
+    host.frame()
     pad.down("west")
-    live.poll()
+    host.frame()
     seen.push(live.snapshot())
     expect(seen[1]!.actions.attack).toEqual({ held: true, pressed: true, released: false })
     expect(live.timeline()).toEqual([{ frame: 0, press: ["west"] }, { frame: 1, press: ["west"], release: ["west"] }])

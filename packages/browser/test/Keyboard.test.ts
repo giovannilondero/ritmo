@@ -238,11 +238,13 @@ describe("Keyboard.rebind", () => {
     expect(input.snapshot().jump).toEqual({ held: false, pressed: false, released: true })
   })
 
-  it("ignores actions a rebinding adds", () => {
+  it("ignores actions a rebinding adds at runtime", () => {
     const fake = makeHost()
     const input = Keyboard.actions(fake.host, { jump: [" "] })
     const next = { jump: ["w"], extra: ["x"] } as const
 
+    // The types reject it; the runtime ignores it too, for untyped callers.
+    // @ts-expect-error is not an action of these bindings
     input.rebind(next)
     expect(Object.keys(input.snapshot())).toEqual(["jump"])
   })

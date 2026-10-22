@@ -8,8 +8,12 @@ type Snapshot = Keyboard.Snapshot<typeof bindings>
 const KeyboardInput = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("CaptureTypes/Keyboard")
 const Input = Descriptor.TransientResource<Snapshot>()("CaptureTypes/Input")
 const Wrong = Descriptor.Resource<{ readonly jump: boolean }>()("CaptureTypes/Wrong")
+const Fewer = Descriptor.TransientResource<Keyboard.Snapshot<{ readonly jump: readonly [" "]; readonly left: readonly ["a"] }>>()("CaptureTypes/Fewer")
+const Optional = Descriptor.TransientResource<{ readonly jump: Keyboard.ActionState; readonly left?: Keyboard.ActionState }>()("CaptureTypes/Optional")
+const Wide = Descriptor.TransientResource<unknown>()("CaptureTypes/Wide")
+const Declared = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()("CaptureTypes/Declared")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CaptureTypes/Clock")
-const Game = Schema.bind(Schema.fragment({ resources: { Input, Wrong } }))
+const Game = Schema.bind(Schema.fragment({ resources: { Input, Wrong, Fewer, Optional, Wide, Declared } }))
 
 describe("InputCapture", () => {
   it("requires the service and resource at tick time", () => {
@@ -45,9 +49,19 @@ describe("InputCapture", () => {
     expect(ready.tick(Game.Schedule(Capture)).ok).type.toBe<boolean>()
   })
 
-  it("rejects resources whose value is not the snapshot type", () => {
-    // @ts-expect-error Type 'ActionState' is not assignable to type 'boolean'.
+  it("rejects resources whose value is not exactly the snapshot type", () => {
+    // @ts-expect-error must be exactly the source's snapshot type
     InputCapture.system(Game, { name: "CaptureTypes/Wrong", source: KeyboardInput, resource: Wrong })
+    // @ts-expect-error must be exactly the source's snapshot type
+    InputCapture.system(Game, { name: "CaptureTypes/Fewer", source: KeyboardInput, resource: Fewer })
+    // @ts-expect-error must be exactly the source's snapshot type
+    InputCapture.system(Game, { name: "CaptureTypes/Optional", source: KeyboardInput, resource: Optional })
+    // @ts-expect-error must be exactly the source's snapshot type
+    InputCapture.system(Game, { name: "CaptureTypes/Wide", source: KeyboardInput, resource: Wide })
+  })
+
+  it("accepts a resource declared with SnapshotOf", () => {
+    expect(InputCapture.system).type.toBeCallableWith(Game, { name: "CaptureTypes/Declared", source: KeyboardInput, resource: Declared })
   })
 
   it("rejects sources without snapshot()", () => {

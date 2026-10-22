@@ -36,6 +36,19 @@ describe("Keyboard.rebind", () => {
     expect(input.rebind).type.toBeCallableWith({ jump: [Keyboard.code("KeyJ")], left: ["ArrowLeft"] })
     expect(input.rebind).type.not.toBeCallableWith({ jump: ["j"] })
   })
+
+  it("rejects extra actions even from an object that is not written inline", () => {
+    const input = Keyboard.actions(host, { jump: [" "], left: ["a"] })
+    const next = { jump: ["j"], left: ["q"], extra: ["x"] } as const
+    // @ts-expect-error extra is not an action of these bindings
+    input.rebind(next)
+    const wide: Record<string, readonly ["j"]> = {}
+    expect(input.rebind).type.not.toBeCallableWith(wide)
+    let current: Keyboard.Rebinding<{ readonly jump: readonly [" "]; readonly left: readonly ["a"] }> = { jump: [" "], left: ["a"] }
+    current = { ...current, jump: [Keyboard.code("KeyJ")] }
+    expect(input.rebind).type.toBeCallableWith(current)
+    expect(Keyboard.recording(input).rebind).type.not.toBeCallableWith(next)
+  })
 })
 
 describe("Keyboard.presses", () => {
