@@ -15,10 +15,10 @@ const touch = Touch.track(target, blurHost, ({ width, height }) => ({
 describe("Touch", () => {
   it("infers the button names from the layout", () => {
     expect(touch).type.toBe<Touch.Touch<"attack" | "dash">>()
-    expect(touch.snapshot().buttons.attack).type.toBe<Touch.ButtonState>()
+    expect(touch.snapshot().actions.attack).type.toBe<Touch.ButtonState>()
     expect(touch.snapshot().stick.vector).type.toBe<Touch.Vector>()
     // @ts-expect-error Property 'jump' does not exist on type
-    touch.snapshot().buttons.jump
+    touch.snapshot().actions.jump
   })
 
   it("types scripted timelines by the button names", () => {

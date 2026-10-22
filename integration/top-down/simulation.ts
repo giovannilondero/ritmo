@@ -20,8 +20,9 @@ import * as Result from "@typeonce/ritmo/Result"
 
 import { FIXED_STEP_SECONDS } from "./constants.ts"
 import { initialMachines, initialResources } from "./runtime.ts"
-import { FrameContext, Game, GamepadInput, KeyboardInput } from "./schema.ts"
+import { ControlsInput, FrameContext, Game } from "./schema.ts"
 import { setupWorldSchedule, simulationSchedule } from "./schedules.ts"
+import { makeControls } from "./types.ts"
 import type { FrameContextValue, GamepadInput as GamepadInputValue, KeyboardInput as KeyboardInputValue } from "./types.ts"
 
 export interface TopDownSimulationOptions {
@@ -42,8 +43,7 @@ export const createTopDownSimulation = (options: TopDownSimulationOptions) => {
   const frame = options.frame ?? defaultFrameContext
   const made = Game.Runtime.make({
     services: Game.Runtime.services(
-      Game.Runtime.service(KeyboardInput, options.keyboard),
-      Game.Runtime.service(GamepadInput, options.gamepad),
+      Game.Runtime.service(ControlsInput, makeControls({ keyboard: options.keyboard, gamepad: options.gamepad })),
       Game.Runtime.service(FrameContext, frame)
     ),
     resources: initialResources(frame),

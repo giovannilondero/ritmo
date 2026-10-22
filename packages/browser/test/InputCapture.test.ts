@@ -12,14 +12,14 @@ describe("InputCapture", () => {
     const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
 
     const queued: Array<Keyboard.Snapshot<typeof bindings>> = [
-      { jump: { held: true, pressed: true, released: false }, left: { held: false, pressed: false, released: false } },
-      { jump: { held: false, pressed: false, released: true }, left: { held: true, pressed: true, released: false } }
+      { actions: { jump: { held: true, pressed: true, released: false }, left: { held: false, pressed: false, released: false } }, used: true },
+      { actions: { jump: { held: false, pressed: false, released: true }, left: { held: true, pressed: true, released: false } }, used: true }
     ]
     const seen: Array<string> = []
     const Capture = InputCapture.system(Game, { name: "CaptureTest/Capture", source: Source, resource: Input })
     const Read = Game.System("CaptureTest/Read", { resources: { input: Game.System.readResource(Input) } }, ({ resources }) => {
       const input = resources.input.get()
-      seen.push(`${input.jump.pressed}/${input.left.held}`)
+      seen.push(`${input.actions.jump.pressed}/${input.actions.left.held}`)
     })
 
     const runtime = Game.Runtime.make({
@@ -58,13 +58,16 @@ describe("InputCapture", () => {
     expect(keyboard.frames()).toBe(0)
     runtime.tick(Game.Schedule(Resume, Game.Schedule.applyStateTransitions(), Capture))
     // The first snapshot is taken only now, so the tap is still there.
-    expect(runtime.inspect(ReadInput).jump.pressed).toBe(true)
+    expect(runtime.inspect(ReadInput).actions.jump.pressed).toBe(true)
   })
 
   it("builds idle snapshots for every action", () => {
     expect(Keyboard.idle(bindings)).toEqual({
-      jump: { held: false, pressed: false, released: false },
-      left: { held: false, pressed: false, released: false }
+      actions: {
+        jump: { held: false, pressed: false, released: false },
+        left: { held: false, pressed: false, released: false }
+      },
+      used: false
     })
   })
 })

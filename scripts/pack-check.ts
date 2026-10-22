@@ -103,7 +103,7 @@ import { Clock, Descriptor, FixedLoop, HostClock, Schema } from "@typeonce/ritmo
 import * as Result from "@typeonce/ritmo/Result"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { Collide2, FlowField, Ops, Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
-import { BrowserHostClock, BrowserTickSource, Keyboard } from "@typeonce/ritmo-browser"
+import { BrowserHostClock, BrowserTickSource, Controls, Keyboard } from "@typeonce/ritmo-browser"
 import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
@@ -131,7 +131,7 @@ const hostClock = HostClock.test()
 const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
 const session = Session.make(runtime, { hostClock, schedules: { setup: Game.Schedule(Spawn, Game.Schedule.applyDeferred()) } })
 const ran = session.run("setup")
-const keyboard = Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }])
+const controls = Controls.actions(["jump"]).merge({ keyboard: Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }]) })
 const registry = NodeRegistry.make<string>({ attach: () => {}, detach: () => {} })
 const sprites = PixiNodeRegistry.make<{ destroy(): void }>({ addChild: () => {}, removeChild: () => {} })
 const cell = Scalar.Positive.result(8)
@@ -162,7 +162,7 @@ if ("NodeRegistry" in Pixi || "RenderSync" in Pixi) throw new Error("Pixi publis
 console.log(JSON.stringify({
   ok: ran.data.ok && Result.isSuccess(Result.success(1)),
   entities: session.dump().data.entityCount,
-  jump: keyboard.snapshot().jump.pressed,
+  jump: controls.snapshot().actions.jump.pressed,
   nodes: registry.size + sprites.size
 }))
 `

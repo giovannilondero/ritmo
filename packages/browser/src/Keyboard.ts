@@ -30,7 +30,7 @@
  *
  * // Once per update:
  * const snapshot = input.snapshot()
- * if (snapshot.jump.pressed) jump()
+ * if (snapshot.actions.jump.pressed) jump()
  *
  * // On teardown:
  * input.dispose()
@@ -59,6 +59,8 @@
  * ```
  */
 import * as Result from "@typeonce/ritmo/Result"
+
+import { anyUsed } from "./internal/used.ts"
 
 /**
  * The subset of `KeyboardEvent` the module reads. `code` (the physical key)
@@ -133,8 +135,14 @@ export interface ActionState {
   readonly released: boolean
 }
 
-export type Snapshot<B extends Bindings> = {
-  readonly [Action in keyof B]: ActionState
+/**
+ * Every action's state, with the same core as the other devices' snapshots
+ * (`actions` and `used`) so `Controls` can merge them.
+ */
+export interface Snapshot<B extends Bindings> {
+  readonly actions: { readonly [Action in keyof B]: ActionState }
+  /** Some action was pressed in this window or is held: the player is using the keyboard. */
+  readonly used: boolean
 }
 
 /**
@@ -184,11 +192,11 @@ export interface ActionsOptions {
  * before the first capture.
  */
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  const snapshot = {} as Record<keyof B, ActionState>
+  const actions = {} as Record<keyof B, ActionState>
   for (const name of Object.keys(bindings) as Array<keyof B>) {
-    snapshot[name] = { held: false, pressed: false, released: false }
+    actions[name] = { held: false, pressed: false, released: false }
   }
-  return snapshot
+  return { actions, used: false }
 }
 
 const normalize = (key: string): string => key.length === 1 ? key.toLowerCase() : key
@@ -294,10 +302,10 @@ export const actions = <const B extends Bindings>(
 
   return {
     snapshot() {
-      const snapshot = {} as Record<keyof B, ActionState>
+      const actions = {} as Record<keyof B, ActionState>
       for (const name of names) {
         const held = isHeld(name)
-        snapshot[name] = {
+        actions[name] = {
           held,
           pressed: pressed.has(name),
           released: released.has(name) && !held
@@ -305,7 +313,7 @@ export const actions = <const B extends Bindings>(
       }
       pressed.clear()
       released.clear()
-      return snapshot
+      return { actions, used: anyUsed(actions) }
     },
     rebind(next) {
       const before = names.filter(isHeld)
@@ -442,12 +450,12 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
         }
       }
       frame += 1
-      const snapshot = {} as Record<keyof B, ActionState>
+      const actions = {} as Record<keyof B, ActionState>
       for (const name of names) {
         const isHeld = held.has(name)
-        snapshot[name] = { held: isHeld, pressed: pressed.has(name), released: released.has(name) && !isHeld }
+        actions[name] = { held: isHeld, pressed: pressed.has(name), released: released.has(name) && !isHeld }
       }
-      return snapshot
+      return { actions, used: anyUsed(actions) }
     },
     // A timeline names actions, not keys, so new keys change nothing.
     rebind() {},
@@ -478,8 +486,8 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
       const press: Array<keyof B & string> = []
       const release: Array<keyof B & string> = []
       const held = new Set<keyof B & string>()
-      for (const name of Object.keys(snapshot) as Array<keyof B & string>) {
-        const state = snapshot[name]!
+      for (const name of Object.keys(snapshot.actions) as Array<keyof B & string>) {
+        const state = snapshot.actions[name]!
         if (state.held) held.add(name)
         if (state.pressed) press.push(name)
         // A press of an action held at the previous snapshot means it was released in between.

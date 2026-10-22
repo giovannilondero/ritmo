@@ -41,11 +41,11 @@ describe("Keyboard.actions", () => {
     const input = Keyboard.actions(fake.host, { jump: [" ", "w"], left: ["ArrowLeft", "a"] })
 
     fake.down("W")
-    expect(input.snapshot().jump).toEqual({ held: true, pressed: true, released: false })
-    expect(input.snapshot().jump).toEqual({ held: true, pressed: false, released: false })
+    expect(input.snapshot().actions.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().actions.jump).toEqual({ held: true, pressed: false, released: false })
     fake.up("w")
-    expect(input.snapshot().jump).toEqual({ held: false, pressed: false, released: true })
-    expect(input.snapshot().left).toEqual({ held: false, pressed: false, released: false })
+    expect(input.snapshot().actions.jump).toEqual({ held: false, pressed: false, released: true })
+    expect(input.snapshot().actions.left).toEqual({ held: false, pressed: false, released: false })
   })
 
   it("keeps a tap that starts and ends between two snapshots", () => {
@@ -55,7 +55,7 @@ describe("Keyboard.actions", () => {
     fake.down(" ")
     fake.up(" ")
 
-    expect(input.snapshot().jump).toEqual({ held: false, pressed: true, released: true })
+    expect(input.snapshot().actions.jump).toEqual({ held: false, pressed: true, released: true })
   })
 
   it("ignores auto-repeat and keeps an action held while any bound key is down", () => {
@@ -68,7 +68,7 @@ describe("Keyboard.actions", () => {
     fake.down("a")
     fake.up("ArrowLeft")
 
-    expect(input.snapshot().left).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().actions.left).toEqual({ held: true, pressed: true, released: false })
   })
 
   it("prevents default only for bound keys unless disabled", () => {
@@ -91,7 +91,7 @@ describe("Keyboard.actions", () => {
     fake.down(" ")
     input.snapshot()
     fake.blur()
-    expect(input.snapshot().jump).toEqual({ held: false, pressed: false, released: true })
+    expect(input.snapshot().actions.jump).toEqual({ held: false, pressed: false, released: true })
 
     input.dispose()
     expect(fake.listenerCount()).toBe(0)
@@ -107,19 +107,19 @@ describe("Keyboard timelines", () => {
       { frame: 2, release: ["left"], press: ["jump"] },
       { frame: 2, release: ["jump"] }
     ])
-    expect(input.snapshot().left).toEqual({ held: true, pressed: true, released: false })
-    expect(input.snapshot().left).toEqual({ held: true, pressed: false, released: false })
+    expect(input.snapshot().actions.left).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().actions.left).toEqual({ held: true, pressed: false, released: false })
     const third = input.snapshot()
-    expect(third.left).toEqual({ held: false, pressed: false, released: true })
-    expect(third.jump).toEqual({ held: false, pressed: true, released: true })
+    expect(third.actions.left).toEqual({ held: false, pressed: false, released: true })
+    expect(third.actions.jump).toEqual({ held: false, pressed: true, released: true })
     expect(input.snapshot()).toEqual(Keyboard.idle(bindings))
     expect(input.frames()).toBe(4)
   })
 
   it("does not report a press of an action already held as a new press", () => {
     const input = Keyboard.scripted(bindings, [{ frame: 0, press: ["jump"] }, { frame: 1, press: ["jump"] }])
-    expect(input.snapshot().jump).toEqual({ held: true, pressed: true, released: false })
-    expect(input.snapshot().jump).toEqual({ held: true, pressed: false, released: false })
+    expect(input.snapshot().actions.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().actions.jump).toEqual({ held: true, pressed: false, released: false })
   })
 
   it("records a live session that replays to the same snapshots", () => {
@@ -159,9 +159,9 @@ describe("Keyboard physical keys", () => {
     const input = Keyboard.actions(fake.host, { up: [Keyboard.code("KeyW")] })
     // On AZERTY the key in W's position types "z".
     fake.downCode("z", "KeyW")
-    expect(input.snapshot().up).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().actions.up).toEqual({ held: true, pressed: true, released: false })
     fake.upCode("z", "KeyW")
-    expect(input.snapshot().up).toEqual({ held: false, pressed: false, released: true })
+    expect(input.snapshot().actions.up).toEqual({ held: false, pressed: false, released: true })
   })
 
   it("is not fooled by modifiers that change the character", () => {
@@ -170,8 +170,8 @@ describe("Keyboard physical keys", () => {
     fake.downCode("∑", "KeyW") // Option+W on macOS
     fake.downCode("!", "Digit1") // Shift+1
     const snapshot = input.snapshot()
-    expect(snapshot.up.held).toBe(true)
-    expect(snapshot.one.held).toBe(true)
+    expect(snapshot.actions.up.held).toBe(true)
+    expect(snapshot.actions.one.held).toBe(true)
   })
 
   it("releases a character binding even when a modifier changed its character meanwhile", () => {
@@ -181,17 +181,17 @@ describe("Keyboard physical keys", () => {
     input.snapshot()
     // Option pressed while W is down: W's release arrives as "∑".
     fake.upCode("∑", "KeyW")
-    expect(input.snapshot().up).toEqual({ held: false, pressed: false, released: true })
+    expect(input.snapshot().actions.up).toEqual({ held: false, pressed: false, released: true })
   })
 
   it("mixes character and physical bindings on one action, and prevents defaults for both", () => {
     const fake = makeHost()
     const input = Keyboard.actions(fake.host, { jump: [" ", Keyboard.code("KeyK")] })
     fake.downCode("k", "KeyK")
-    expect(input.snapshot().jump.pressed).toBe(true)
+    expect(input.snapshot().actions.jump.pressed).toBe(true)
     fake.upCode("k", "KeyK")
     fake.downCode(" ", "Space")
-    expect(input.snapshot().jump.held).toBe(true)
+    expect(input.snapshot().actions.jump.held).toBe(true)
     expect(fake.prevented).toEqual(["k", " "])
   })
 })
@@ -205,8 +205,8 @@ describe("Keyboard.rebind", () => {
     fake.downCode("j", "KeyJ")
     fake.down(" ")
     const snapshot = input.snapshot()
-    expect(snapshot.jump).toEqual({ held: true, pressed: true, released: false })
-    expect(snapshot.dash).toEqual({ held: true, pressed: true, released: false })
+    expect(snapshot.actions.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(snapshot.actions.dash).toEqual({ held: true, pressed: true, released: false })
   })
 
   it("releases an action held only through keys it lost, and holds a newly bound one only after a fresh press", () => {
@@ -218,12 +218,12 @@ describe("Keyboard.rebind", () => {
     input.snapshot()
     input.rebind({ jump: ["w"], crouch: [" "] })
     const snapshot = input.snapshot()
-    expect(snapshot.jump).toEqual({ held: false, pressed: false, released: true })
-    expect(snapshot.crouch).toEqual(idle)
+    expect(snapshot.actions.jump).toEqual({ held: false, pressed: false, released: true })
+    expect(snapshot.actions.crouch).toEqual(idle)
     fake.up(" ")
-    expect(input.snapshot().crouch).toEqual(idle)
+    expect(input.snapshot().actions.crouch).toEqual(idle)
     fake.down(" ")
-    expect(input.snapshot().crouch).toEqual({ held: true, pressed: true, released: false })
+    expect(input.snapshot().actions.crouch).toEqual({ held: true, pressed: true, released: false })
   })
 
   it("keeps an action held through a key it kept", () => {
@@ -233,9 +233,9 @@ describe("Keyboard.rebind", () => {
     fake.down(" ")
     input.snapshot()
     input.rebind({ jump: [" ", "w"], crouch: ["x"] })
-    expect(input.snapshot().jump).toEqual({ held: true, pressed: false, released: false })
+    expect(input.snapshot().actions.jump).toEqual({ held: true, pressed: false, released: false })
     fake.up(" ")
-    expect(input.snapshot().jump).toEqual({ held: false, pressed: false, released: true })
+    expect(input.snapshot().actions.jump).toEqual({ held: false, pressed: false, released: true })
   })
 
   it("ignores actions a rebinding adds at runtime", () => {
@@ -246,7 +246,7 @@ describe("Keyboard.rebind", () => {
     // The types reject it; the runtime ignores it too, for untyped callers.
     // @ts-expect-error is not an action of these bindings
     input.rebind(next)
-    expect(Object.keys(input.snapshot())).toEqual(["jump"])
+    expect(Object.keys(input.snapshot().actions)).toEqual(["jump"])
   })
 
   it("keeps a recording's timeline by action, so a rebind does not change a replay", () => {
@@ -259,7 +259,7 @@ describe("Keyboard.rebind", () => {
     recorder.snapshot()
     const replay = Keyboard.scripted(bindings, recorder.timeline())
     replay.rebind({ jump: ["x"] })
-    expect(replay.snapshot().jump.pressed).toBe(true)
+    expect(replay.snapshot().actions.jump.pressed).toBe(true)
   })
 })
 
@@ -275,7 +275,7 @@ describe("Keyboard.recording release and press within one update", () => {
     fake.up(" ")
     fake.down(" ")
     live.push(recorder.snapshot())
-    expect(live[1]!.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(live[1]!.actions.jump).toEqual({ held: true, pressed: true, released: false })
     expect(recorder.timeline()).toEqual([{ frame: 0, press: ["jump"] }, { frame: 1, press: ["jump"], release: ["jump"] }])
 
     const replay = Keyboard.scripted(bindings, recorder.timeline())

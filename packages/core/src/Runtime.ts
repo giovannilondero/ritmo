@@ -61,7 +61,7 @@
  */
 import * as HostClockModule from "./HostClock.ts"
 import * as Command from "./Command.ts"
-import type * as Debug from "./Debug.ts"
+import * as Debug from "./Debug.ts"
 import * as DescriptorModule from "./Descriptor.ts"
 import type { Descriptor } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
@@ -2753,6 +2753,10 @@ const makeValidatedRuntime = <
       providesMachine: (machine) => providedMachineKeys.has(machine.key),
       scopes: options.scopeDefinitions,
       providedServices: Object.keys(providedServices),
+      serviceLints: Object.entries(providedServices as Record<string, unknown>).flatMap(([name, value]) => {
+        const report = typeof value === "object" && value !== null ? (value as Partial<Debug.ReportsLints>)[Debug.serviceLints] : undefined
+        return typeof report === "function" ? [[name, report.call(value)] as const] : []
+      }),
       externallyWrittenEvents: new Set([...externallyWrittenEvents, ...hostEvents]),
       relationMutations,
       commandUses,

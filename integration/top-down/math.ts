@@ -3,8 +3,7 @@ import * as InputAxis from "@typeonce/ritmo-math/InputAxis"
 import * as Scalar from "@typeonce/ritmo-math/Scalar"
 import * as Vector2Module from "@typeonce/ritmo-math/Vector2"
 import { WORLD_HEIGHT, WORLD_WIDTH } from "./constants.ts"
-import type { Gamepad } from "@typeonce/ritmo-browser"
-import type { InputStateValue, padBindings, Vector2 } from "./types.ts"
+import type { InputStateValue, Vector2 } from "./types.ts"
 
 export const clamp = (value: number, min: number, max: number): number => {
   const nextValue = Scalar.Finite.option(value)
@@ -20,18 +19,18 @@ export const clamp = (value: number, min: number, max: number): number => {
 export const lengthSquared = (vector: Vector2): number => Vector2Module.lengthSquared(vector)
 
 /**
- * The walk direction from both devices: a tilted left stick wins and keeps
- * its analog length (a half tilt walks at half speed); otherwise the keys
- * and the d-pad give a unit direction.
+ * The walk direction: a tilted left stick wins and keeps its analog length
+ * (a half tilt walks at half speed); otherwise the merged direction actions
+ * (keys or d-pad) give a unit direction.
  */
-export const normalizeMovement = (keys: InputStateValue, pad: Gamepad.Snapshot<typeof padBindings>): Vector2 => {
-  const stick = Vector2Module.option(pad.left)
+export const normalizeMovement = (input: InputStateValue): Vector2 => {
+  const stick = Vector2Module.option(input.devices.gamepad.left)
   if (stick !== null && Vector2Module.lengthSquared(stick) > 0) return stick
   return InputAxis.vectorFromAxes({
-    up: keys.up.held || pad.actions.up.held,
-    down: keys.down.held || pad.actions.down.held,
-    left: keys.left.held || pad.actions.left.held,
-    right: keys.right.held || pad.actions.right.held
+    up: input.actions.up.held,
+    down: input.actions.down.held,
+    left: input.actions.left.held,
+    right: input.actions.right.held
   })
 }
 

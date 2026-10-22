@@ -5,8 +5,7 @@ import {
   Collectable,
   FocusedCollectable,
   Game,
-  InputState,
-  PadState
+  InputState
 } from "../schema.ts"
 import { makeEmptyFocusedCollectable } from "../runtime.ts"
 
@@ -65,7 +64,6 @@ export const CollectFocusedCollectableSystem = Game.System(
     },
     resources: {
       input: Game.System.readResource(InputState),
-      pad: Game.System.readResource(PadState),
       focused: Game.System.writeResource(FocusedCollectable),
       collectedCount: Game.System.writeResource(CollectedCount)
     },
@@ -73,7 +71,7 @@ export const CollectFocusedCollectableSystem = Game.System(
   },
   ({ queries, resources, commands }) =>
     {
-      if (!resources.input.get().interact.pressed && !resources.pad.get().actions.interact.pressed) {
+      if (!resources.input.get().actions.interact.pressed) {
         return
       }
 

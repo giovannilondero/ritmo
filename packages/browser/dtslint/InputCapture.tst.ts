@@ -9,7 +9,10 @@ const KeyboardInput = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("C
 const Input = Descriptor.TransientResource<Snapshot>()("CaptureTypes/Input")
 const Wrong = Descriptor.Resource<{ readonly jump: boolean }>()("CaptureTypes/Wrong")
 const Fewer = Descriptor.TransientResource<Keyboard.Snapshot<{ readonly jump: readonly [" "]; readonly left: readonly ["a"] }>>()("CaptureTypes/Fewer")
-const Optional = Descriptor.TransientResource<{ readonly jump: Keyboard.ActionState; readonly left?: Keyboard.ActionState }>()("CaptureTypes/Optional")
+const Optional = Descriptor.TransientResource<{
+  readonly actions: { readonly jump: Keyboard.ActionState; readonly left?: Keyboard.ActionState }
+  readonly used: boolean
+}>()("CaptureTypes/Optional")
 const Wide = Descriptor.TransientResource<unknown>()("CaptureTypes/Wide")
 const Declared = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()("CaptureTypes/Declared")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CaptureTypes/Clock")
@@ -67,5 +70,19 @@ describe("InputCapture", () => {
   it("rejects sources without snapshot()", () => {
     expect(InputCapture.system).type.not.toBeCallableWith(Game, { name: "CaptureTypes/NoSnapshot", source: Clock, resource: Input })
     expect(InputCapture.system).type.toBeCallableWith(Game, { name: "CaptureTypes/Snapshot", source: KeyboardInput, resource: Input })
+  })
+
+  it("counts as the resource's writer for thisTick readers", () => {
+    const Capture = InputCapture.system(Game, { name: "CaptureTypes/Ordered", source: KeyboardInput, resource: Input })
+    const Reader = Game.System("CaptureTypes/Reader", {
+      resources: { input: Game.System.thisTick(Game.System.readResource(Input)) }
+    }, () => {})
+    const runtime = Game.Runtime.make({
+      services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.actions(window, bindings))),
+      resources: { Input: Keyboard.idle(bindings), Wrong: { jump: false } }
+    }).value
+    expect(runtime.tick(Game.Schedule(Capture, Reader)).ok).type.toBe<boolean>()
+    // @ts-expect-error CaptureTypes/Reader needs CaptureTypes/Input from this tick, but its writer CaptureTypes/Ordered runs after it
+    runtime.tick(Game.Schedule(Reader, Capture))
   })
 })

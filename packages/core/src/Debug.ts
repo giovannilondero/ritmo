@@ -200,6 +200,8 @@ export interface SystemDescription {
   /** Events and resources read with `Game.System.thisTick`, and query slots as `queries.<slot>`. */
   readonly thisTick: ReadonlyArray<string>
   readonly services: ReadonlyArray<string>
+  /** The services declared with `Game.System.consumeService` (also in `services`). */
+  readonly consumes: ReadonlyArray<string>
   /**
    * The declared command permissions (`Game.System.commands(...)`), by
    * kind: component names for spawns, inserts, removes and despawns, scope
@@ -273,10 +275,34 @@ export interface Lint {
     | "stale-target"
     | "stream-loss-unread"
     | "scope-trigger-never-applied"
+    | "service-consumed-twice"
+    | "service-lint"
   readonly message: string
   readonly subject: string
   /** What to change to resolve it (or, for `info`, when it is fine as it is). */
   readonly fix: string
+}
+
+/**
+ * The key a service value implements to add its own findings to
+ * `describe()` lints, as `service-lint` lints with the service's name as
+ * subject: `[Debug.serviceLints]: () => [...]`. Use it in packages whose
+ * services carry configuration a mistake can hide in (an input merge
+ * reporting the actions a device lacks); game code does not need it.
+ */
+export const serviceLints: unique symbol = Symbol.for("@typeonce/ritmo/Debug/serviceLints")
+
+/** One finding a service reports through {@link serviceLints}. */
+export interface ServiceLint {
+  readonly severity: "warning" | "info"
+  readonly message: string
+  /** What to change to resolve it (or, for `info`, when it is fine as it is). */
+  readonly fix: string
+}
+
+/** A service value that reports findings; see {@link serviceLints}. */
+export interface ReportsLints {
+  readonly [serviceLints]: () => ReadonlyArray<ServiceLint>
 }
 
 /** Readers and writers of one component, resource, or event. */

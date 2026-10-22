@@ -1,7 +1,6 @@
 import {
   CaptureFrameContextSystem,
   CaptureInputSystem,
-  CapturePadSystem,
   CollectFocusedCollectableSystem,
   MovePlayerSystem,
   PlanPlayerVelocitySystem,
@@ -22,7 +21,6 @@ export const setupWorldSchedule = Game.Schedule(
 export const simulationSchedule = Game.Schedule(
   CaptureFrameContextSystem,
   CaptureInputSystem,
-  CapturePadSystem,
   PlanPlayerVelocitySystem,
   MovePlayerSystem,
   UpdateFocusedCollectableSystem,

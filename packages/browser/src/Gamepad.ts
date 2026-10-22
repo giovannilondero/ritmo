@@ -54,6 +54,7 @@ import * as Result from "@typeonce/ritmo/Result"
 
 import type * as BrowserTickSource from "./BrowserTickSource.ts"
 import type { ActionState } from "./Keyboard.ts"
+import { anyUsed } from "./internal/used.ts"
 
 /**
  * The buttons of the browser's standard mapping, in index order: face
@@ -140,6 +141,11 @@ export interface Snapshot<B extends Bindings> {
   /** How far each trigger is pulled, 0 to 1. */
   readonly leftTrigger: number
   readonly rightTrigger: number
+  /**
+   * Some button was pressed in this window or is held, or a stick is past
+   * the dead zone: the player is using the pad.
+   */
+  readonly used: boolean
   /** Whether a pad is being followed. */
   readonly connected: boolean
   /** The followed pad's `id` (it names the maker, for button labels), or `null`. */
@@ -194,8 +200,10 @@ const idleButtons = (): Snapshot<Bindings>["buttons"] => {
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
   const actions = {} as Record<keyof B, ActionState>
   for (const name of Object.keys(bindings) as Array<keyof B>) actions[name] = idleState
-  return { actions, buttons: idleButtons() as Snapshot<B>["buttons"], left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false, id: null }
+  return { actions, buttons: idleButtons() as Snapshot<B>["buttons"], left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, connected: false, id: null }
 }
+
+const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
 
 /** Removes the dead zone and rescales, so the stick goes from zero to full tilt smoothly. */
 const stick = (x: number, y: number, deadZone: number): Vector => {
@@ -267,7 +275,7 @@ const tracker = <B extends Bindings>(initial: B) => {
       }
       for (const name of before) if (!isHeld(name)) releasedActions.add(name)
     },
-    snapshot(analog: Pick<Snapshot<B>, "left" | "right" | "leftTrigger" | "rightTrigger" | "connected" | "id">): Snapshot<B> {
+    snapshot(analog: Omit<Snapshot<B>, "actions" | "buttons" | "used">): Snapshot<B> {
       const buttons = {} as Record<Button, ActionState>
       for (const name of buttonNames) {
         const isDown = held.has(name)
@@ -284,7 +292,8 @@ const tracker = <B extends Bindings>(initial: B) => {
       released.clear()
       pressedActions.clear()
       releasedActions.clear()
-      return { actions, buttons, ...analog }
+      const used = anyUsed(buttons) || !sameVector(analog.left, zero) || !sameVector(analog.right, zero)
+      return { actions, buttons, ...analog, used }
     }
   }
 }
@@ -475,15 +484,13 @@ export interface Recording<B extends Bindings> extends Actions<B> {
   readonly timeline: () => Timeline
 }
 
-const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
-
 /**
  * Wraps `actions` and records, for every snapshot, the buttons pressed and
  * released since the previous one and the sticks and triggers that moved.
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Omit<Snapshot<B>, "actions" | "id"> = { buttons: idleButtons(), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
+  let previous: Omit<Snapshot<B>, "actions" | "id" | "used"> = { buttons: idleButtons(), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
   let frame = 0
   return {
     snapshot() {

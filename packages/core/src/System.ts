@@ -119,6 +119,8 @@ import type { CommandAccess, CommandsApi, NotDeclared } from "./Command.ts"
  */
 export interface ServiceRead<D extends Descriptor<"service", string, any>> {
   readonly descriptor: D
+  /** Set by {@link consumeService}: each run takes what arrived since the previous one. */
+  readonly consumes?: true
 }
 
 /**
@@ -136,6 +138,22 @@ export const service = <D extends Descriptor<"service", string, any>>(
   descriptor: D
 ): ServiceRead<D> => ({
   descriptor
+})
+
+/**
+ * Declares a service the system drains: each run takes what arrived since
+ * the previous one, so a second reader would see only what the first left
+ * (an input source's `snapshot()`, a message queue). It gives the same
+ * access as {@link service}; `describe()` warns with
+ * `service-consumed-twice` when the service is consumed at more than one
+ * placement. Drain it in one system and share the result through a
+ * resource. Use {@link service} for services a system only calls.
+ */
+export const consumeService = <D extends Descriptor<"service", string, any>>(
+  descriptor: D
+): ServiceRead<D> => ({
+  descriptor,
+  consumes: true
 })
 
 /**
@@ -332,7 +350,8 @@ export interface ThisTick {
  * read with no writer in the call compiles (a reader reused in several
  * ticks); the `event-never-written` lint reports data nobody writes.
  * `tryTick` checks the same at runtime. Plugin systems with erased specs
- * (`RenderSync.system`, `InputCapture.system`) do not count as writers.
+ * (`RenderSync.system`) do not count as writers; `InputCapture.system`
+ * declares its write and counts.
  *
  * Use it on reads whose correctness depends on running after their writers
  * (damage applied the tick it is dealt). A plain read is right when last
