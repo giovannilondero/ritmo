@@ -40,8 +40,8 @@ const namesIn = (node: ESTree.CallExpression): ReadonlyArray<ESTree.Node> => {
 
 /**
  * Names Ritmo registers (descriptors, systems, state machines, scopes,
- * plugin systems) carry a `Game/` prefix, so names from a game and from the
- * packages it uses never clash.
+ * plugin systems) carry a `<Game>/` prefix (the game's or package's name),
+ * so names from a game and from the packages it uses never clash.
  */
 export default defineRule({
   meta: {

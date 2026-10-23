@@ -35,10 +35,12 @@ import * as Requirement from "./Requirement.ts"
 import type { Schema } from "./Schema.ts"
 import type { FailureOf as SystemFailureOf, SystemDefinition, SystemFailure, ThisTick } from "./System.ts"
 
+/** The `applyDeferred()` marker step. */
 export interface ApplyDeferredStep {
   readonly kind: "applyDeferred"
 }
 
+/** The `applyStateTransitions(...)` marker step, with the bundle whose transition schedules it runs. */
 export interface ApplyStateTransitionsStep<
   out Bundle extends TransitionBundleDefinition<any, any, any, any, any, any> | undefined = undefined,
   out Root = unknown
@@ -48,12 +50,14 @@ export interface ApplyStateTransitionsStep<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** A marker step: where queued work is applied. */
 export type ScheduleMarkerStep =
   | ApplyDeferredStep
   | ApplyStateTransitionsStep<any, any>
 
 type AnySystem = SystemDefinition<any, any, any, any, any>
 
+/** One step of a flattened schedule: a system or a marker. */
 export type ScheduleStep = AnySystem | ScheduleMarkerStep
 
 /**
@@ -413,6 +417,7 @@ type CheckTick<Schedules extends ReadonlyArray<unknown>> =
 export type TickOrderErrors<Schedules extends ReadonlyArray<unknown>> =
   HasReads<Schedules> extends false ? never : CheckTick<Schedules>
 
+/** Transition schedules grouped by `transitions(...)`, run by the `applyStateTransitions(bundle)` they are passed to. */
 export interface TransitionBundleDefinition<
   S extends Schema.Any = Schema.Any,
   out Entries extends ReadonlyArray<StateMachine.AnyTransitionSchedule<S, any>> = ReadonlyArray<StateMachine.AnyTransitionSchedule<S, any>>,
@@ -435,6 +440,7 @@ export interface TransitionBundleDefinition<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** A built schedule, ready for `runtime.tick(...)`: its flattened steps, systems, and carried requirements. */
 export interface ExecutableScheduleDefinition<
   S extends Schema.Any,
   out Needs extends Requirement.Requirement = Requirement.Requirement,
@@ -455,6 +461,7 @@ export interface ExecutableScheduleDefinition<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** Alias of {@link ExecutableScheduleDefinition}. */
 export type ScheduleDefinition<
   S extends Schema.Any,
   Needs extends Requirement.Requirement = Requirement.Requirement,
@@ -589,6 +596,11 @@ export type TransitionBundleFailure<
  */
 export const applyDeferred = (): ApplyDeferredStep => ({ kind: "applyDeferred" })
 
+/**
+ * Groups transition schedules into one bundle for
+ * {@link applyStateTransitions}. Use `Game.Schedule.transitions(...)`,
+ * which checks the entries against the bound game.
+ */
 export const transitions = <
   S extends Schema.Any,
   const Entries extends ReadonlyArray<TransitionBundleInput<S, any>>
@@ -620,6 +632,12 @@ export const transitions = <
   >
 }
 
+/**
+ * The marker that applies queued commands, then commits queued next states,
+ * running the given bundle's transition schedules. Use
+ * `Game.Schedule.applyStateTransitions(...)`, which checks the bundle
+ * against the bound game.
+ */
 export const applyStateTransitions = <
   const Bundle extends TransitionBundleDefinition<any, any, any, any, any, any> | undefined = undefined
 >(bundle?: Bundle): ApplyStateTransitionsStep<Bundle> => ({
@@ -749,6 +767,7 @@ const gate = (system: AnySystem, when: ReadonlyArray<Condition>, pauseWhen: Read
   base: system.base ?? system
 })
 
+/** Whether a schedule step or entry is a system (not a marker or a nested schedule). */
 export const isSystemStep = (step: ScheduleStep | ScheduleEntry): step is AnySystem =>
   typeof step === "object" && step !== null && "spec" in step
 

@@ -648,7 +648,7 @@ const fixFor = (code: Debug.Lint["code"], subject: string): string => {
     case "stream-loss-unread":
       return `check lagged() in ${subject} where a missed entry matters (a node never destroyed, a count off), and rebuild from queries when it is true; fine if a missed entry is harmless`
     case "stale-target":
-      return `an id spawn returns is valid only in the run that spawned it; in ${subject}, keep the entity id or a handle and resolve it again with a query (queries.x.get(id) / lookup.getHandle(handle, query)) and pass match.entity`
+      return `an id spawn returns is valid only in the run that spawned it; in ${subject}, keep the entity id or a handle and resolve it again with a query (queries.x.get(id) / queries.x.getHandle(handle)) and pass match.entity`
     case "next-state-replaced":
       return "decide between the values in one system, or check whether a next state is already queued (nextMachines.x.getPending()) before setting another"
     case "command-permission-unused":
@@ -664,11 +664,11 @@ const fixFor = (code: Debug.Lint["code"], subject: string): string => {
 
 type Accesses = { readonly reads: ReadonlyArray<string>; readonly writes: ReadonlyArray<string> }
 
-/** What a system reads and writes, per kind. `with`/`without` filters test presence and are not reads. */
 /** The components named by a query's `anyOf` filters. */
 const anyOfNames = (query: Debug.QueryDescription): ReadonlyArray<string> =>
   query.anyOf.flatMap((filter) => [...filter.added, ...filter.changed])
 
+/** What a system reads and writes, per kind. `with`/`without` filters test presence and are not reads. */
 const accessesOf = (system: Debug.SystemDescription): Record<"component" | "resource" | "event", Accesses> => ({
   component: {
     reads: system.queries.flatMap((query) => [...query.reads, ...query.optional, ...query.added, ...query.changed, ...anyOfNames(query)]),

@@ -40,6 +40,7 @@ export type RelationTypeId = "~ritmo/Relation"
 
 const relationTypeId: RelationTypeId = "~ritmo/Relation"
 
+/** `hierarchy` for `Descriptor.Hierarchy` (parent/children, ordered, despawned together), `relation` for `Descriptor.Relation`. */
 export type RelationKind = "hierarchy" | "relation"
 
 /** The nominal brand tying a relation to its reverse side. */
@@ -49,6 +50,7 @@ export type PairBrand<Name extends string, RelatedName extends string, Kind exte
   readonly kind: Kind
 }
 
+/** The reverse side of a relation (`Game/Children` for `Game/ChildOf`): the sources pointing at an entity. */
 export interface RelatedDefinition<
   out RelatedName extends string = string,
   out RelationName extends string = string,
@@ -65,6 +67,7 @@ export interface RelatedDefinition<
   }
 }
 
+/** A relation descriptor: each entity has at most one target in it. Made by `Descriptor.Hierarchy` or `Descriptor.Relation`. */
 export interface RelationDefinition<
   out Name extends string = string,
   out RelatedName extends string = string,
@@ -149,7 +152,9 @@ export namespace Relation {
     readonly relation: string
   }
 
+  /** Why `lookup.related` / `relatedSources` found nothing: the entity is gone, or has no such relation. */
   export type LookupError = MissingEntityError | MissingRelationError
+  /** Why a `relate` or `reorderChildren` command was not applied. */
   export type MutationError =
     | MissingEntityError
     | MissingTargetEntityError
@@ -160,6 +165,7 @@ export namespace Relation {
     | ChildNotRelatedToParentError
     | ChildSetMismatchError
 
+  /** A relation command that failed when applied, as `Game.System.readRelationFailures` reads it. */
   export interface MutationFailure<
     R extends Any = Any,
     S extends Schema.Any = Schema.Any,
@@ -330,6 +336,11 @@ export type SelectionAccess<S extends Schema.Any, Root = unknown> =
   | RelatedReadAccess<Relation.Any, S, Root>
   | OptionalRelatedReadAccess<Relation.Any, S, Root>
 
+/**
+ * A query slot with the entity's target in `relation` (`ChildOf` gives the
+ * parent id); the query matches only entities that have one. Use
+ * `Game.Query.readRelation`; {@link optional} also matches entities without.
+ */
 export const read = <R extends Relation.Any, S extends Schema.Any, Root = unknown>(
   descriptor: R
 ): RelationReadAccess<R, S, Root> => ({
@@ -337,6 +348,7 @@ export const read = <R extends Relation.Any, S extends Schema.Any, Root = unknow
   descriptor
 })
 
+/** Like {@link read}, as an optional cell: entities without a target still match. */
 export const optional = <R extends Relation.Any, S extends Schema.Any, Root = unknown>(
   descriptor: R
 ): OptionalRelationReadAccess<R, S, Root> => ({
@@ -344,6 +356,12 @@ export const optional = <R extends Relation.Any, S extends Schema.Any, Root = un
   descriptor
 })
 
+/**
+ * A query slot with the ids of the entities related to this one through
+ * `relation` (its sources: `ChildOf` gives the children); the query matches
+ * only entities that have at least one. Use `Game.Query.readRelated`;
+ * {@link optionalRelated} also matches entities with none.
+ */
 export const readRelated = <R extends Relation.Any, S extends Schema.Any, Root = unknown>(
   descriptor: R
 ): RelatedReadAccess<R, S, Root> => ({
@@ -351,6 +369,7 @@ export const readRelated = <R extends Relation.Any, S extends Schema.Any, Root =
   descriptor
 })
 
+/** Like {@link readRelated}, as an optional cell: entities with no sources still match. */
 export const optionalRelated = <R extends Relation.Any, S extends Schema.Any, Root = unknown>(
   descriptor: R
 ): OptionalRelatedReadAccess<R, S, Root> => ({

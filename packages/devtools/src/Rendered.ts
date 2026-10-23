@@ -12,6 +12,7 @@
 
 const inspectSymbol = Symbol.for("nodejs.util.inspect.custom")
 
+/** A value of `A` that prints as `text`; read `data` in code. */
 export class Rendered<A> {
   readonly data: A
   readonly text: string
@@ -34,4 +35,5 @@ export class Rendered<A> {
   }
 }
 
+/** Pairs data with its text. */
 export const make = <A>(data: A, text: string): Rendered<A> => new Rendered(data, text)

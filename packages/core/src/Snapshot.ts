@@ -82,6 +82,7 @@ export type Gate<S extends Schema.Any, Method> = Unvalidated<S> extends infer Na
   : { readonly [Name in Names as `${Name} needs a validator`]: "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)" }
   : never
 
+/** One entity in a {@link WorldSnapshot}. Transient components are left out. */
 export interface EntitySnapshot {
   readonly id: number
   /** Component values by descriptor name. */
@@ -95,6 +96,7 @@ export interface EntitySnapshot {
  */
 export const version = 2
 
+/** What `runtime.snapshot()` writes and `runtime.restore(...)` reads: the world as plain data. */
 export interface WorldSnapshot {
   readonly version: typeof version
   /**

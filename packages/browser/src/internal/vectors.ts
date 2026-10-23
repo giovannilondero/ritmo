@@ -7,6 +7,7 @@ export interface Vector {
 /** The four directions a digital vector binding names. */
 export const directions = ["up", "down", "left", "right"] as const
 
+/** One direction of a vector action; a keyboard timeline names it as `"move.right"`. */
 export type Direction = (typeof directions)[number]
 
 export const zero: Vector = { x: 0, y: 0 }

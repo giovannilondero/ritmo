@@ -31,6 +31,11 @@
  * devices inside the `merge(...)` call, so nothing else takes their
  * snapshots. A game with one device captures that device directly instead.
  *
+ * A merge is one player on every device. For local multiplayer, where each
+ * device belongs to the player who joined with it, declare
+ * `Controls.players(Actions, { slots, join, leave })` and capture its
+ * `pool(...)` instead.
+ *
  * @module Controls
  * @docGroup browser
  *
@@ -65,7 +70,7 @@
  *     gamepad: Gamepad.actions(window, padBindings)
  *   }))),
  *   resources: { Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings) }) }
- * })
+ * }).value
  *
  * // In a system:
  * const input = resources.input.get()
@@ -577,8 +582,10 @@ type NoAnyAction<A extends string> = [A & "any"] extends [never] ? unknown : "an
 /**
  * Declares the players of a local multiplayer game over `actions`: the
  * `slots` (the most players at once, in join order), the button action
- * that joins (`"any"` for any button), and the one that leaves while
- * joining is open. Build the input source with the returned set's `pool`.
+ * that joins (`"any"` for any button action but `leave`, or any vector
+ * moved), and the optional one that leaves while joining is open. Build the
+ * input source with the returned set's `pool`. For one player on several
+ * devices, use the action set's `merge` instead.
  *
  * Pressing join on a device nobody holds gives it the first free slot; that
  * snapshot reports `event: "joined"` with the player's input idle, so the

@@ -533,7 +533,8 @@ export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends
  * render/audio bridges, logs, storage, or network clients. Simulation time
  * is `Clock` and randomness is the `Random` resource from
  * `@typeonce/ritmo-math`, not services. Systems request them explicitly with
- * `Game.System.service(...)`, and the runtime provides them through
+ * `Game.System.service(...)` (or `Game.System.consumeService(...)` for the
+ * one system that drains it), and the runtime provides them through
  * `Game.Runtime.services(...)`. A service's effects (a sound played, a
  * request sent, a value stored) are not rolled back when the system fails.
  *

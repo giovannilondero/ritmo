@@ -15,7 +15,7 @@ Follow these steps once in a new project, and for any step an existing project i
 3. Set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
 
 Add-ons, installed only when the game needs them:
-- `@typeonce/ritmo-browser`: a browser host (animation-frame loop, keyboard, pointer, touch).
+- `@typeonce/ritmo-browser`: a browser host (animation-frame loop; keyboard, gamepad, pointer, and touch input, local multiplayer).
 - `@typeonce/ritmo-render`: mirrors entities into any renderer's nodes.
 - `@typeonce/ritmo-pixi`: the Pixi adapter for `@typeonce/ritmo-render`.
 

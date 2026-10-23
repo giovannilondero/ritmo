@@ -14,11 +14,12 @@
  * ```ts
  * // Validate raw numbers before geometry or gameplay code relies on them.
  * const speed = Scalar.Finite.result(12)
- * const limit = Scalar.Finite.result(8)
- * if (!speed.ok || !limit.ok) return
+ * const min = Scalar.Finite.result(0)
+ * const max = Scalar.Finite.result(8)
+ * if (!speed.ok || !min.ok || !max.ok) return
  *
  * // Operate on the branded values after the boundary has been crossed.
- * const clamped = Scalar.clamp(speed.value, limit.value, speed.value)
+ * const clamped = Scalar.clamp(speed.value, min.value, max.value)
  * ```
  *
  * @module Scalar
@@ -85,19 +86,22 @@ export type InterpolationError = {
 }
 
 /**
- * Constructor for {@link Finite}.
+ * Constructor for {@link Finite}: `result` (explicit failure), `option`
+ * (`null` on failure), and `is` (a type guard).
  *
  * @category Constructors
  */
 export const Finite = internal.Finite
 /**
- * Constructor for {@link NonNegative}.
+ * Constructor for {@link NonNegative}: `result` (explicit failure), `option`
+ * (`null` on failure), and `is` (a type guard).
  *
  * @category Constructors
  */
 export const NonNegative = internal.NonNegative
 /**
- * Constructor for {@link Positive}.
+ * Constructor for {@link Positive}: `result` (explicit failure), `option`
+ * (`null` on failure), and `is` (a type guard).
  *
  * @category Constructors
  */

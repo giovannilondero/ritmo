@@ -49,6 +49,7 @@ export interface Target<S extends Schema.Any, Root> {
   readonly hostEvents?: ReadonlyArray<Schema.EventDescriptor<S>>
 }
 
+/** The result of {@link run}: every lint, counts by severity, and the verdict. */
 export interface Report {
   readonly lints: ReadonlyArray<Debug.Lint>
   readonly warnings: number

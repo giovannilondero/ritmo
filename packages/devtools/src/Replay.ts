@@ -40,7 +40,8 @@
  * })
  *
  * // later, in Node:
- * const replay = Replay.session(makeReplaySimulation, Replay.parse(JSON.parse(text)))
+ * const file = Replay.parse(JSON.parse(text))
+ * const replay = file.ok ? Replay.session(makeReplaySimulation, file.value) : file
  * if (replay.ok) console.log(replay.value.play().text)
  * ```
  */
@@ -164,6 +165,7 @@ export interface Recordable<S extends Schema.Any, Root> {
   readonly inspect: (inspector: never) => unknown
 }
 
+/** What `recorder` records, how much it keeps, and where and when it saves. */
 export interface RecorderOptions<S extends Schema.Any, Root, Recorded extends AnySchedule<S, Root>> {
   /** The schedule to record: the one ticked once per simulation step. */
   readonly schedule: Recorded
@@ -175,6 +177,7 @@ export interface RecorderOptions<S extends Schema.Any, Root, Recorded extends An
   readonly step: Clock.Step
   /** Seconds between world snapshots. Defaults to 5. */
   readonly every?: number
+  /** Where `save` hands each replay (`memorySink`, `ReplayNodeSink`, `ReplayViteSink`). */
   readonly sink: Sink
   /**
    * Wall time, for `savedAt` (milliseconds since the epoch): sinks name
@@ -189,6 +192,7 @@ export interface RecorderOptions<S extends Schema.Any, Root, Recorded extends An
   }
 }
 
+/** A running recorder, from `recorder`. */
 export interface Recorder {
   /** Hands the current window to the sink, with `reason`, and returns it. */
   readonly save: (reason: string) => ReplayFile
@@ -430,6 +434,7 @@ export interface Target<S extends Schema.Any, Root> {
   readonly schedules: Readonly<Record<string, AnySchedule<S, Root>>>
 }
 
+/** What one `ReplaySession.play` did: the session run, and the checkpoints that differ. */
 export interface PlayResult {
   /** The session's run of the replayed ticks. */
   readonly run: Session.RunResult
@@ -437,6 +442,7 @@ export interface PlayResult {
   readonly diverged: ReadonlyArray<{ readonly tick: number; readonly recorded: string; readonly replayed: string }>
 }
 
+/** An opened replay, from `session`, restored to its start and ready to `play`. */
 export interface ReplaySession<S extends Schema.Any, Names extends string> {
   /** The devtools session the ticks run in: `why`, `journal`, `report` work as in any run. */
   readonly session: Session.Session<S, Names>

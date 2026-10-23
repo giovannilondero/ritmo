@@ -11,7 +11,8 @@
  *
  * - `describe()` is static: every component, resource, event, relation,
  *   machine, and service, each named schedule's steps, each system's declared
- *   access, who reads and writes what, and lints over that graph.
+ *   access, who reads and writes what, and lints over that graph and what
+ *   the runtime has seen so far (see `Lint`).
  * - `dump(filter?)` is the current world: entities with component values and
  *   relation targets, resources, machine values, and pending commands. It
  *   works even when `snapshot()` is gated, because a dump is never restored.
@@ -60,7 +61,8 @@ export const formatVersion = 1 as const
 export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
   /**
    * Names schedules for `describe()` and traces. Schedules that were never
-   * named appear as `schedule#N` in traces and are not described. Transition
+   * named appear as `schedule#N` in traces (and in observed lints, as
+   * `System (schedule#N, step K, unnamed)`) and are not described. Transition
    * schedules are named after their transition, for example
    * `onEnter(Game/Flow=Playing)`. Naming again replaces earlier names.
    */
@@ -113,6 +115,7 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
  */
 export type Storage = "constructed" | "transient" | "plain"
 
+/** One schema component, in `Description.components`. */
 export interface ComponentDescription {
   readonly name: string
   readonly storage: Storage
@@ -122,6 +125,7 @@ export interface ComponentDescription {
   readonly requires: ReadonlyArray<string>
 }
 
+/** One schema resource, in `Description.resources`. */
 export interface ResourceDescription {
   readonly name: string
   readonly storage: Storage
@@ -129,6 +133,7 @@ export interface ResourceDescription {
   readonly present: boolean
 }
 
+/** One schema relation and its related side (`relatedName`), in `Description.relations`. */
 export interface RelationDescription {
   readonly name: string
   readonly relatedName: string
@@ -137,6 +142,7 @@ export interface RelationDescription {
   readonly ordered: boolean
 }
 
+/** One state machine of the game, in `Description.machines`. */
 export interface MachineDescription {
   readonly name: string
   readonly states: ReadonlyArray<Machine.StateValue>
@@ -158,6 +164,7 @@ export interface ScopeDescription {
   readonly despawnOn: ReadonlyArray<string>
 }
 
+/** One service the runtime provides or a described system declares, and whether it is provided. */
 export interface ServiceDescription {
   readonly name: string
   readonly provided: boolean
@@ -230,11 +237,13 @@ export interface CommandPermissions {
   readonly relates: ReadonlyArray<string>
 }
 
+/** One step of a described schedule: a system by name, or a marker. */
 export type StepDescription =
   | { readonly kind: "system"; readonly system: string }
   | { readonly kind: "applyDeferred" }
   | { readonly kind: "applyStateTransitions"; readonly schedules: ReadonlyArray<string> }
 
+/** One named schedule and its steps, in authored order. */
 export interface ScheduleDescription {
   readonly name: string
   readonly steps: ReadonlyArray<StepDescription>
@@ -244,21 +253,40 @@ export interface ScheduleDescription {
  * A finding about the described schedules. `warning` is almost certainly a
  * bug; `info` is worth a look but can be intentional.
  *
- * Most lints read declarations only. Some also use what the runtime has seen
- * so far: events sent with `runtime.send(...)` count as written,
- * `relation-failure-never-read` fires for a relation that applied commands
- * have tried to relate or reorder (which can fail) while no described system
- * reads its failures, and `requirement-violated` lists commands skipped
- * because they would have broken a `Schema.requires` requirement,
- * `next-state-replaced` lists next states one system queued and another
- * replaced with a different value before the marker (the last wins),
- * `stale-target` lists `despawn` / `remove` commands given a `SpawnedId`
- * kept from an earlier run (skipped), `stream-loss-unread` lists stream
- * readers that never check `lagged()` and lost entries (or are paused), so
- * describe after the game has run for a while. `service-consumed-twice`
- * checks the named schedules and also the placements where consuming
- * systems ran, named or not. `scope-trigger-never-applied` also reads which
- * machines the runtime provides.
+ * Read from declarations of the named schedules:
+ * - `event-never-read` / `event-never-written`: an event with writers and no
+ *   reader, or readers and no writer. Events declared with
+ *   `declareHostEvents` or sent with `runtime.send(...)` count as written.
+ * - `next-state-never-applied`: next states are queued, but no schedule has
+ *   an `applyStateTransitions(...)` marker.
+ * - `resource-changed-never-written`: a `changedResource` read nobody writes.
+ * - `this-tick-order`: a `Game.System.thisTick` read placed before a writer.
+ * - `read-before-write` (`info`): a read placed before the first writer in
+ *   the same schedule, so it sees the previous run's value.
+ * - `component-never-read` (`info`): written, but read by no other system.
+ *
+ * Also read from what the runtime has seen, so describe after the game has
+ * run for a while:
+ * - `relation-failure-never-read`: a relation that `relates` permissions or
+ *   applied commands relate or reorder (which can fail), with no system
+ *   reading its failures.
+ * - `scope-trigger-never-applied`: a scope's despawn trigger whose machine
+ *   the runtime does not provide, or that nothing queues or applies.
+ * - `service-consumed-twice`: a service declared with
+ *   `Game.System.consumeService` at more than one placement, in the named
+ *   schedules, or where consuming systems ran, named or not.
+ * - `command-permission-unused` (`info`): a permission a system that ran
+ *   never used.
+ * - `requirement-violated`: commands skipped because they would have broken
+ *   a `Schema.requires` requirement.
+ * - `next-state-replaced`: a next state one system queued and another
+ *   replaced with a different value before the marker (the last wins).
+ * - `stale-target`: `despawn` / `remove` commands given a `SpawnedId` kept
+ *   from an earlier run (skipped).
+ * - `stream-loss-unread`: a stream reader that never checks `lagged()` and
+ *   lost entries (`info` when it only reads under `pauseWhen`).
+ * - `service-lint`: a finding a provided service reports through
+ *   {@link serviceLints}, with the service's severity.
  */
 export interface Lint {
   readonly severity: "warning" | "info"
@@ -314,6 +342,7 @@ export interface AccessIndexEntry {
   readonly writers: ReadonlyArray<string>
 }
 
+/** What `describe()` returns: the schema, the named schedules, their systems, who reads and writes what, and {@link Lint}s. */
 export interface Description {
   readonly version: typeof formatVersion
   readonly components: ReadonlyArray<ComponentDescription>
@@ -358,6 +387,7 @@ export interface DumpFilter<S extends Schema.Any = Schema.Any> {
   readonly limit?: number
 }
 
+/** One live entity in a {@link WorldDump}. */
 export interface EntityDump {
   readonly id: number
   /** Component values by descriptor name, transient ones included. */
@@ -366,6 +396,7 @@ export interface EntityDump {
   readonly relations: Readonly<Record<string, number>>
 }
 
+/** One provided machine's value in a {@link WorldDump}. */
 export interface MachineDump {
   readonly current: Machine.StateValue
   /** The queued next value, applied at the next `applyStateTransitions`. */
@@ -373,12 +404,14 @@ export interface MachineDump {
   readonly previous?: Machine.StateValue
 }
 
+/** A command queued and not yet applied, in `WorldDump.pendingCommands`. */
 export interface PendingCommand {
   readonly tag: string
   /** The system that queued the command. */
   readonly system: string
 }
 
+/** What `dump(filter?)` returns: the current world as plain data. Use `streams()` for stream state and `population()` for cheap counts. */
 export interface WorldDump {
   readonly version: typeof formatVersion
   readonly frame: number
@@ -401,6 +434,7 @@ export interface StreamReaderStatus {
   readonly lagged: boolean
 }
 
+/** One stream as `streams()` reports it: retained entries and each reader's state. */
 export interface StreamStatus {
   readonly kind: "event" | "transitionEvent" | "relationFailure"
   /** The event, machine, or relation name. */
@@ -424,6 +458,7 @@ export interface ComponentWrite {
   readonly after: unknown
 }
 
+/** A resource set or removed by a system, in `SystemEvent.resources`. */
 export interface ResourceWrite {
   readonly resource: string
   /** `undefined` when the resource had no value. */
@@ -432,11 +467,13 @@ export interface ResourceWrite {
   readonly after: unknown
 }
 
+/** The values a system emitted to one event, in `SystemEvent.events`. */
 export interface EventEmit {
   readonly event: string
   readonly values: ReadonlyArray<unknown>
 }
 
+/** A next state a system queued or cleared, in `SystemEvent.nextStates`. */
 export interface NextStateWrite {
   readonly machine: string
   /** `undefined` when the system cleared the queued value. */
@@ -535,24 +572,28 @@ export interface StreamLoss {
   readonly paused: boolean
 }
 
+/** One command a marker applied, with the system that queued it and what it changed. */
 export interface AppliedCommand {
   readonly tag: string
   readonly system: string
   readonly effects: ReadonlyArray<Effect>
 }
 
+/** The start of a frame (`tick`/`tryTick` call). */
 export interface FrameEvent {
   readonly type: "frame"
   readonly frame: number
   readonly tick: number
 }
 
+/** A schedule starting to run. */
 export interface ScheduleStartEvent {
   readonly type: "schedule.start"
   readonly frame: number
   readonly schedule: string
 }
 
+/** A schedule finished; `ok` is `false` when a system in it failed. */
 export interface ScheduleEndEvent {
   readonly type: "schedule.end"
   readonly frame: number
@@ -561,6 +602,7 @@ export interface ScheduleEndEvent {
   readonly ms: number
 }
 
+/** One system run, with every write it made (or that was rolled back). */
 export interface SystemEvent {
   readonly type: "system"
   readonly frame: number
@@ -585,6 +627,7 @@ export interface SystemEvent {
   readonly missed: ReadonlyArray<MissedRead>
 }
 
+/** A system not run because a `when` or `pauseWhen` condition did not hold. */
 export interface SystemSkippedEvent {
   readonly type: "system.skipped"
   readonly frame: number
@@ -612,6 +655,7 @@ export interface SentEvent {
   readonly value: unknown
 }
 
+/** A marker step that applied queued commands. */
 export interface DeferredEvent {
   readonly type: "deferred"
   readonly frame: number
@@ -621,6 +665,7 @@ export interface DeferredEvent {
   readonly commands: ReadonlyArray<AppliedCommand>
 }
 
+/** A machine transition at an `applyStateTransitions(...)` marker. */
 export interface TransitionEvent {
   readonly type: "transition"
   readonly frame: number
@@ -639,6 +684,7 @@ export interface TransitionEvent {
   readonly outcome: "applied" | "unchanged" | "failed" | "enterFailed"
 }
 
+/** A `restore` of a snapshot; `ok` is `false` when it was rejected. */
 export interface RestoreEvent {
   readonly type: "restore"
   readonly frame: number

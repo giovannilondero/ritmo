@@ -689,30 +689,6 @@ export interface Runtime<
 }
 
 /**
- * Creates a runtime for a fully built schema and a set of external services.
- *
- * Use this when bootstrap data is already in carried form and you want the
- * most direct path from bound schema to executable world. This is the final
- * assembly step that turns the type-level ECS design into a concrete runtime
- * value.
- *
- * The runtime does not own the outer frame loop. It only owns ECS state plus
- * the host-provided services that systems are allowed to depend on.
- *
- * @example
- * ```ts
- * // Assemble the world once all schema and schedules are defined.
- * const runtime = Game.Runtime.make({
- *   services: Game.Runtime.services(
- *     Game.Runtime.service(Logger, { log: console.log })
- *   ),
- *   resources: {
- *     score: 0
- *   }
- * }).value
- * ```
- */
-/**
  * Most entries one event, transition-event, relation-failure, removed, or
  * despawned stream keeps for readers that have not run yet. Past it the
  * oldest entries are dropped, and readers that missed them see
@@ -2224,9 +2200,10 @@ const makeValidatedRuntime = <
   /**
    * Executes schedule steps in authored order.
    *
-   * Nothing advances implicitly: queued commands, events,
-   * and relation failures stay pending, across schedule runs if needed, until
-   * a marker step advances them.
+   * Nothing is applied implicitly: queued commands and next states stay
+   * pending, across schedule runs if needed, until a marker step applies
+   * them. Stream reads (events, relation failures) are per reader, not
+   * marker-driven.
    */
   function runSteps(schedule: { readonly steps: ReadonlyArray<Schedule.ScheduleStep> }): Result.Result<void, SystemFailure> {
     const steps = schedule.steps
@@ -2935,7 +2912,8 @@ const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine
 /**
  * Builds the descriptor-backed runtime service environment.
  *
- * This is the runtime-side counterpart to `Game.System.service(...)`. Use it
+ * This is the runtime-side counterpart to `Game.System.service(...)` and
+ * `Game.System.consumeService(...)`. Use it
  * to assemble the host implementations the game exposes to systems, such as
  * render bridges, audio sinks, logs, or network clients. Simulation time is
  * `Clock` and randomness is the `Random` resource from

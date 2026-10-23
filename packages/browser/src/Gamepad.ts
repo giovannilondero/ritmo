@@ -22,8 +22,12 @@
  * animation frame and on every `snapshot()`; a tap that starts and ends
  * between two updates still counts. Browsers expose a pad only after
  * a button is pressed on it, and only in a secure context (HTTPS or
- * localhost); elsewhere `navigator.getGamepads` is missing, and a game uses
- * `scripted(bindings, [])` as an idle stand-in.
+ * localhost); elsewhere, or when a permission policy blocks the API, the
+ * live actions read no pad and report `connected: false`.
+ *
+ * `actions(...)` is one player on whichever pad is used. For local
+ * multiplayer, `pads(host, bindings, max)` reads every pad on its own for
+ * `Controls.players(...).pool(...)` (`scriptedPads(...)` in tests).
  *
  * @module Gamepad
  * @docGroup browser
@@ -175,12 +179,21 @@ export interface GamepadHost extends BrowserTickSource.Host {
   readonly navigator: GamepadNavigator
 }
 
-/** A stick's tilt with the dead zone removed: zero at rest, length 1 at full tilt. `y` grows down, as on screen. */
+/**
+ * A direction and strength, length at most 1, `y` growing down as on
+ * screen: a stick's tilt (dead zone removed, zero at rest, 1 at full tilt)
+ * or a vector action's direction.
+ */
 export interface Vector {
   readonly x: number
   readonly y: number
 }
 
+/**
+ * The followed pad's state, with the same core as the other devices'
+ * snapshots (`actions`, `vectors`, and `used`) so `Controls` can merge it.
+ * With no pad everything is idle and `connected` is `false`.
+ */
 export interface Snapshot<B extends Bindings> {
   /** Every bound button action's state. */
   readonly actions: { readonly [Action in ButtonNames<B>]: ActionState }
@@ -188,10 +201,13 @@ export interface Snapshot<B extends Bindings> {
   readonly vectors: { readonly [Action in VectorNames<B>]: Vector }
   /** Every button's state by name, whatever the bindings. */
   readonly buttons: { readonly [Name in Button]: ActionState }
+  /** The left stick's tilt, whatever the bindings. */
   readonly left: Vector
+  /** The right stick's tilt, whatever the bindings. */
   readonly right: Vector
-  /** How far each trigger is pulled, 0 to 1. */
+  /** How far the left trigger is pulled, 0 to 1. */
   readonly leftTrigger: number
+  /** How far the right trigger is pulled, 0 to 1. */
   readonly rightTrigger: number
   /**
    * Some button was pressed in this window or is held, or a stick is past
@@ -212,6 +228,11 @@ export type OnlyActionsOf<R, B extends Bindings> = {
   readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
 }
 
+/**
+ * A pad bound to actions, built with {@link actions} (live), {@link scripted},
+ * or {@link recording}. Capture it with `InputCapture.system(...)`, or merge
+ * it with `Controls`.
+ */
 export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
   /** Returns the input state and starts a new press/release window. */
   snapshot(): Snapshot<B>
@@ -229,6 +250,7 @@ export interface Actions<B extends Bindings> extends System.Consumes<"snapshot">
   dispose(): void
 }
 
+/** Options for {@link actions} and {@link pads}. */
 export interface ActionsOptions {
   /** Fraction of a stick's tilt that reads as zero. Defaults to 0.15. */
   readonly deadZone?: number
@@ -311,7 +333,8 @@ const readPads = (host: GamepadHost): ReadonlyArray<PadReading | null> => {
 /**
  * Starts reading pads from `host`, usually `window`, on every animation
  * frame until `dispose()`. With several pads connected it follows the one
- * used last; a pad that disconnects releases everything it held.
+ * used last; switching pads, or the followed pad disconnecting, releases
+ * everything it held. Use {@link pads} to give each pad its own player.
  */
 export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B, options: ActionsOptions = {}): Actions<B> => {
   const deadZone = options.deadZone ?? 0.15
@@ -411,9 +434,10 @@ const resting = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
 
 /**
  * Starts reading every pad on `host`, usually `window`, up to `max` of
- * them, each with its own presses and sticks. A pad keeps its place in the
- * list while unplugged; one that comes back at the same browser index
- * continues it.
+ * them, each with its own presses and sticks; pads beyond `max` are
+ * ignored. A pad keeps its place in the list while unplugged; one that comes
+ * back at the same browser index continues it, and a different pad at that
+ * index takes the place over with nothing held.
  */
 export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, max: number, options: ActionsOptions = {}): Pads<B> => {
   const deadZone = options.deadZone ?? 0.15
@@ -476,8 +500,9 @@ export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, m
 
 /**
  * Pads driven by timelines instead of a host, one timeline per pad (as
- * {@link scripted}), each with the id `scripted <n>`: for tests of games
- * where every player has a pad.
+ * {@link scripted}), each with the id `scripted <n>` (from `scripted 1`)
+ * and `max` the number of timelines: for tests of games where every player
+ * has a pad.
  */
 export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: ReadonlyArray<Timeline>): Pads<B> => {
   const each = timelines.map((timeline) => scripted(bindings, timeline))
@@ -531,8 +556,9 @@ export interface Scripted<B extends Bindings> extends Actions<B> {
 
 /**
  * Plays `timeline`: before the snapshot at index `frame`, every entry for
- * that frame is applied. A pad counts as connected from the first entry on,
- * until an entry says `connected: false`.
+ * that frame is applied. A pad counts as connected (with the id
+ * `"scripted"`) from the first entry on, until an entry says
+ * `connected: false`; `scripted(bindings, [])` is a pad that never connects.
  * Buttons stay held from their press until their release; pressing a held
  * button is not a new press.
  */

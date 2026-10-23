@@ -11,6 +11,7 @@
  */
 import type * as Debug from "@typeonce/ritmo/Debug"
 
+/** How much of a nested value the text output prints. */
 export interface ValueOptions {
   /** Nesting depth printed before `…`. Defaults to 3. */
   readonly depth?: number

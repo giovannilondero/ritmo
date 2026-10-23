@@ -7,7 +7,7 @@ interface Options {
 }
 
 /**
- * The result of `runtime.tick(...)` and `runtime.restore(...)` is read: a
+ * The result of `runtime.tick(...)`, `tryTick(...)`, and `restore(...)` is read: a
  * failed system or an invalid save comes back as data, and dropping it hides
  * the failure.
  */

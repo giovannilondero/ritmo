@@ -45,7 +45,7 @@
  *
  * // Settings screen: bind the button the player clicks.
  * const clicked = Pointer.buttonNames.find((button) => input.buttons[button].pressed)
- * if (clicked !== undefined) mouse.rebind({ fire: [clicked], aim: ["secondary"] })
+ * if (clicked !== undefined) mouse.rebind({ fire: [clicked], aim: ["secondary"], nextWeapon: ["wheelDown"] })
  *
  * // On teardown:
  * mouse.dispose()
@@ -130,6 +130,10 @@ export interface Delta {
   readonly y: number
 }
 
+/**
+ * The pointer's state, with the same core as the other devices' snapshots
+ * (`actions`, `vectors`, and `used`) so `Controls` can merge it.
+ */
 export interface Snapshot<B extends Bindings> {
   /** Every bound action's state. */
   readonly actions: { readonly [Action in keyof B]: ActionState }
@@ -162,6 +166,11 @@ export interface Snapshot<B extends Bindings> {
   readonly used: boolean
 }
 
+/**
+ * A pointer bound to actions, built with {@link actions} (live),
+ * {@link scripted}, or {@link recording}. Capture it with
+ * `InputCapture.system(...)`, or group it with the keyboard in `Controls`.
+ */
 export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
   /** Returns the pointer state and starts a new press/release window. */
   snapshot(): Snapshot<B>
@@ -245,6 +254,7 @@ export interface BlurHost {
   removeEventListener(type: "blur", listener: () => void): void
 }
 
+/** Options for {@link actions}. */
 export interface ActionsOptions {
   /**
    * Suppress the context menu over the element, so the secondary button is
@@ -343,8 +353,10 @@ const tracker = <B extends Bindings>(initial: B, start: Position) => {
 }
 
 /**
- * Starts tracking the pointer over `target` with `bindings`. `blurHost`
- * (usually `window`) releases held buttons when the page loses focus.
+ * Starts tracking the pointer over `target` with `bindings`, until
+ * `dispose()`. `blurHost` (usually `window`) releases held buttons when the
+ * page loses focus; a cancelled pointer and leaving the pointer lock release
+ * them too. Use `Touch.actions` for on-screen touch controls.
  */
 export const actions = <const B extends Bindings>(
   target: PointerTarget,

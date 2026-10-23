@@ -1,7 +1,7 @@
 {
   "name": "@typeonce/ritmo-browser",
   "version": "0.10.0",
-  "description": "Browser fixed-step loop, keyboard and gamepad actions, and input capture for Ritmo",
+  "description": "Browser fixed-step loop, keyboard, gamepad, pointer, and touch actions, merged input, local multiplayer, and input capture for Ritmo",
   "author": "Sandro Maglione",
   "license": "MIT",
   "repository": {

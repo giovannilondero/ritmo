@@ -18,6 +18,7 @@ import type * as Replay from "./Replay.ts"
 /** The dev server's endpoint for replays (what `ReplayVitePlugin` serves). */
 export const endpoint = "/__ritmo/replays"
 
+/** What `make` posts with. */
 export interface Options {
   /** The page's `fetch` (or any function with its shape for these two arguments). */
   readonly fetch: (url: string, init: { readonly method: "POST"; readonly headers: Readonly<Record<string, string>>; readonly body: string }) => Promise<unknown>
@@ -25,6 +26,10 @@ export interface Options {
   readonly onError?: (error: unknown) => void
 }
 
+/**
+ * A sink posting each replay to {@link endpoint}, without waiting for the
+ * answer. Use `ReplayNodeSink` instead outside a browser.
+ */
 export const make = (options: Options): Replay.Sink => ({
   save: (file) => {
     void options.fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(file) })

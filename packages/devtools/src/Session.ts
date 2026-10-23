@@ -14,10 +14,11 @@
  * - `system(name)` shows one system's declared access and recent activity.
  * - `describe()`, `dump(filter)`, `streams()` render the core debug handle.
  * - `report()` summarizes per-system timing and warnings accumulated while
- *   tracing: missed reads, commands still pending at the end of a frame,
- *   failed transitions, skipped systems that discarded messages, NaN or
- *   infinite numbers written anywhere, and entity counts that keep growing
- *   through a run.
+ *   tracing: failed systems, missed reads, commands and next states still
+ *   pending at the end of a frame, failed transitions, skipped systems that
+ *   discarded messages, sent events no system reads, NaN or infinite numbers
+ *   written anywhere, entity counts that keep growing through a run, and
+ *   failed tick results nobody read.
  *
  * Everything returns a `Rendered` value that prints as text.
  *
@@ -27,6 +28,7 @@
  * @example
  * ```ts
  * const session = Session.make(runtime, {
+ *   hostClock: HostClock.test(),
  *   schedules: { setup: setupSchedule, update: updateSchedule },
  *   invariants: [PlayerInsideWorld]
  * })
@@ -95,6 +97,7 @@ export type ValidateInvariants<
   ? unknown
   : { readonly __fixInvariantRequirements__: InvariantRequirementErrors<Invariants, Services, Resources, Machines> }
 
+/** What `Session.make` drives and checks, and how it prints. */
 export interface Options<
   S extends Schema.Any,
   Root,
@@ -130,6 +133,7 @@ export interface Options<
   readonly format?: Format.ValueOptions
 }
 
+/** How long `session.run` ticks: `frames` frames, or fewer when `until` returns `true`. */
 export interface RunOptions {
   /** Frames to run. Defaults to 1. */
   readonly frames?: number
@@ -164,6 +168,7 @@ export type Stop =
       readonly when: "next-tick" | "session-end"
     }
 
+/** What one `session.run` did and why it stopped; its text is the run summary. */
 export interface RunResult {
   readonly schedule: string
   /** Whether the run completed or reached `until`. */
@@ -173,7 +178,7 @@ export interface RunResult {
   readonly range: readonly [number, number] | undefined
   readonly stop: Stop
   readonly ms: number
-  /** Warning-level lints over the named schedules; details in `describe()`. */
+  /** Warning-level `describe()` lints (the named schedules and what the runtime has seen); details in `describe()`. */
   readonly lintWarnings: number
   /** Warnings raised during this run, by code; details in `report()`. */
   readonly warnings: Readonly<Partial<Record<Warning["code"], number>>>
@@ -193,6 +198,10 @@ export interface PopulationRange {
   readonly end: number
 }
 
+/**
+ * Narrows `session.journal`: every field given must match. Without a filter
+ * the journal lists the whole kept history.
+ */
 export interface JournalFilter<S extends Schema.Any> {
   /** One frame or an inclusive `[from, to]` range. */
   readonly frames?: number | readonly [number, number]
@@ -217,6 +226,7 @@ export interface JournalFilter<S extends Schema.Any> {
   readonly verbose?: boolean
 }
 
+/** One system's runs and timing over the session, in `report()` and `system(name)`. */
 export interface SystemStats {
   readonly system: string
   readonly runs: number
@@ -229,6 +239,11 @@ export interface SystemStats {
   readonly maxMs: number
 }
 
+/**
+ * A problem the session saw while tracing a run, counted by kind and
+ * subject. Unlike `Debug.Lint` (from `describe()`, about the declarations
+ * and the session so far), a warning is raised by what one run did.
+ */
 export interface Warning {
   readonly code:
     | "missed-read"
@@ -247,6 +262,7 @@ export interface Warning {
   readonly lastFrame: number
 }
 
+/** What `session.report()` summarizes: timing per system, warnings, held streams, lints, and population. */
 export interface Report {
   readonly frames: number
   readonly history: readonly [number, number] | undefined
@@ -254,28 +270,38 @@ export interface Report {
   readonly warnings: ReadonlyArray<Warning>
   /** Streams held past the two-frame window by a reader, or with lagged readers. */
   readonly streams: ReadonlyArray<Debug.StreamStatus>
-  /** Static lints over the named schedules (see `describe()`). */
+  /** The `describe()` lints: the named schedules and what the runtime has seen. */
   readonly lints: ReadonlyArray<Debug.Lint>
   /** Live entities and entities per component now. */
   readonly population: Debug.Population
 }
 
+/** What `session.system(name)` shows: the system's declared access, its stats, and its recent journal lines. */
 export interface SystemActivity {
   readonly description: Debug.SystemDescription | undefined
   readonly stats: SystemStats | undefined
   readonly recent: ReadonlyArray<Format.Line>
 }
 
+/** A debug session made by `Session.make`; see the module description for each query. */
 export interface Session<S extends Schema.Any, Names extends string> {
+  /** Ticks the named schedule frame by frame; stops at the first failure, defect, or violated invariant. */
   readonly run: (name: Names, options?: RunOptions) => Rendered.Rendered<RunResult>
+  /** What happened in the kept history, one fact per line. */
   readonly journal: (filter?: JournalFilter<S>) => Rendered.Rendered<ReadonlyArray<Format.Line>>
+  /** Latest changes to one entity's component, and the systems whose `spawns` could have spawned it. Use `whyResource` for resources. */
   readonly why: (entity: number, component: Schema.ComponentDescriptor<S>, options?: { readonly limit?: number }) => Rendered.Rendered<ReadonlyArray<Format.Line>>
   /** Latest changes to one resource and the systems that made them. */
   readonly whyResource: (resource: Schema.ResourceDescriptor<S>, options?: { readonly limit?: number }) => Rendered.Rendered<ReadonlyArray<Format.Line>>
+  /** One system's declared access and recent activity. */
   readonly system: (name: string, options?: { readonly limit?: number }) => Rendered.Rendered<SystemActivity>
+  /** `debug.describe()`, lints first. */
   readonly describe: () => Rendered.Rendered<Debug.Description>
+  /** `debug.dump(filter)`: the current world. */
   readonly dump: (filter?: Debug.DumpFilter<S>) => Rendered.Rendered<Debug.WorldDump>
+  /** `debug.streams()`: each stream's size and readers. */
   readonly streams: () => Rendered.Rendered<ReadonlyArray<Debug.StreamStatus>>
+  /** Per-system timing, warnings, held streams, lints, and population since the session started. */
   readonly report: () => Rendered.Rendered<Report>
   /** Frames run by the runtime so far. */
   readonly frame: () => number
@@ -316,6 +342,12 @@ const growsSteadily = (samples: ReadonlyArray<number>): boolean => {
 const describeError = (error: unknown): { readonly kind?: unknown; readonly system?: unknown; readonly error?: unknown; readonly requirements?: unknown; readonly issues?: ReadonlyArray<{ readonly message: string }> } =>
   typeof error === "object" && error !== null ? error : {}
 
+/**
+ * Starts a session over a runtime made with `debug: { hostClock }`: names
+ * `schedules` (and `describe`) on its debug handle and starts tracing. A
+ * name in both `schedules` and `describe` throws. Use `Lint.run` instead
+ * for a pass/fail lint check, and `Replay.session` to open a saved replay.
+ */
 export const make = <
   S extends Schema.Any,
   Root,

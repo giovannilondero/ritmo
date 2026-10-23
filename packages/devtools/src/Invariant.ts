@@ -27,7 +27,7 @@
  *   return undefined
  * }))
  *
- * const session = Session.make(runtime, { schedules: { update }, invariants: [PlayerInsideWorld] })
+ * const session = Session.make(runtime, { hostClock, schedules: { update }, invariants: [PlayerInsideWorld] })
  * ```
  */
 import type * as Inspector from "@typeonce/ritmo/Inspector"
@@ -37,6 +37,7 @@ export namespace Invariant {
   export type CheckInspector = Inspector.InspectorDefinition<any, string | undefined, any, any, any>
 }
 
+/** A named read-only world check, made with {@link fromInspector}. */
 export interface Invariant<I extends Invariant.CheckInspector = Invariant.CheckInspector> {
   /** The inspector's name, printed when the invariant is violated. */
   readonly name: I["name"]

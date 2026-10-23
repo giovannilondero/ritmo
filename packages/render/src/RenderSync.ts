@@ -22,7 +22,7 @@
  *
  * `create` and `apply` receive one context: the renderable and transform
  * values, the entity id, extra read-only slots declared in `select` (as query
- * cells), resources declared in `resources` (as read cells), and extra
+ * cells in `data`), resources declared in `resources` (as read cells), and extra
  * services declared in `services`. Those resources and services become
  * runtime requirements like the registry itself.
  *
@@ -113,6 +113,7 @@ export interface NodeContext<
   readonly services: ServiceValues<Services>
 }
 
+/** The options of `system`. */
 export interface Options<
   S extends Schema.Any,
   Root,
@@ -173,7 +174,9 @@ export type RenderSystem<S extends Schema.Any, Root, Needs extends ServiceDescri
   Schema.BoundSystem<S, Root, any, never, string, Needs>
 
 /**
- * Builds the render system for one renderable component.
+ * Builds the render system for one renderable component: it creates,
+ * applies, and destroys that component's nodes. To place nodes between fixed
+ * steps every frame, add `interpolate` on the same registry after it.
  */
 export const system = <
   S extends Schema.Any,
@@ -330,6 +333,10 @@ export type BlendOption<From, To, Result> =
     ? { readonly blend?: Blend<From, To, Result> }
     : { readonly blend: Blend<From, To, Result> }
 
+/**
+ * The options of `interpolate`: `blend` is required when the components hold
+ * numbers beyond `x` and `y` (see `BlendOption`).
+ */
 export type InterpolateOptions<
   S extends Schema.Any,
   Root,

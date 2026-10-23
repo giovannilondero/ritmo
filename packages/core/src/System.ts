@@ -142,7 +142,10 @@ type ServiceView<V, Name extends string, Consumed extends boolean> = Consumed ex
   : V
 
 /**
- * Declares a dependency-injected service requirement for a system.
+ * A service a system declares in its spec's `services`, made by
+ * {@link service} (`Consumed` is `false`) or {@link consumeService}
+ * (`Consumed` is `true`). `Consumed` decides whether the methods a
+ * {@link Consumes} mark names are callable in the system.
  */
 export interface ServiceRead<D extends Descriptor<"service", string, any>, Consumed extends boolean = boolean> {
   readonly descriptor: D
@@ -159,7 +162,9 @@ export interface ServiceRead<D extends Descriptor<"service", string, any>, Consu
  * `@typeonce/ritmo-math`, not services. The matching implementation must be
  * supplied when the runtime is created with `Game.Runtime.services(...)`.
  * Service effects (audio, network, storage) are not rolled back when the
- * system fails.
+ * system fails. The methods a {@link Consumes} mark names (an input
+ * source's `snapshot()`) do not compile here: declare the service with
+ * {@link consumeService} in the one system that drains it.
  */
 export const service = <D extends Descriptor<"service", string, any>>(
   descriptor: D
@@ -1282,35 +1287,6 @@ export interface SystemDefinition<
 export type SystemRun<Spec extends AnySystemSpec, E = never> =
   (context: SystemContext<Spec>) => Result.Result<unknown, E> | void
 
-/**
- * Defines a system from an explicit spec and a typed implementation.
- *
- * This is the public entrypoint for authoring systems. The implementation only
- * receives the capabilities declared in the spec; return
- * `Result.failure(error)` for an expected failure (see {@link SystemRun}).
- *
- * Use the string-name overload in normal code. The name is turned into an
- * internal ordering token automatically, so the system can participate in
- * schedule validation without extra user-authored identity plumbing.
- *
- * @example
- * ```ts
- * const CountEnemies = Game.System("Game/CountEnemies", {
- *   queries: {
- *     enemies: Game.Query({
- *       selection: {
- *         enemy: Game.Query.read(Enemy)
- *       }
- *     })
- *   },
- *   resources: {
- *     total: Game.System.writeResource(EnemyCount)
- *   }
- * }, ({ queries, resources }) => {
- *   resources.total.set(queries.enemies.each().length)
- * })
- * ```
- */
 const requirementValuesFromRecord = (
   record: Record<string, unknown> | undefined
 ): ReadonlyArray<Requirement.RequirementValue> => {
@@ -1344,6 +1320,34 @@ const collectSystemRequirements = (
   ...(spec.pauseWhen ?? []).flatMap(requirementValuesFromCondition)
 ])
 
+/**
+ * Defines a system from an explicit spec and a typed implementation.
+ *
+ * This is the public entrypoint for authoring systems. The implementation only
+ * receives the capabilities declared in the spec; return
+ * `Result.failure(error)` for an expected failure (see {@link SystemRun}).
+ *
+ * Game code uses `Game.System(name, spec, run)`, which takes the schema
+ * from the bound game; this unbound form reads it from `spec.schema`.
+ *
+ * @example
+ * ```ts
+ * const CountEnemies = Game.System("Game/CountEnemies", {
+ *   queries: {
+ *     enemies: Game.Query({
+ *       selection: {
+ *         enemy: Game.Query.read(Enemy)
+ *       }
+ *     })
+ *   },
+ *   resources: {
+ *     total: Game.System.writeResource(EnemyCount)
+ *   }
+ * }, ({ queries, resources }) => {
+ *   resources.total.set(queries.enemies.each().length)
+ * })
+ * ```
+ */
 export function System<
   const Access extends SystemAccessInput & { readonly schema: Schema.Any },
   E = never,

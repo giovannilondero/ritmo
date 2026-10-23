@@ -10,4 +10,5 @@
 export * as NodeRegistry from "./NodeRegistry.ts"
 export * as RenderSync from "./RenderSync.ts"
 
+/** The package's name tag (`"render"`), for tests and tools that check which package they loaded. Games do not need it. */
 export const packageTag = "render" as const
