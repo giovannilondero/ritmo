@@ -5,6 +5,7 @@ import mdx from "@astrojs/mdx"
 import { defineConfig } from "astro/config"
 
 import ritmo from "./src/shiki/ritmo.json" with { type: "json" }
+import { annotations } from "./src/shiki/transformers.mjs"
 import { twoslash } from "./twoslash.mjs"
 
 export default defineConfig({
@@ -14,7 +15,7 @@ export default defineConfig({
   markdown: {
     shikiConfig: {
       theme: ritmo,
-      transformers: [twoslash()]
+      transformers: [twoslash(), ...annotations()]
     }
   },
   vite: {

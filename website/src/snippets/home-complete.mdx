@@ -1,0 +1,24 @@
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+// ---cut---
+// @errors: 2379
+// Every enemy has a position and health
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Health, Enemy },
+    requires: [Schema.requires(Enemy, Position, Health)] // [!code highlight]
+  })
+)
+
+Game.System(
+  "Arena/SpawnWave",
+  { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) },
+  ({ commands }) => {
+    // This enemy has no Health
+    commands.spawn(Game.Command.spawn([Enemy, {}], [Position, { x: 0, y: 0 }]))
+  }
+)
+```

@@ -25,6 +25,16 @@ current source, with the compiler options a Ritmo game uses (`twoslash.mjs`):
   the whole type error around it;
 - `// ---cut---` hides the setup above it.
 
+Any fence can point at what matters (`src/shiki/transformers.mjs`). Keep the
+prose to a line or two and let the snippet carry the page:
+
+- `title="move.ts"` in the fence puts a file name above the block;
+- `{2,4-6}` in the fence highlights lines, `/Game.System/` highlights a word;
+- `// [!code highlight]`, `// [!code focus]`, `// [!code error]`,
+  `// [!code warning]` at the end of a line mark it; `// [!code ++]` and
+  `// [!code --]` show a diff (use a plain `ts` fence for a "fix" diff, since
+  both versions of the line would be compiled in a `ts twoslash` one).
+
 An error a snippet does not expect fails the build, so an API change that
 breaks an example fails the `Website` workflow until the page is fixed.
 Snippets compile with TypeScript 6 (Twoslash needs the JavaScript compiler

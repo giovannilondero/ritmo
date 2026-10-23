@@ -1,0 +1,18 @@
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (!made.ok) throw new Error()
+const runtime = made.value
+const update = Game.Schedule()
+// ---cut---
+// A tick never throws: what can fail says so in its type
+const ticked = runtime.tick(update)
+//    ^?
+
+if (!ticked.ok) {
+  // A failed system's writes were rolled back
+  console.error(ticked.error)
+}
+```

@@ -69,5 +69,5 @@ export const twoslash = () =>
     // An error a snippet does not expect with `// @errors: <code>` fails the build.
     throws: true,
     twoslasher,
-    renderer: rendererRich({ processHoverInfo: stripPaths })
+    renderer: rendererRich({ processHoverInfo: stripPaths, queryRendering: "line" })
   })

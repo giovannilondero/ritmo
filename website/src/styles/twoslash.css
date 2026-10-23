@@ -4,7 +4,7 @@
    Tick, since an error that names its fix is the point of these snippets. */
 :root {
   --twoslash-border-color: #3a3f48;
-  --twoslash-underline-color: #8a8f98;
+  --twoslash-underline-color: transparent;
   --twoslash-popup-bg: #262a31;
   --twoslash-popup-color: #f3f1ec;
   --twoslash-popup-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
@@ -22,9 +22,20 @@
 }
 
 pre.twoslash {
-  /* Popups and error lines must not be clipped vertically. */
-  overflow: visible;
   overflow-x: auto;
+}
+
+/* A hover popup is placed against the viewport (TypePopups). Out of the
+   block's flow, a hidden one does not stretch the block or make it scroll. */
+.twoslash .twoslash-hover:not(.twoslash-query-persisted) > .twoslash-popup-container,
+.twoslash .twoslash-error-hover > .twoslash-popup-container {
+  position: fixed;
+  visibility: hidden;
+}
+
+.twoslash .twoslash-hover:not(.twoslash-query-persisted):hover > .twoslash-popup-container,
+.twoslash .twoslash-error-hover:hover > .twoslash-popup-container {
+  visibility: visible;
 }
 
 .twoslash .twoslash-popup-container {
@@ -36,7 +47,34 @@ pre.twoslash {
   white-space: pre-wrap;
   background: transparent !important;
   border: 0;
-  padding: 8px 12px;
+  padding: 10px 14px;
+}
+
+/* The type inside a popup is a bare block: none of the code block's box,
+   margin, or full-width line bands. */
+.twoslash .twoslash-popup-container pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  font-size: 0.8rem;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.twoslash .twoslash-popup-container pre .line {
+  display: inline;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.twoslash .twoslash-popup-docs {
+  padding: 10px 14px;
+  border-top: 1px solid var(--twoslash-border-color);
 }
 
 .twoslash .twoslash-popup-docs:empty {
@@ -69,4 +107,10 @@ pre.twoslash {
 .twoslash .twoslash-query-presisted .twoslash-popup-container,
 .twoslash .twoslash-query-persisted .twoslash-popup-container {
   background: #262a31;
+}
+
+/* Names are hoverable without a dotted line under every one of them: the
+   line shows on the name under the pointer. */
+.twoslash .twoslash-hover:hover {
+  border-bottom-color: #8a8f98;
 }

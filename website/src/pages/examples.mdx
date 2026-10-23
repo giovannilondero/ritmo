@@ -6,19 +6,24 @@ description: Games made with Ritmo, running in the page and in the wild.
 
 import Game from "../components/Game.astro"
 
+## Town
+
+A Game Boy-style overworld: walk tile by tile, read the sign, talk to the
+villager. The rules are headless systems with a `Mode` state machine
+(`Exploring` / `Talking`). Art: the CC0
+[Ninja Adventure](https://pixel-boy.itch.io/ninja-adventure-asset-pack) pack
+by Pixel-boy and AAA.
+
+<Game id="town" ratio="3 / 2" />
+
 ## Top-down
 
-A small world to walk around: five parts to find, walls to slide along. The
-rules (movement, collision, what is in reach, picking up) are the simulation
-in [`integration/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/integration/top-down),
-the same schedules its headless tests run. The page adds the loop, the
-keyboard and gamepad, and a Pixi renderer.
+Five parts to find. The rules are
+[`integration/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/integration/top-down),
+the same schedules its headless tests run.
 
 <Game id="top-down" />
 
-Read how the page puts it together in
-[Loop, input, rendering](/docs/browser/), and how its tests drive it without a
-browser in [Headless debugging](/docs/devtools/).
 
 ## Games built with Ritmo
 

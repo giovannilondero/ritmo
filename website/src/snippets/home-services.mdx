@@ -1,0 +1,21 @@
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Logger = Descriptor.Service<{ log(message: string): void }>()("Arena/Logger")
+// ---cut---
+// Report needs a Logger
+const Report = Game.System(
+  "Arena/Report",
+  { services: { logger: Game.System.service(Logger) } }, // [!code highlight]
+  ({ services }) => services.logger.log("tick")
+)
+
+// ...and this runtime provides none
+const made = Game.Runtime.make({
+  services: Game.Runtime.services()
+})
+
+// @errors: 2345
+if (made.ok) made.value.tick(Game.Schedule(Report))
+```

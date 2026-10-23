@@ -4,8 +4,10 @@ import { repository } from "../nav.ts"
 ---
 
 <footer class="footer">
-  <img src={brand.iconInverse.src} alt="" width="20" height="20" />
-  <span>Ritmo is MIT licensed.</span>
+  <span class="license">
+    <img src={brand.iconInverse.src} alt="" width="18" height="18" />
+    <span>Ritmo is MIT licensed</span>
+  </span>
   <a href={repository}>GitHub</a>
   <a href="https://www.npmjs.com/package/@typeonce/ritmo">npm</a>
   <a href="/brand/">Brand</a>
@@ -25,8 +27,26 @@ import { repository } from "../nav.ts"
     color: var(--muted);
   }
 
-  .footer span {
+  .license {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     margin-right: auto;
+  }
+
+  /* The label is as tall as the icon, in whole pixels; the text drops 1px
+     so its letters, not its line box, sit on the icon's middle. */
+  .license {
+    line-height: 18px;
+  }
+
+  .license img {
+    display: block;
+  }
+
+  .license span {
+    position: relative;
+    top: 1px;
   }
 
   .footer a {

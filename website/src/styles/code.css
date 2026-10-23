@@ -1,0 +1,94 @@
+/* Annotated code blocks (src/shiki/transformers.mjs): highlighted lines and
+   words, focus, diffs, and a file name above the block. */
+
+figure.code {
+  margin: 0 0 1.4em;
+}
+
+figure.code > pre {
+  margin: 0;
+}
+
+figure.code.titled > figcaption {
+  font: 500 0.78rem var(--mono);
+  color: var(--steel);
+  background: #1b1f25;
+  border: 1px solid #2f343c;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  padding: 0.45em 1.15em;
+}
+
+figure.code.titled > pre {
+  border-radius: 0 0 6px 6px;
+}
+
+pre code {
+  display: block;
+}
+
+/* Each line spans the block, so a marked line is a full band. */
+pre .line {
+  display: inline-block;
+  min-width: calc(100% + 2.3em);
+  margin: 0 -1.15em;
+  padding: 0 1.15em;
+  border-left: 2px solid transparent;
+}
+
+pre .line.highlighted {
+  background: rgba(243, 241, 236, 0.06);
+  border-left-color: var(--steel);
+}
+
+pre .line.highlighted.error {
+  background: rgba(255, 90, 54, 0.12);
+  border-left-color: var(--tick);
+}
+
+pre .line.highlighted.warning {
+  background: rgba(255, 196, 54, 0.1);
+  border-left-color: #ffc436;
+}
+
+pre .line.diff.add {
+  background: rgba(80, 200, 120, 0.12);
+  border-left-color: #50c878;
+}
+
+pre .line.diff.remove {
+  background: rgba(255, 90, 54, 0.1);
+  border-left-color: var(--tick);
+  opacity: 0.7;
+}
+
+pre .line.diff.add::before,
+pre .line.diff.remove::before {
+  position: absolute;
+  margin-left: -0.9em;
+  color: var(--steel);
+}
+
+pre .line.diff.add::before {
+  content: "+";
+}
+
+pre .line.diff.remove::before {
+  content: "-";
+}
+
+pre .highlighted-word {
+  background: rgba(255, 90, 54, 0.16);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 90, 54, 0.45);
+}
+
+/* Focus: the other lines step back until the block is hovered. */
+pre.has-focused .line:not(.focused) {
+  opacity: 0.38;
+  transition: opacity 0.2s;
+}
+
+pre.has-focused:hover .line:not(.focused) {
+  opacity: 1;
+}

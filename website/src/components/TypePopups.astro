@@ -19,7 +19,7 @@
   }
 
   document.addEventListener("pointerover", (event) => {
-    const hover = event.target instanceof Element ? event.target.closest(".twoslash-hover") : null
+    const hover = event.target instanceof Element ? event.target.closest(".twoslash-hover, .twoslash-error-hover") : null
     if (hover !== null) place(hover)
   })
 </script>

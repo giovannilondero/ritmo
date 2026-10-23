@@ -6,24 +6,17 @@ description: Put a Ritmo world on a page, with a fixed-step loop, keyboard and g
 
 import Game from "../../components/Game.astro"
 
-The simulation never touches the page. The page is a **host**: it turns
-animation frames into fixed steps, turns key presses into input the systems
-read, and draws the world after each frame. `@typeonce/ritmo-browser`,
-`@typeonce/ritmo-render`, and `@typeonce/ritmo-pixi` hold that glue.
-
-This is the result: the top-down game from the repository, whose rules are
-the same headless schedules its tests run, with a Pixi renderer on top.
+The simulation never touches the page. The page is a **host** that runs the
+loop, reads input and draws.
 
 <Game id="top-down" />
 
 ## The loop
 
-`FixedLoop.start` runs the game at a fixed step whatever the frame rate. Each
-animation frame adds its time to an accumulator; the loop runs as many
-updates as fit, then calls `render` once. Long frames are clamped, so a tab
-that was in the background does not run a minute of game at once.
+Fixed updates whatever the frame rate, then one `render`. Long frames are
+clamped.
 
-```ts twoslash
+```ts twoslash title="main.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 const Game = Schema.bind(Schema.fragment({ components: { Tag: Descriptor.Component<{}>()("Example/Tag") } }))
 const update = Game.Schedule()
@@ -33,37 +26,47 @@ declare const draw: (alpha: number) => void
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
 import { BrowserTickSource } from "@typeonce/ritmo-browser"
 
+// Turns animation frames into fixed steps
 const loop = FixedLoop.start({
   source: BrowserTickSource.make(window),
-  step: Clock.hz(60),
+  step: Clock.hz(60), // [!code highlight]
+
+  // A tab back from the background does not run a minute of game at once
   maxFrameSeconds: 0.25,
   maxStepsPerFrame: 5,
-  update: () => runtime.tick(update),
-  render: (frame) => draw(frame.alpha),
+
+  update: () => runtime.tick(update), // [!code highlight]
+  render: (frame) => draw(frame.alpha), // [!code highlight]
   onFailure: (failure) => console.error(failure)
 })
 ```
 
-The source is just "frames, with the time between them". In a native shell
-or a renderer with its own ticker, wrap that ticker with `FixedLoop.source`
-instead, and the rest stays the same.
+A renderer with its own ticker plugs in through `FixedLoop.source`.
 
 ## Input
 
-Input is declared once as a set of **actions**, then bound per device. The
-keyboard and the gamepad merge into one source, and the systems only ever see
-actions, never keys.
+Systems see **actions**, never keys. Each device binds them, and the devices
+merge into one source.
 
-```ts twoslash
+```ts twoslash title="input.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 // ---cut---
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 
-const Actions = Controls.actions(["left", "right", "jump"])
+// What the player can do, whatever the device
+const Actions = Controls.actions(["left", "right", "jump"]) // [!code highlight]
 
-const keys = { left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"], jump: [" ", "w"] } as const
+// How each device triggers it
+
+const keys = {
+  left: ["ArrowLeft", "a"],
+  right: ["ArrowRight", "d"],
+  jump: [" ", "w"]
+} as const
 const buttons = { left: ["dpadLeft"], right: ["dpadRight"], jump: ["south"] } as const
 
+
+// Keyboard and gamepad merged into one source
 const makeControls = (devices: {
   readonly keyboard: Keyboard.Actions<typeof keys>
   readonly gamepad: Gamepad.Actions<typeof buttons>
@@ -71,13 +74,14 @@ const makeControls = (devices: {
 
 // The input source is a service; each update copies its snapshot into a resource.
 const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
-const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Example/Input")
+const Input = Descriptor.TransientResource<
+  InputCapture.SnapshotOf<typeof ControlsInput>
+>()("Example/Input")
 ```
 
-`InputCapture.system` makes the system that takes the snapshot at the start
-of each update, so every system in that step sees the same input:
+One snapshot per update, so every system sees the same input:
 
-```ts twoslash
+```ts twoslash title="jump.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 const Actions = Controls.actions(["left", "right", "jump"])
@@ -106,20 +110,19 @@ const Jump = Game.System(
 )
 ```
 
-In the page, the devices read the window: `Keyboard.actions(window, keys)`
-and `Gamepad.actions(window, buttons)`. In a test, the same bindings play a
-script instead, `Keyboard.scripted(keys, [{ frame: 0, press: ["jump"] }])`,
-so a test presses keys frame by frame with no browser. Pointer and on-screen
-touch controls work the same way (`Pointer`, `Touch`).
+```ts
+const keyboard = Keyboard.actions(window, keys) // in the page
+const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump"] }]) // in a test
+```
+
+`Pointer` and `Touch` work the same way.
 
 ## Rendering
 
-`RenderSync.system` keeps one renderer node per entity: it creates a node
-when an entity gets the renderable component, re-applies it when the
-transform changes, and destroys it when the entity goes. You say what a node
-is; Ritmo does the bookkeeping. This is the wall renderer of the game above:
+One node per entity: created when it appears, updated when it moves,
+destroyed when it goes. You say what a node is.
 
-```ts twoslash
+```ts twoslash title="render.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("TopDown/Position")
 const Collider = Descriptor.Component<{ width: number; height: number }>()("TopDown/Collider")
@@ -138,24 +141,19 @@ const RenderWalls = RenderSync.system(Game, {
   transform: Position,
   registry: WallNodes,
   select: { collider: Game.Query.read(Collider) },
-  create: ({ data }) => {
+  create: ({ data }) => { // [!code highlight]
     const { width, height } = data.collider.get()
     return new Graphics().rect(-width / 2, -height / 2, width, height).fill(0x262a31)
   },
-  apply: (node, { transform }) => node.position.set(transform.x, transform.y)
+  apply: (node, { transform }) => node.position.set(transform.x, transform.y) // [!code highlight]
 })
 ```
 
-The system depends on a generic `NodeRegistry` service, not on Pixi. The
-page provides Pixi's implementation when it makes the runtime:
+The system needs a `NodeRegistry`, not Pixi. The page picks the renderer:
 
-```ts
+```ts title="main.ts"
 Game.Runtime.service(WallNodes, PixiNodeRegistry.make(wallLayer))
 ```
 
-Swap that line for a Three.js registry (`NodeRegistry.make({ attach, detach })`)
-and the same systems draw in 3D. The simulation names no renderer at all, so
-its tests never load one.
-
-The whole page host for the game above is about a hundred lines:
+Any renderer works: `NodeRegistry.make({ attach, detach })`. Full host:
 [`website/src/demos/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/top-down).

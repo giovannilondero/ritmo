@@ -208,21 +208,3 @@ pre code {
   color: var(--muted);
 }
 
-/* A label in the brand's voice: mono, small, with the accent cell before it. */
-.eyebrow {
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6em;
-}
-
-.eyebrow::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  background: var(--tick);
-}

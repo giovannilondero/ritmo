@@ -41,14 +41,22 @@ const demo = demos[id]
       const start = document.querySelector<HTMLButtonElement>(".start")!
 
       // Started on a click, so the game has the page's focus (and its
-      // keyboard) from the first frame.
-      start.addEventListener("click", async () => {
+      // keyboard) from the first frame. The page that embeds this one can
+      // also start it (its "Play" buttons), with a "ritmo:start" message.
+      let started = false
+      const begin = async () => {
+        if (started) return
+        started = true
         start.disabled = true
         window.focus()
         const demo: Demo = await demos[id].load()
         await demo.mount(stage)
         start.remove()
-      }, { once: true })
+      }
+      start.addEventListener("click", begin)
+      window.addEventListener("message", (event) => {
+        if (event.origin === location.origin && event.data === "ritmo:start") void begin()
+      })
     </script>
 
     <style>

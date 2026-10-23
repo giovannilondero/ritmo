@@ -3,14 +3,8 @@ layout: ../../layouts/Docs.astro
 title: Getting started
 description: Install Ritmo, define a world, and run its first tick.
 ---
-
-Ritmo is an ECS runtime for games written in TypeScript. You describe the
-world once (its components, resources, and events), write systems that declare
-exactly what they read and write, and run them in schedules at a fixed step.
-The compiler checks that all of it fits together before the game ever runs.
-
-It does not draw and does not own your page: rendering, sound, and UI stay in
-your game, and Ritmo hands them plain data.
+Describe the world once, write systems that declare what they touch, and run
+them at a fixed step. The compiler checks that it all fits together.
 
 ## Install
 
@@ -18,12 +12,8 @@ your game, and Ritmo hands them plain data.
 pnpm add @typeonce/ritmo
 ```
 
-Ritmo needs TypeScript 5.9 or newer with `strict` on. Leave
-`noErrorTruncation` off: Ritmo's errors name the fix near their start, and an
-untruncated one can print a whole schema.
-
-The other packages are add-ons, installed when a game needs them. They are
-all released together, always with the same version.
+TypeScript 5.9+ with `strict` on. Add-ons, all released with the same
+version:
 
 | Package | What it gives you |
 |---|---|
@@ -37,22 +27,22 @@ all released together, always with the same version.
 
 ## A first world
 
-Define the world's pieces with descriptors, gather them in a schema, and bind
-it. `Game` is the bound schema: every other API (systems, queries, schedules,
-the runtime) comes from it, so none of them can mix up two worlds.
+Every other API comes from `Game`. Hover any name to see its type.
 
-Hover any name to see its type.
-
-```ts twoslash
+```ts twoslash title="schema.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 
 type Vec = { x: number; y: number }
 
+// The simulation advances 60 fixed steps per second
 const step = Clock.hz(60)
 const Time = Clock.resource("Example/Time", step)
+
+// What an entity can carry
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
 
+// The world: every other API comes from Game
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Velocity },
@@ -63,11 +53,10 @@ const Game = Schema.bind(
 
 ## A system
 
-A system is a function plus a spec of everything it touches. It receives only
-what it declares: here it can write `Position`, read `Velocity`, and read the
-clock, and nothing else.
+It gets only what it declares: it writes `Position`, and reads `Velocity`
+and the clock.
 
-```ts twoslash
+```ts twoslash title="move.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 type Vec = { x: number; y: number }
 const step = Clock.hz(60)
@@ -82,8 +71,8 @@ const Move = Game.System(
     queries: {
       moving: Game.Query({
         selection: {
-          position: Game.Query.write(Position),
-          velocity: Game.Query.read(Velocity)
+          position: Game.Query.write(Position), // [!code highlight]
+          velocity: Game.Query.read(Velocity) // [!code highlight]
         }
       })
     },
@@ -106,11 +95,9 @@ const Move = Game.System(
 
 ## Run it
 
-The runtime is made from the bound schema with every service and resource the
-schedules need. Making it can fail (the clock is a validated resource), and so
-can a tick, so both return a `Result` instead of throwing.
+Making a runtime and running a tick both return a `Result`. Neither throws.
 
-```ts twoslash
+```ts twoslash title="main.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 type Vec = { x: number; y: number }
 const step = Clock.hz(60)
@@ -120,11 +107,13 @@ const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
 const Move = Game.System("Example/Move", { queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) }, resources: { time: Game.System.readResource(Time) } }, () => {})
 // ---cut---
+// Moves the clock forward one step per tick
 const AdvanceTime = Clock.system(Game, {
   name: "Example/AdvanceTime",
   resource: Time
 })
 
+// Every service and resource the schedules need
 const made = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Time: Clock.start(step) }
@@ -132,11 +121,13 @@ const made = Game.Runtime.make({
 
 if (made.ok) {
   const runtime = made.value
-  const ticked = runtime.tick(Game.Schedule(AdvanceTime, Move))
+
+  // One tick: AdvanceTime, then Move
+  const ticked = runtime.tick(Game.Schedule(AdvanceTime, Move)) // [!code highlight]
   if (!ticked.ok) console.error(ticked.error)
 }
 ```
 
-That is a whole game loop, without a browser: the same code runs in tests, in
-Node scripts, and on a page. [Loop, input, rendering](/docs/browser/) puts it
-on a page; [Concepts](/docs/concepts/) explains each piece.
+This is a whole game loop, and it runs the same in tests, in Node and on a
+page. Next: [Concepts](/docs/concepts/) or [Loop, input,
+rendering](/docs/browser/).

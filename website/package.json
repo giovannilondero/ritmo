@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@astrojs/mdx": "8.1.1",
+    "@shikijs/transformers": "4.5.0",
     "@shikijs/twoslash": "4.5.0",
     "@typeonce/ritmo-devtools": "workspace:*",
     "astro": "7.4.2",

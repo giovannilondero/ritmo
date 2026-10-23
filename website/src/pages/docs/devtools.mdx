@@ -4,11 +4,8 @@ title: Headless debugging
 description: Run the game without a browser, check rules every frame, and ask why a value changed.
 ---
 
-Because the simulation never touches the page, the whole game runs in Node:
-scripted input in, frames out, as fast as the machine allows. On top of that,
-`@typeonce/ritmo-devtools` keeps a trace of every write, so a run can answer
-questions in plain text. It is built for coding agents first, and it reads
-just as well for people.
+The whole game runs in Node with scripted input. `@typeonce/ritmo-devtools`
+records every write, so a run can answer questions in plain text.
 
 ```sh
 pnpm add -D @typeonce/ritmo-devtools
@@ -16,12 +13,10 @@ pnpm add -D @typeonce/ritmo-devtools
 
 ## A scripted run
 
-This script plays the top-down game from the [Examples](/examples/) for 120
-frames: it holds up and left, lets go of up at frame 40, and taps interact at
-frame 50. An **invariant** is checked after every frame, and the run stops at
-the first frame it fails.
+120 frames of the top-down game. The **invariant** is checked every frame,
+and the run stops at the first frame that breaks it.
 
-```ts twoslash
+```ts twoslash title="debug.ts"
 import { HostClock } from "@typeonce/ritmo"
 import { Gamepad, Keyboard } from "@typeonce/ritmo-browser"
 import { Invariant, Session } from "@typeonce/ritmo-devtools"
@@ -57,18 +52,17 @@ const PlayerInsideWorld = Invariant.fromInspector(
 const session = Session.make(runtime, {
   hostClock,
   schedules: { setup, update },
-  invariants: [PlayerInsideWorld]
+  invariants: [PlayerInsideWorld] // [!code highlight]
 })
 
 session.run("setup")
 session.run("update", { frames: 120 })
-console.log(session.why(1, Position))
+console.log(session.why(1, Position)) // [!code highlight]
 ```
 
 ## Asking why
 
-`session.why(entity, Component)` prints the latest changes to a value and the
-system that made each one. For the run above:
+The latest changes to a value, and the system behind each:
 
 ```text
 e1 TopDown/Position is now {x:134.673,y:128.007}; last 5 changes (oldest first):
@@ -80,7 +74,6 @@ f120 update  TopDown/MovePlayer  write e1 TopDown/Position {x:144.007,y:128.007}
 f121 update  TopDown/MovePlayer  write e1 TopDown/Position {x:139.34,y:128.007} -> {x:134.673,y:128.007}
 ```
 
-The other questions work the same way:
 
 | Call | Answers |
 |---|---|
@@ -92,29 +85,22 @@ The other questions work the same way:
 
 ## Lints
 
-`session.describe()` and `session.report()` start with **lints**: things that
-compile but are probably wrong, like an event nobody reads, a state no
-schedule ever applies, or a system that reads a value before the schedule's
-first writer (a one-frame lag). For the run above:
+Things that compile but are probably wrong: an event nobody reads, a state
+never applied, a one-frame lag.
 
 ```text
 # Lints
 info command-permission-unused: TopDown/CollectFocusedCollectable may despawn TopDown/Collectable but never did in this session
 ```
 
-Two commands put these checks in a game's `check` script, next to the type
-check and the tests:
-
-- `ritmo-devtools lint src/simulation.ts` prints every lint of the game's
-  schedules with its fix, and fails on a warning.
-- `oxlint` with `@typeonce/oxlint-plugin-ritmo` rejects what types cannot
-  see in simulation code: the wall clock, `Math.random`, `Math.sin`, the page,
-  and dropped tick results. Each message names the API to use instead.
+```sh
+# Schedule lints, fails on a warning
+ritmo-devtools lint src/simulation.ts
+# @typeonce/oxlint-plugin-ritmo: no Math.random, Date.now, DOM in systems
+oxlint
+```
 
 ## Same input, same game
 
-`Determinism.check` runs the same scripted simulation twice and compares
-every value of every frame. A difference reports the frame, the value, and
-the first system that diverged. With the lint rules keeping time, randomness,
-and maths deterministic, a recorded play session replays exactly, and a bug
-found once becomes a test that stays fixed.
+`Determinism.check` runs the same script twice and reports the first frame,
+value and system that diverged.
