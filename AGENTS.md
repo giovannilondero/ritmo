@@ -8,10 +8,12 @@
 ## Repo
 - `packages/*`: the published packages (see each `package.json` description). Each has `src`, `test`, `dtslint`, and core, math, and render have `bench`.
 - `integration/*`: headless game simulations with tests, using the packages by name.
+- `website/`: the guide for humans (Astro), built from the workspace packages and deployed after each release.
 - `.changeset/README.md`: releases and adding a package.
 
 ## Verify
 - Every change: `pnpm run check`.
+- Changes to public APIs, or to `website/`: `pnpm --dir website build` (Node 22.23.4 or newer).
 - Changes to what a package publishes (exports, `package.json`, build config): `pnpm pack:check`.
 - Every change to a published package: a changeset (`pnpm changeset`). A breaking entry carries its fix.
 - Changes to runtime internals or public types: `pnpm bench:check`; record an intended shift with `pnpm bench:update`. For runtime work, compare with your own machine: `pnpm bench --json .bench/before.json`, then `pnpm bench --compare .bench/before.json` (`--filter <text>` for one case). Under about 20% is noise; do not report it. Add a bench case for a new per-frame hot path.
@@ -40,7 +42,7 @@
 
 ## Docs
 - A game's agent sees only what npm ships: `src` JSDoc, each `README.md` and `CHANGELOG.md`, `packages/core/SETUP.md` (one-time setup), and the skill in `packages/core/skills/ritmo` (every change, with playbooks). Guidance a game needs goes there, never in a repo-only file, and says nothing a JSDoc, README, or lint message already says.
-- The root `README.md` is the only doc for humans.
+- Humans read the root `README.md` and the website (`website/`, see its README): a guide with running demos and snippets compiled by Twoslash, never an API reference. A change that breaks a website snippet or demo fixes it in the same change; the website build in CI fails until it does.
 - Package READMEs link other packages' docs by GitHub URL (`https://github.com/typeonce-dev/ritmo/blob/main/packages/<name>/README.md`), never by relative path or into `integration/`.
 
 ## Debugging
