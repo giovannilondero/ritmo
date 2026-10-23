@@ -37,6 +37,8 @@ Read the playbook for the change before writing code. A change that spans severa
 
 **Each piece of state has an owner and a lifetime.** Every mutable value has one home (saved world state, unsaved runtime state, or host state) and a defined fate on new game, restore, and dispose. Module variables are not a home for gameplay state: they survive restore, ignore rollback, and are shared by every runtime in the process.
 
+**Make impossible states unrepresentable.** When a field means something only in one state (a move's hit flag, hitstun frames, an airborne speed), the states are a `Descriptor.EntityState` whose states each hold only their own fields, never a flat record with a `state` field next to fields that can go stale. Prefer distinct states over boolean flags: `grounded: boolean` next to `vy` lets a grounded body rise. Fields every state shares stay in their own component, and two components whose states must agree are one state.
+
 **Extend what exists before adding.** Search for an existing system, component, definition, or UI piece first, and extend it or add a variant instead of a near copy. New content that reuses behaviour is data, not a system.
 
 **Make the next mistake fail loudly.** When a rule can be a type, a lint, or a headless test, encode it there instead of in a comment. The game's check runs the type check, `oxlint`, `ritmo-devtools lint <entry>`, and the tests; if any is missing, add it as `node_modules/@typeonce/ritmo/SETUP.md` describes.
@@ -46,5 +48,6 @@ Read the playbook for the change before writing code. A change that spans severa
 - Does any UI or render code change saved world state?
 - Did adding this id produce a type error everywhere it is needed?
 - What happens to this value on restore?
+- Can a value I store describe something that cannot happen?
 - Did I extend an existing piece, or copy it?
 - What check fails if someone breaks this tomorrow?

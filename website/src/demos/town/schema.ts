@@ -1,6 +1,6 @@
 // What the town's world holds: the components, resources, the input
 // service, and the one game-wide mode. Headless: no page or renderer here.
-import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
 import type { Gamepad, InputCapture, Keyboard, Touch } from "@typeonce/ritmo-browser"
 import { Controls } from "@typeonce/ritmo-browser"
 import * as Random from "@typeonce/ritmo-math/Random"
@@ -97,7 +97,8 @@ export const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()
 export const Tile = Descriptor.Component<Cell>()("Town/Tile")
 /** Where an actor is drawn: the top-left pixel, between tiles while walking. */
 export const Position = Descriptor.Component<{ x: number; y: number }>()("Town/Position")
-export const Facing = Descriptor.EntityState("Town/Facing", directions)
+/** The way an actor faces: a closed set of values with no moves between them. */
+export const Facing = Descriptor.ConstructedComponent(Decode.literal(...directions))("Town/Facing")
 /** The character sheet an actor is drawn with, and a tint to tell the second player apart. */
 export const Look = Descriptor.Component<{ character: Character; tint?: number }>()("Town/Look")
 /** Facing it and pressing the action button opens these pages. */
