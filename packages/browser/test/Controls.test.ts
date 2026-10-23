@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
-import { Controls, Gamepad, InputCapture, Keyboard, Touch } from "@typeonce/ritmo-browser"
+import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
 
 const idle = { held: false, pressed: false, released: false }
 const keyBindings = { jump: [" "], pause: ["Escape"] } as const
@@ -146,5 +146,76 @@ describe("Controls", () => {
     const controls = merged([{ frame: 1, press: ["jump"] }], [{ frame: 0, press: ["south"] }, { frame: 1, connected: false }])
     expect(controls.snapshot().lastUsed).toBe("gamepad")
     expect(controls.snapshot().lastUsed).toBe("keyboard")
+  })
+})
+
+describe("Controls groups", () => {
+  const Desktop = Controls.actions(["moveRight", "fire", "pause"])
+  const moveKeys = { moveRight: ["d"], fire: [" "], pause: ["Escape"] } as const
+  const mouseFire = { fire: ["primary"] } as const
+  const padKeys = { moveRight: ["dpadRight"], fire: ["south"], pause: ["start"] } as const
+
+  it("stays on the group while the player walks with the keyboard and aims with the mouse", () => {
+    const controls = Desktop.merge({
+      desktop: Desktop.group({
+        keyboard: Keyboard.scripted(moveKeys, [{ frame: 0, press: ["moveRight"] }, { frame: 2, release: ["moveRight"] }, { frame: 3, press: ["moveRight"] }]),
+        mouse: Pointer.scripted(mouseFire, [{ frame: 1, move: { x: 10, y: 0 } }, { frame: 2, move: { x: 20, y: 0 } }, { frame: 3, move: { x: 30, y: 0 } }])
+      }),
+      gamepad: Gamepad.scripted(padKeys, [])
+    })
+    const frames = [0, 1, 2, 3].map(() => controls.snapshot())
+    expect(frames.map((input) => input.lastUsed)).toEqual(["desktop", "desktop", "desktop", "desktop"])
+    expect(frames.map((input) => input.available.pause)).toEqual([true, true, true, true])
+    expect(frames[3]!.devices.mouse.position).toEqual({ x: 30, y: 0 })
+    expect(frames[3]!.devices.keyboard.actions.moveRight.pressed).toBe(true)
+  })
+
+  it("merges actions across the group and the other devices", () => {
+    const controls = Desktop.merge({
+      desktop: Desktop.group({
+        keyboard: Keyboard.scripted(moveKeys, []),
+        mouse: Pointer.scripted(mouseFire, [{ frame: 0, press: ["primary"] }, { frame: 1, release: ["primary"] }])
+      }),
+      // South goes down as the click ends: fire stays held, a second press.
+      gamepad: Gamepad.scripted(padKeys, [{ frame: 1, press: ["south"] }])
+    })
+    expect(controls.snapshot().actions.fire).toEqual({ held: true, pressed: true, released: false })
+    const second = controls.snapshot()
+    expect(second.actions.fire).toEqual({ held: true, pressed: true, released: false })
+    expect(second.lastUsed).toBe("gamepad")
+  })
+
+  it("reports what a lacking group has, and lints it under the group name", () => {
+    const keysOnly = { moveRight: ["d"], fire: [" "] } as const
+    const controls = Desktop.merge({
+      desktop: Desktop.lacking(Desktop.group({ keyboard: Keyboard.scripted(keysOnly, [{ frame: 0, press: ["fire"] }]), mouse: Pointer.scripted(mouseFire, []) }), ["pause"]),
+      gamepad: Gamepad.scripted(padKeys, [])
+    })
+    expect(controls.snapshot().available).toEqual({ moveRight: true, fire: true, pause: false })
+    const Lints = Descriptor.Service<typeof controls>()("ControlsGroups/Controls")
+    const Game = Schema.bind(Schema.fragment({}))
+    const runtime = Game.Runtime.make({
+      services: Game.Runtime.services(Game.Runtime.service(Lints, controls)),
+      resources: {},
+      debug: { hostClock: HostClock.test() }
+    })
+    if (!runtime.ok) throw new Error("runtime")
+    expect(runtime.value.debug.describe().lints.filter((lint) => lint.code === "service-lint").map((lint) => lint.message)).toEqual([
+      "desktop lacks pause, so while desktop is the last used device the player cannot pause"
+    ])
+  })
+
+  it("forwards rebind to grouped devices by their own names and disposes them", () => {
+    const disposed: Array<string> = []
+    const keyboard = Keyboard.scripted(moveKeys, [])
+    const mouse = Pointer.scripted(mouseFire, [{ frame: 0, press: ["middle"] }])
+    const controls = Desktop.merge({
+      desktop: Desktop.group({ keyboard: { ...keyboard, dispose: () => disposed.push("keyboard") }, mouse: { ...mouse, dispose: () => disposed.push("mouse") } }),
+      gamepad: { ...Gamepad.scripted(padKeys, []), dispose: () => disposed.push("gamepad") }
+    })
+    controls.rebind.mouse({ fire: ["middle"] })
+    expect(controls.snapshot().actions.fire.pressed).toBe(true)
+    controls.dispose()
+    expect(disposed).toEqual(["keyboard", "mouse", "gamepad"])
   })
 })

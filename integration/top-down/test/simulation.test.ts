@@ -1,16 +1,17 @@
 import { HostClock } from "@typeonce/ritmo"
-import { Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import { Session } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "vitest"
 
 import { createTopDownSimulation } from "../simulation.ts"
 import { PlayerPositionQuery } from "../queries.ts"
-import { CollectedCount, Game } from "../schema.ts"
-import { inputBindings, padBindings } from "../types.ts"
+import { CollectedCount, Game, InputState } from "../schema.ts"
+import { inputBindings, mouseBindings, padBindings } from "../types.ts"
 
-const start = (timeline: Keyboard.Timeline<typeof inputBindings>, pad: Gamepad.Timeline = []) => {
+const start = (timeline: Keyboard.Timeline<typeof inputBindings>, pad: Gamepad.Timeline = [], clicks: Pointer.Timeline = []) => {
   const simulation = createTopDownSimulation({
     keyboard: Keyboard.scripted(inputBindings, timeline),
+    mouse: Pointer.scripted(mouseBindings, clicks),
     gamepad: Gamepad.scripted(padBindings, pad),
     hostClock: HostClock.test()
   })
@@ -22,6 +23,9 @@ const start = (timeline: Keyboard.Timeline<typeof inputBindings>, pad: Gamepad.T
 
 const PlayerPosition = Game.Inspector("Test/PlayerPosition", { queries: { player: PlayerPositionQuery } }, ({ queries }) =>
   queries.player.each().map((match) => match.data.position.get()))
+
+const LastUsed = Game.Inspector("Test/LastUsed", { resources: { input: Game.System.readResource(InputState) } }, ({ resources }) =>
+  resources.input.get().lastUsed)
 
 const Collected = Game.Inspector("Test/Collected", { resources: { count: Game.System.readResource(CollectedCount) } }, ({ resources }) =>
   resources.count.get())
@@ -64,6 +68,21 @@ describe("top-down simulation", () => {
     expect(runtime.inspect(Collected)).toBe(1)
   })
 
+  it("collects a pickup with a click while walking, keyboard and mouse as one device", () => {
+    const { runtime, update } = start(
+      [{ frame: 0, press: ["left"] }, { frame: 85, release: ["left"] }],
+      [],
+      [{ frame: 40, move: { x: 100, y: 100 } }, { frame: 88, press: ["primary"], release: ["primary"] }]
+    )
+    const lastUsed = new Set<string | null>()
+    for (let frame = 0; frame < 120; frame++) {
+      expect(runtime.tick(update).ok).toBe(true)
+      lastUsed.add(runtime.inspect(LastUsed))
+    }
+    expect(runtime.inspect(Collected)).toBe(1)
+    expect([...lastUsed]).toEqual(["desktop"])
+  })
+
   it("describes the simulation schedules without lint warnings", () => {
     const { runtime } = start([])
     const description = runtime.debug.describe()
@@ -80,7 +99,7 @@ describe("top-down debug session", () => {
       { frame: 88, press: ["interact"], release: ["interact"] }
     ])
     const hostClock = HostClock.test()
-    const simulation = createTopDownSimulation({ keyboard, gamepad: Gamepad.scripted(padBindings, []), hostClock })
+    const simulation = createTopDownSimulation({ keyboard, mouse: Pointer.scripted(mouseBindings, []), gamepad: Gamepad.scripted(padBindings, []), hostClock })
     if (!simulation.ok) throw new Error(simulation.error.message)
     const { runtime, setup, update } = simulation.value
     const session = Session.make(runtime, { hostClock, schedules: { setup, update } })
