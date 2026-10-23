@@ -1,5 +1,5 @@
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
-import { Pointer } from "@typeonce/ritmo-browser"
+import { Controls, Pointer } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
 declare const canvas: Pointer.PointerTarget
@@ -67,7 +67,7 @@ describe("Pointer", () => {
     expect(input.wheel).type.toBe<Pointer.Delta>()
     expect(input.movement).type.toBe<Pointer.Delta>()
     expect(input.locked).type.toBe<boolean>()
-    expect(input.buttons.wheelLeft).type.toBe<Pointer.ActionState>()
+    expect(input.buttons.wheelLeft).type.toBe<Controls.ActionState>()
   })
 
   it("presses only physical buttons in a timeline", () => {

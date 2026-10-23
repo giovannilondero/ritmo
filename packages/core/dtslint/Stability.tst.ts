@@ -139,6 +139,31 @@ describe("stability types", () => {
     )
   })
 
+  it("keeps inspectors from draining a service", () => {
+    interface Queue extends System.Consumes<"take"> {
+      take(): ReadonlyArray<string>
+      size(): number
+    }
+    const Messages = Descriptor.Service<Queue>()("StabilityTypes/Messages")
+    const Bound = Schema.bind(Schema.fragment({}))
+    const peek = Bound.Inspector(
+      "StabilityTypes/PeekInspector",
+      { services: { queue: Bound.System.service(Messages) } },
+      ({ services }) => services.queue.size()
+    )
+    expect(peek.name).type.toBe<"StabilityTypes/PeekInspector">()
+    Bound.Inspector(
+      "StabilityTypes/DrainInspector",
+      {
+        services: {
+          // @ts-expect-error an inspector must not drain a service
+          queue: Bound.System.consumeService(Messages)
+        }
+      },
+      () => undefined
+    )
+  })
+
   it("carries failures through state-transition bundles", () => {
     const Mode = Game.StateMachine("StabilityTypes/Mode", ["Menu", "Playing"] as const)
     const start = Game.System(

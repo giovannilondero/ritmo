@@ -25,7 +25,7 @@ describe("Controls.players", () => {
     expect(input.p2.device).type.toBe<"left" | "right" | "pads" | null>()
     expect(input.p2.event).type.toBe<"joined" | "left" | null>()
     expect(input.p2.vectors.move).type.toBe<Controls.Vector>()
-    expect(input.p2.actions.jump).type.toBe<Keyboard.ActionState>()
+    expect(input.p2.actions.jump).type.toBe<Controls.ActionState>()
     if (input.p2.device === "pads") expect(input.p2.devices.pads).type.toBe<Gamepad.Snapshot<typeof padKeys>>()
     if (input.p2.device === "left") expect(input.p2.devices.left).type.toBe<Keyboard.Snapshot<typeof leftKeys>>()
     // @ts-expect-error Property 'pads' does not exist

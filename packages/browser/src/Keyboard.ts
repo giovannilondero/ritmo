@@ -70,9 +70,10 @@ import { boundKeys } from "./internal/introspect.ts"
 import type { ReportsBoundKeys } from "./internal/introspect.ts"
 import { anyUsed } from "./internal/used.ts"
 import { digital, directionName, directions, isVectorBinding, zero } from "./internal/vectors.ts"
+import type { ActionState } from "./internal/state.ts"
 import type { Direction, Vector } from "./internal/vectors.ts"
 
-export type { Direction, Vector }
+export type { Direction }
 
 /**
  * The subset of `KeyboardEvent` the module reads. `code` (the physical key)
@@ -176,19 +177,6 @@ export const vector = (keys: { readonly up: Keys; readonly down: Keys; readonly 
  * ```
  */
 export const code = <const Code extends string>(code: Code): PhysicalKey & { readonly code: Code } => ({ code })
-
-/**
- * One action's state in a snapshot, the same on every device (`Gamepad`,
- * `Pointer`, and `Touch` buttons too).
- */
-export interface ActionState {
-  /** At least one bound key or button is down now. */
-  readonly held: boolean
-  /** A bound key or button went down since the previous snapshot, even if already released. */
-  readonly pressed: boolean
-  /** A bound key or button went up since the previous snapshot and none is held now. */
-  readonly released: boolean
-}
 
 /**
  * Every action's state, with the same core as the other devices' snapshots

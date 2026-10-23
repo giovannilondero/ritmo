@@ -448,7 +448,10 @@ export const nextState = <M extends Machine.StateMachine.Any>(
 ): Machine.NextMachineWrite<M> => Machine.write(stateMachine)
 
 /**
- * Declares read access to the last applied transition payload of a machine.
+ * Declares read access to the transition being applied to a machine, for
+ * systems in its transition schedules (`onEnter` / `onExit`). Elsewhere
+ * `get()` is `undefined`: from a regular schedule, use
+ * {@link readTransitionEvent}.
  */
 export const transition = <M extends Machine.StateMachine.Any>(
   stateMachine: M
@@ -560,13 +563,16 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
 }
 
 /**
- * A read-only view over the last applied transition payload for one machine.
+ * A read-only view over the transition being applied for one machine, given
+ * to systems that declare `transitions: { x: Game.System.transition(M) }`.
  *
- * Only meaningful inside transition schedules, so it is only given to
- * systems that declare `transitions: { x: Game.System.transition(M) }`.
+ * `get()` returns the transition only while one is applied: inside the
+ * machine's transition schedules (`onEnter` / `onExit` / `onTransition`).
+ * Anywhere else it is `undefined`. To react to transitions from a regular
+ * schedule, read `Game.System.readTransitionEvent(M)` instead.
  */
 export interface TransitionReadView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
-  get(): Machine.TransitionSnapshot<M>
+  get(): Machine.TransitionSnapshot<M> | undefined
 }
 
 /**

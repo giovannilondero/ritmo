@@ -58,7 +58,8 @@ import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
 import type * as BrowserTickSource from "./BrowserTickSource.ts"
-import type { ActionState } from "./Keyboard.ts"
+import type { ActionState } from "./internal/state.ts"
+import type { Vector } from "./internal/vectors.ts"
 import * as ButtonsInternal from "./internal/buttons.ts"
 import { buttonTracker, flattenButtons, idleActions, idleButtons, idleVectors, splitActions } from "./internal/buttons.ts"
 import { digital, isVectorBinding, longer } from "./internal/vectors.ts"
@@ -177,16 +178,6 @@ export interface GamepadNavigator {
  */
 export interface GamepadHost extends BrowserTickSource.Host {
   readonly navigator: GamepadNavigator
-}
-
-/**
- * A direction and strength, length at most 1, `y` growing down as on
- * screen: a stick's tilt (dead zone removed, zero at rest, 1 at full tilt)
- * or a vector action's direction.
- */
-export interface Vector {
-  readonly x: number
-  readonly y: number
 }
 
 /**
@@ -432,14 +423,23 @@ const analogOf = (pad: PadReading, deadZone: number) => {
 
 const resting = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
 
+/** Rejects a pad count that is not a whole number literal of 1 or more. */
+type PadCount<N extends number> = number extends N
+  ? "max must be a number literal, like 4: the most pads read at once"
+  : `${N}` extends `-${string}` | `${string}.${string}` | "0"
+    ? "max must be a whole number of pads, 1 or more"
+    : N
+
 /**
  * Starts reading every pad on `host`, usually `window`, up to `max` of
  * them, each with its own presses and sticks; pads beyond `max` are
  * ignored. A pad keeps its place in the list while unplugged; one that comes
  * back at the same browser index continues it, and a different pad at that
- * index takes the place over with nothing held.
+ * index takes the place over with nothing held. `max` is a whole number
+ * literal, 1 or more: the most players the game seats on pads.
  */
-export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, max: number, options: ActionsOptions = {}): Pads<B> => {
+export const pads = <const B extends Bindings, const N extends number>(host: GamepadHost, bindings: B, max: PadCount<N>, options: ActionsOptions = {}): Pads<B> => {
+  const limit = max as number
   const deadZone = options.deadZone ?? 0.15
   const triggerThreshold = options.triggerThreshold ?? 0.5
   const seen: Array<{ readonly index: number; readonly state: ReturnType<typeof tracker<B>>; id: string | null; reading: PadReading | null }> = []
@@ -450,7 +450,7 @@ export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, m
     if (disposed) return
     const connected = readPads(host).filter((pad): pad is PadReading => pad !== null && pad.connected)
     for (const pad of connected) {
-      if (seen.length < max && !seen.some((entry) => entry.index === pad.index)) {
+      if (seen.length < limit && !seen.some((entry) => entry.index === pad.index)) {
         seen.push({ index: pad.index, state: tracker(bindings), id: pad.id, reading: null })
       }
     }
@@ -477,7 +477,7 @@ export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, m
 
   return {
     _tag: "Pads",
-    max,
+    max: limit,
     snapshot() {
       poll()
       return seen.map((entry) => entry.state.snapshot(entry.reading === null
@@ -503,6 +503,11 @@ export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, m
  * {@link scripted}), each with the id `scripted <n>` (from `scripted 1`)
  * and `max` the number of timelines: for tests of games where every player
  * has a pad.
+ *
+ * Unlike {@link pads}, every timeline is in the list from the first
+ * snapshot, with its id even while unplugged. Each pad connects at its
+ * timeline's first entry, so a pad plugged in later is a timeline that
+ * starts later, and an entry with `connected: false` unplugs it.
  */
 export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: ReadonlyArray<Timeline>): Pads<B> => {
   const each = timelines.map((timeline) => scripted(bindings, timeline))

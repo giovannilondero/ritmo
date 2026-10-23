@@ -173,7 +173,7 @@ describe("Runtime state machine", () => {
       ({ transitions, resources }) =>
         {
           const transition = transitions.app.get()
-          resources.log.update((entries) => [...entries, `exit:${transition.from}->${transition.to}`])
+          resources.log.update((entries) => [...entries, `exit:${transition?.from}->${transition?.to}`])
         }
     )
 
@@ -190,7 +190,7 @@ describe("Runtime state machine", () => {
       ({ transitions, resources }) =>
         {
           const transition = transitions.app.get()
-          resources.log.update((entries) => [...entries, `transition:${transition.from}->${transition.to}`])
+          resources.log.update((entries) => [...entries, `transition:${transition?.from}->${transition?.to}`])
         }
     )
 
@@ -210,7 +210,7 @@ describe("Runtime state machine", () => {
       ({ transitions, machines, resources }) =>
         {
           const transition = transitions.app.get()
-          resources.log.update((entries) => [...entries, `enter:${transition.from}->${transition.to}:${machines.app.get()}`])
+          resources.log.update((entries) => [...entries, `enter:${transition?.from}->${transition?.to}:${machines.app.get()}`])
         }
     )
 
@@ -239,6 +239,27 @@ describe("Runtime state machine", () => {
       "transition:Menu->Playing",
       "enter:Menu->Playing:Playing"
     ])
+  })
+
+  it("reads no transition outside the machine's transition schedules", () => {
+    const outside = Game.System(
+      "StateMachineRuntime/TransitionOutside",
+      {
+        transitions: {
+          app: System.transition(AppState)
+        },
+        resources: {
+          log: System.writeResource(Log)
+        }
+      },
+      ({ transitions, resources }) =>
+        {
+          resources.log.update((entries) => [...entries, `outside:${transitions.app.get() === undefined ? "none" : "some"}`])
+        }
+    )
+    const runtime = makeRuntime()
+    runtime.tick(Game.Schedule(outside))
+    expect(readResourceValue(runtime, schema, Log)).toEqual(["outside:none"])
   })
 
   it("supports stateChanged conditions after the transition marker", () => {
@@ -454,7 +475,7 @@ describe("Runtime state machine", () => {
       ({ transitions, resources }) =>
         {
           const transition = transitions.app.get()
-          resources.log.update((entries) => [...entries, `app:${transition.from}->${transition.to}`])
+          resources.log.update((entries) => [...entries, `app:${transition?.from}->${transition?.to}`])
         }
     )
 
@@ -471,7 +492,7 @@ describe("Runtime state machine", () => {
       ({ transitions, resources }) =>
         {
           const transition = transitions.round.get()
-          resources.log.update((entries) => [...entries, `round:${transition.from}->${transition.to}`])
+          resources.log.update((entries) => [...entries, `round:${transition?.from}->${transition?.to}`])
         }
     )
 
@@ -534,7 +555,7 @@ describe("Runtime state machine", () => {
       ({ transitions, nextMachines, resources }) =>
         {
           const transition = transitions.app.get()
-          resources.log.update((entries) => [...entries, `enter-app:${transition.to}`])
+          resources.log.update((entries) => [...entries, `enter-app:${transition?.to}`])
           nextMachines.round.set("SuddenDeath")
         }
     )
@@ -685,7 +706,7 @@ describe("Runtime state machine", () => {
       },
       ({ transitions, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `entered:${transitions.app.get().to}`])
+          resources.log.update((entries) => [...entries, `entered:${transitions.app.get()?.to}`])
         }
     )
 
@@ -912,7 +933,7 @@ describe("Runtime state machine", () => {
       },
       ({ transitions, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `enter:${transitions.app.get().to}`])
+          resources.log.update((entries) => [...entries, `enter:${transitions.app.get()?.to}`])
         }
     )
 
@@ -954,7 +975,7 @@ describe("Runtime state machine", () => {
       },
       ({ transitions, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `fragment:${transitions.app.get().to}`])
+          resources.log.update((entries) => [...entries, `fragment:${transitions.app.get()?.to}`])
         }
     )
 
@@ -996,7 +1017,7 @@ describe("Runtime state machine", () => {
       },
       ({ transitions, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `phase:${transitions.app.get().to}`])
+          resources.log.update((entries) => [...entries, `phase:${transitions.app.get()?.to}`])
         }
     )
 

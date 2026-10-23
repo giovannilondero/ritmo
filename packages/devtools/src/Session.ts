@@ -111,9 +111,12 @@ export interface Options<
    * maps, without making them runnable: typically a render schedule that
    * needs services a headless runtime does not have. Without them, events
    * and components only those schedules read are reported as never read.
-   * Their services show as not provided, which is not a lint.
+   * Their services show as not provided, which is not a lint. A name
+   * already in `schedules` does not compile.
    */
-  readonly describe?: Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
+  readonly describe?: Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>> & {
+    readonly [Name in NoInfer<Names>]?: "already a runnable schedule in schedules: give the described-only schedule another name"
+  }
   /** Events the host publishes with `runtime.send`: written, for the lints (see `Debug.Handle.declareHostEvents`). */
   readonly hostEvents?: ReadonlyArray<Schema.EventDescriptor<S>>
   /**
@@ -345,7 +348,7 @@ const describeError = (error: unknown): { readonly kind?: unknown; readonly syst
 /**
  * Starts a session over a runtime made with `debug: { hostClock }`: names
  * `schedules` (and `describe`) on its debug handle and starts tracing. A
- * name in both `schedules` and `describe` throws. Use `Lint.run` instead
+ * name in both `schedules` and `describe` does not compile. Use `Lint.run` instead
  * for a pass/fail lint check, and `Replay.session` to open a saved replay.
  */
 export const make = <
@@ -366,9 +369,6 @@ export const make = <
   const format = options.format ?? {}
   const schedules = options.schedules as Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
   const described = options.describe ?? {}
-  for (const name of Object.keys(described)) {
-    if (name in schedules) throw new Error(`Session: "${name}" is both a runnable and a described-only schedule`)
-  }
   debug.nameSchedules({ ...described, ...schedules })
   debug.declareHostEvents(options.hostEvents ?? [])
 

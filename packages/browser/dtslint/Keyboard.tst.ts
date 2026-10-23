@@ -1,5 +1,5 @@
 import { Result } from "@typeonce/ritmo"
-import { Keyboard } from "@typeonce/ritmo-browser"
+import { Controls, Keyboard } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
 declare const host: Keyboard.KeyboardHost
@@ -79,8 +79,8 @@ describe("Keyboard.parseRebinding", () => {
   it("splits button and vector actions, and scripts vectors by direction", () => {
     const bindings = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
     const input = Keyboard.scripted(bindings, [{ frame: 0, press: ["move.right", "jump"] }]).snapshot()
-    expect(input.vectors.move).type.toBe<Keyboard.Vector>()
-    expect(input.actions.jump).type.toBe<Keyboard.ActionState>()
+    expect(input.vectors.move).type.toBe<Controls.Vector>()
+    expect(input.actions.jump).type.toBe<Controls.ActionState>()
     // @ts-expect-error Property 'move' does not exist
     input.actions.move
     // @ts-expect-error Type '"move"' is not assignable

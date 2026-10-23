@@ -59,12 +59,10 @@
 import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
-import type { ActionState } from "./Keyboard.ts"
+import type { ActionState } from "./internal/state.ts"
 import * as ButtonsInternal from "./internal/buttons.ts"
 import { buttonTracker, idleActions, idleButtons } from "./internal/buttons.ts"
 import { anyUsed } from "./internal/used.ts"
-
-export type { ActionState }
 
 /** The physical buttons, in `PointerEvent.button` order 0 to 4. */
 const physicalButtons = ["primary", "middle", "secondary", "back", "forward"] as const

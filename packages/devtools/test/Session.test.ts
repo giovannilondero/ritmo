@@ -261,6 +261,25 @@ describe("Format.system change reads", () => {
   })
 })
 
+describe("Format.system services", () => {
+  it("prints the services a system drains apart from those it only calls", () => {
+    const Feed = Descriptor.Service<{ take(): ReadonlyArray<number> }>()("Dev/Feed")
+    const Log = Descriptor.Service<{ log(message: string): void }>()("Dev/Log")
+    const Drain = Game.System("Dev/Drain", {
+      services: { feed: Game.System.consumeService(Feed), log: Game.System.service(Log) }
+    }, () => {})
+    const runtime = Game.Runtime.make({
+      services: Game.Runtime.services(Game.Runtime.service(Feed, { take: () => [] }), Game.Runtime.service(Log, { log: () => {} })),
+      resources: { Score: 0 },
+      debug: { hostClock }
+    }).value
+    const session = Session.make(runtime, { hostClock, schedules: { update: Game.Schedule(Drain) } })
+    const text = session.system("Dev/Drain").text
+    expect(text).toContain("  services: Dev/Log")
+    expect(text).toContain("  consumes (drains each run): Dev/Feed")
+  })
+})
+
 describe("Format.value", () => {
   it("prints compact values", () => {
     expect(Format.value({ x: 1.23456, list: [1, 2, 3], nested: { deep: { deeper: { deepest: 1 } } } })).toBe(
@@ -363,10 +382,6 @@ describe("describe-only schedules", () => {
     expect(withRender.describe().data.schedules.map((schedule) => schedule.name).sort()).toEqual(["render", "update"])
     // The renderer is shown as needed but not provided, which is not a lint.
     expect(withRender.describe().data.services).toContainEqual({ name: "Dev/Renderer", provided: false })
-  })
-
-  it("rejects a name used for both a runnable and a described-only schedule", () => {
-    expect(() => Session.make(headless(), { hostClock, schedules: { update }, describe: { update: Game.Schedule(DrawHits) } })).toThrow(/both a runnable/)
   })
 })
 

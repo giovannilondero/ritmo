@@ -1,6 +1,6 @@
 import * as Result from "@typeonce/ritmo/Result"
 
-import type { ActionState } from "../Keyboard.ts"
+import type { ActionState } from "./state.ts"
 import { directionName, directions, isVectorBinding, zero } from "./vectors.ts"
 import type { Direction, Vector } from "./vectors.ts"
 

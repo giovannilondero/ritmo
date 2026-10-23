@@ -1,5 +1,5 @@
 import { Result } from "@typeonce/ritmo"
-import { Gamepad } from "@typeonce/ritmo-browser"
+import { Controls, Gamepad } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
 declare const host: Gamepad.GamepadHost
@@ -9,7 +9,7 @@ describe("Gamepad", () => {
     const input = Gamepad.actions(host, { attack: ["west"], dash: ["south", "rightBumper"] })
     expect(input.snapshot().actions.attack.pressed).type.toBe<boolean>()
     expect(input.snapshot().buttons.dpadUp.held).type.toBe<boolean>()
-    expect(input.snapshot().left).type.toBe<Gamepad.Vector>()
+    expect(input.snapshot().left).type.toBe<Controls.Vector>()
     // @ts-expect-error Property 'jump' does not exist
     input.snapshot().actions.jump
   })
@@ -78,11 +78,31 @@ describe("Gamepad.parseRebinding", () => {
 
   it("binds a vector to a stick, the four directions, or both", () => {
     const input = Gamepad.actions(host, { move: Gamepad.vector({ stick: "left" }), jump: ["south"] }).snapshot()
-    expect(input.vectors.move).type.toBe<Gamepad.Vector>()
+    expect(input.vectors.move).type.toBe<Controls.Vector>()
     expect(Gamepad.vector({ up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] })).type.toBe<Gamepad.VectorBinding>()
     // @ts-expect-error Type '"middle"' is not assignable
     Gamepad.vector({ stick: "middle" })
     // @ts-expect-error Property 'left' is missing
     Gamepad.vector({ up: ["dpadUp"], down: ["dpadDown"], right: ["dpadRight"] })
+  })
+})
+
+describe("Gamepad.pads", () => {
+  it("reads up to a whole number literal of pads", () => {
+    const pads = Gamepad.pads(host, { jump: ["south"] }, 4)
+    expect(pads.max).type.toBe<number>()
+    expect(pads.snapshot()[0]?.actions.jump.pressed).type.toBe<boolean | undefined>()
+  })
+
+  it("rejects a count that is not a whole number of 1 or more", () => {
+    // @ts-expect-error max must be a whole number of pads, 1 or more
+    Gamepad.pads(host, { jump: ["south"] }, 0)
+    // @ts-expect-error max must be a whole number of pads, 1 or more
+    Gamepad.pads(host, { jump: ["south"] }, -2)
+    // @ts-expect-error max must be a whole number of pads, 1 or more
+    Gamepad.pads(host, { jump: ["south"] }, 2.5)
+    const count: number = 4
+    // @ts-expect-error max must be a number literal
+    Gamepad.pads(host, { jump: ["south"] }, count)
   })
 })

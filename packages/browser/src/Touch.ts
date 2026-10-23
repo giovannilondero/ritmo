@@ -48,16 +48,11 @@
  */
 import type * as System from "@typeonce/ritmo/System"
 import { anyUsed } from "./internal/used.ts"
-import type { ActionState } from "./Keyboard.ts"
+import type { ActionState } from "./internal/state.ts"
+import type { Vector } from "./internal/vectors.ts"
 
 /** A position in CSS pixels relative to the element's top-left corner. */
 export interface Position {
-  readonly x: number
-  readonly y: number
-}
-
-/** A direction and strength, with length at most 1. `y` grows down the screen. */
-export interface Vector {
   readonly x: number
   readonly y: number
 }
