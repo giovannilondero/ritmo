@@ -135,7 +135,7 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
   })
   observer.observe(host)
 
-  const touch = Touch.track(app.canvas, window, touchLayout)
+  const touch = Touch.actions(app.canvas, window, touchLayout)
   const controls = makeControls({
     keyboard: Keyboard.actions(window, keyBindings),
     gamepad: Gamepad.actions(window, padBindings),

@@ -18,8 +18,12 @@ const makeTarget = (rect = { left: 10, top: 20 }) => {
     removeEventListener: remove,
     getBoundingClientRect: () => rect,
     setPointerCapture: (id) => captured.push(id),
-    releasePointerCapture: (id) => captured.splice(captured.indexOf(id), 1)
+    releasePointerCapture: (id) => captured.splice(captured.indexOf(id), 1),
+    requestPointerLock: () => {
+      lockRequests++
+    }
   }
+  let lockRequests = 0
   const blurHost: Pointer.BlurHost = { addEventListener: add, removeEventListener: remove }
   let prevented = 0
   const dispatch = (type: string, clientX: number, clientY: number, button = 0) => {
@@ -27,10 +31,30 @@ const makeTarget = (rect = { left: 10, top: 20 }) => {
       listener({ clientX, clientY, button, pointerId: 1, preventDefault: () => prevented++ })
     }
   }
+  const lockListeners = new Set<() => void>()
+  const lock = {
+    pointerLockElement: null as unknown,
+    addEventListener: (_type: "pointerlockchange", listener: () => void) => lockListeners.add(listener),
+    removeEventListener: (_type: "pointerlockchange", listener: () => void) => lockListeners.delete(listener)
+  }
+  const setLocked = (locked: boolean) => {
+    lock.pointerLockElement = locked ? target : null
+    for (const listener of lockListeners) listener()
+  }
   return {
     target,
     blurHost,
+    lock,
+    setLocked,
+    lockRequests: () => lockRequests,
+    lockListenerCount: () => lockListeners.size,
     captured,
+    wheel: (deltaX: number, deltaY: number, deltaMode = 0) => {
+      for (const listener of listeners.get("wheel") ?? []) listener({ deltaX, deltaY, deltaMode, preventDefault: () => prevented++ })
+    },
+    motion: (movementX: number, movementY: number) => {
+      for (const listener of listeners.get("pointermove") ?? []) listener({ clientX: 10, clientY: 20, movementX, movementY, button: -1, pointerId: 1, preventDefault: () => {} })
+    },
     prevented: () => prevented,
     move: (x: number, y: number) => dispatch("pointermove", x, y),
     down: (x: number, y: number, button = 0) => dispatch("pointerdown", x, y, button),
@@ -148,6 +172,98 @@ describe("Pointer.actions", () => {
   })
 })
 
+describe("Pointer wheel", () => {
+  const wheelBindings = { next: ["wheelDown"], previous: ["wheelUp"] } as const
+
+  it("reports how far the wheel scrolled and pulses once per notch", () => {
+    const fake = makeTarget()
+    const pointer = Pointer.actions(fake.target, fake.blurHost, wheelBindings)
+    fake.wheel(0, 100)
+    const notch = pointer.snapshot()
+    expect(notch.wheel).toEqual({ x: 0, y: 100 })
+    expect(notch.actions.next).toEqual({ held: false, pressed: true, released: true })
+    expect(notch.buttons.wheelDown).toEqual({ held: false, pressed: true, released: true })
+    expect(notch.used).toBe(true)
+    expect(fake.prevented()).toBe(1)
+    const after = pointer.snapshot()
+    expect(after.wheel).toEqual({ x: 0, y: 0 })
+    expect(after.actions.next.pressed).toBe(false)
+    expect(after.used).toBe(false)
+  })
+
+  it("adds up small scrolls toward a pulse, starting over when the direction turns", () => {
+    const fake = makeTarget()
+    const pointer = Pointer.actions(fake.target, fake.blurHost, wheelBindings)
+    fake.wheel(0, 60)
+    expect(pointer.snapshot().actions.next.pressed).toBe(false)
+    fake.wheel(0, 60)
+    expect(pointer.snapshot().actions.next.pressed).toBe(true)
+    fake.wheel(0, -30)
+    fake.wheel(0, -80)
+    const turned = pointer.snapshot()
+    expect(turned.actions.previous.pressed).toBe(true)
+    expect(turned.wheel).toEqual({ x: 0, y: -110 })
+  })
+
+  it("reads lines and pages as pixels, horizontal scrolls as wheelLeft and wheelRight", () => {
+    const fake = makeTarget()
+    const pointer = Pointer.actions(fake.target, fake.blurHost, {}, { preventScroll: false })
+    fake.wheel(-7, 3, 1)
+    const lines = pointer.snapshot()
+    expect(lines.wheel).toEqual({ x: -112, y: 48 })
+    expect(lines.buttons.wheelLeft.pressed).toBe(true)
+    expect(lines.buttons.wheelDown.pressed).toBe(false)
+    expect(fake.prevented()).toBe(0)
+    fake.wheel(0, 1, 2)
+    expect(pointer.snapshot().wheel).toEqual({ x: 0, y: 800 })
+  })
+})
+
+describe("Pointer lock", () => {
+  it("locks on a click that is not reported as a press, then reports raw motion while locked", () => {
+    const fake = makeTarget()
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings, { lock: fake.lock })
+    fake.down(10, 20)
+    expect(fake.lockRequests()).toBe(1)
+    const resume = pointer.snapshot()
+    expect(resume.actions.fire.pressed).toBe(false)
+    expect(resume.locked).toBe(false)
+    fake.up(10, 20)
+    fake.setLocked(true)
+    fake.motion(5, -2)
+    fake.motion(1, 1)
+    const looking = pointer.snapshot()
+    expect(looking).toMatchObject({ locked: true, over: true, movement: { x: 6, y: -1 }, used: true })
+    fake.down(10, 20)
+    expect(fake.lockRequests()).toBe(1)
+    expect(pointer.snapshot().actions.fire.pressed).toBe(true)
+  })
+
+  it("releases what was held when the lock ends, and removes the lock listener on dispose", () => {
+    const fake = makeTarget()
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings, { lock: fake.lock })
+    fake.setLocked(true)
+    fake.down(10, 20)
+    pointer.snapshot()
+    fake.setLocked(false)
+    const unlocked = pointer.snapshot()
+    expect(unlocked.locked).toBe(false)
+    expect(unlocked.actions.fire).toEqual({ held: false, pressed: false, released: true })
+    pointer.dispose()
+    expect(fake.listenerCount()).toBe(0)
+    expect(fake.lockListenerCount()).toBe(0)
+  })
+
+  it("reports raw motion without a lock too, and never locks without the option", () => {
+    const fake = makeTarget()
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings)
+    fake.motion(3, 4)
+    expect(pointer.snapshot()).toMatchObject({ movement: { x: 3, y: 4 }, locked: false })
+    fake.down(10, 20)
+    expect(fake.lockRequests()).toBe(0)
+  })
+})
+
 describe("Pointer.parseRebinding", () => {
   it("accepts exactly the actions of the bindings, each with known buttons", () => {
     expect(Pointer.parseRebinding(bindings, { fire: ["forward"], aim: ["primary"] })).toEqual({
@@ -177,22 +293,41 @@ describe("Pointer timelines", () => {
     expect(pointer.frames()).toBe(4)
   })
 
+  it("plays wheel, raw motion, and the lock", () => {
+    const pointer = Pointer.scripted({ next: ["wheelDown"], fire: ["primary"] }, [
+      { frame: 0, wheel: { x: 0, y: 250 } },
+      { frame: 1, locked: true, movement: { x: 4, y: 0 }, press: ["primary"] },
+      { frame: 2, locked: false }
+    ])
+    const [scrolled, looking, unlocked] = [0, 1, 2].map(() => pointer.snapshot())
+    expect(scrolled!.wheel).toEqual({ x: 0, y: 250 })
+    expect(scrolled!.actions.next.pressed).toBe(true)
+    expect(looking).toMatchObject({ locked: true, movement: { x: 4, y: 0 } })
+    expect(unlocked!.locked).toBe(false)
+    expect(unlocked!.actions.fire).toEqual({ held: false, pressed: false, released: true })
+  })
+
   it("records a live session into a timeline that replays to the same snapshots", () => {
     const fake = makeTarget({ left: 0, top: 0 })
-    const recorder = Pointer.recording(Pointer.actions(fake.target, fake.blurHost, bindings))
-    const live: Array<Pointer.Snapshot<typeof bindings>> = []
+    const recorder = Pointer.recording(Pointer.actions(fake.target, fake.blurHost, { ...bindings, next: ["wheelDown"] }, { lock: fake.lock }))
+    const live: Array<Pointer.Snapshot<typeof bindings & { readonly next: readonly ["wheelDown"] }>> = []
     fake.move(3, 4)
     live.push(recorder.snapshot())
     live.push(recorder.snapshot())
+    fake.wheel(0, 140)
+    live.push(recorder.snapshot())
+    fake.setLocked(true)
     fake.down(5, 6)
+    fake.motion(2, 2)
     live.push(recorder.snapshot())
     fake.up(5, 6)
+    fake.setLocked(false)
     live.push(recorder.snapshot())
 
     const parsed = Pointer.parseTimeline(JSON.parse(JSON.stringify(recorder.timeline())))
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
-    const replay = Pointer.scripted(bindings, parsed.value)
+    const replay = Pointer.scripted({ ...bindings, next: ["wheelDown"] }, parsed.value)
     const replayed = live.map(() => replay.snapshot())
     expect(replayed.map(({ over: _, ...rest }) => rest)).toEqual(live.map(({ over: _, ...rest }) => rest))
     recorder.dispose()
@@ -208,5 +343,9 @@ describe("Pointer timelines", () => {
       ok: false,
       error: { path: "[0].press[0]" }
     })
+    // Wheel pulses come from wheel, not from press.
+    expect(Pointer.parseTimeline([{ frame: 1, press: ["wheelUp"] }])).toMatchObject({ ok: false, error: { path: "[0].press[0]" } })
+    expect(Pointer.parseTimeline([{ frame: 1, wheel: { x: 0, y: Infinity } }])).toMatchObject({ ok: false, error: { path: "[0].wheel.y" } })
+    expect(Pointer.parseTimeline([{ frame: 1, locked: "yes" }])).toMatchObject({ ok: false, error: { path: "[0].locked" } })
   })
 })

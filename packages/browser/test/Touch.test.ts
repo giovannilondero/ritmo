@@ -52,10 +52,10 @@ const makeTarget = (rect = { left: 10, top: 20, ...size }) => {
   }
 }
 
-describe("Touch.track", () => {
+describe("Touch.actions", () => {
   it("floats the stick where the thumb lands and reports tilt with the dead zone removed", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     expect(touch.snapshot()).toEqual(Touch.idle(["attack", "dash"]))
 
     fake.down(1, 100, 200)
@@ -77,7 +77,7 @@ describe("Touch.track", () => {
 
   it("gives each finger to one control: move and attack at the same time", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     fake.down(1, 100, 200)
     fake.move(1, 150, 200)
     fake.down(2, 700, 300)
@@ -97,7 +97,7 @@ describe("Touch.track", () => {
 
   it("releases what a pointer id held when it comes down again without an up", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     fake.down(1, 700, 300)
     expect(touch.snapshot().actions.attack.held).toBe(true)
     // The up was lost; the same id now lands in the stick region.
@@ -111,7 +111,7 @@ describe("Touch.track", () => {
 
   it("aims by dragging from the button and reports the aim on the release, even for a tap shorter than a frame", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     fake.down(2, 700, 300)
     fake.move(2, 700, 250)
     expect(touch.snapshot().actions.attack.aim).toEqual({ x: 0, y: -0.5 })
@@ -133,7 +133,7 @@ describe("Touch.track", () => {
 
   it("cancels on pointercancel and blur, so games can skip firing", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     fake.down(2, 700, 300)
     touch.snapshot()
     fake.cancel(2, 700, 300)
@@ -149,7 +149,7 @@ describe("Touch.track", () => {
 
   it("ignores other pointer types unless asked, and cleans up", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     expect(fake.style.touchAction).toBe("none")
     fake.down(1, 700, 300, "mouse")
     expect(touch.snapshot().actions.attack.held).toBe(false)
@@ -157,7 +157,7 @@ describe("Touch.track", () => {
     expect(fake.listenerCount()).toBe(0)
     expect(fake.style.touchAction).toBe("auto")
 
-    const withMouse = Touch.track(fake.target, fake.blurHost, layout, { pointerTypes: ["touch", "mouse"] })
+    const withMouse = Touch.actions(fake.target, fake.blurHost, layout, { pointerTypes: ["touch", "mouse"] })
     fake.down(1, 700, 300, "mouse")
     expect(withMouse.snapshot().actions.attack.held).toBe(true)
   })
@@ -172,7 +172,7 @@ describe("Touch.track", () => {
   })
 })
 
-describe("Touch.track swipe", () => {
+describe("Touch.actions swipe", () => {
   /** Stick in the bottom-left quarter, swipe anywhere, buttons on the right. */
   const withSwipe = (size: Touch.Size) => ({
     ...layout(size),
@@ -182,7 +182,7 @@ describe("Touch.track swipe", () => {
 
   it("reports how far a finger outside the buttons and the stick moved since the previous snapshot", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, withSwipe)
+    const touch = Touch.actions(fake.target, fake.blurHost, withSwipe)
     expect(touch.snapshot().swipe).toEqual({ active: false, delta: { x: 0, y: 0 } })
     fake.down(1, 400, 100)
     fake.move(1, 430, 90)
@@ -198,7 +198,7 @@ describe("Touch.track swipe", () => {
 
   it("leaves buttons and the stick their fingers, and swipes with a second finger while moving and firing", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, withSwipe)
+    const touch = Touch.actions(fake.target, fake.blurHost, withSwipe)
     fake.down(1, 100, 300)
     fake.down(2, 700, 300)
     fake.down(3, 300, 100)
@@ -218,7 +218,7 @@ describe("Touch.track swipe", () => {
 
   it("ignores touches outside every control when there is no swipe area", () => {
     const fake = makeTarget()
-    const touch = Touch.track(fake.target, fake.blurHost, layout)
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
     fake.down(1, 500, 50)
     fake.move(1, 600, 50)
     expect(touch.snapshot().swipe).toEqual({ active: false, delta: { x: 0, y: 0 } })

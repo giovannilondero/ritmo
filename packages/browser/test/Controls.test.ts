@@ -96,7 +96,7 @@ describe("Controls", () => {
   })
 
   it("lists every gap and every second capture in describe()", () => {
-    const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings>; readonly touch: Touch.Touch<"jump"> }) =>
+    const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings>; readonly touch: Touch.Actions<"jump"> }) =>
       Actions.merge({ keyboard: devices.keyboard, touch: Actions.lacking(devices.touch, ["pause"]) })
     const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTest/Controls")
     const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("ControlsTest/Input")

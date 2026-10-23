@@ -28,7 +28,7 @@
  *
  * @example
  * ```ts
- * const touch = Touch.track(canvas, window, ({ width, height }) => ({
+ * const touch = Touch.actions(canvas, window, ({ width, height }) => ({
  *   stick: { region: { left: 0, top: 0, width: width / 2, height }, radius: 60 },
  *   buttons: {
  *     attack: { center: { x: width - 90, y: height - 90 }, radius: 55, aimRadius: 80 },
@@ -161,7 +161,7 @@ export interface View<B extends string> {
   readonly buttons: { readonly [K in B]: { readonly held: boolean; readonly aim: Vector | null } }
 }
 
-export interface Touch<B extends string> extends System.Consumes<"snapshot"> {
+export interface Actions<B extends string> extends System.Consumes<"snapshot"> {
   /** Returns the controls' state and starts a new press/release window. */
   snapshot(): Snapshot<B>
   /** The live state for drawing. */
@@ -194,7 +194,7 @@ export interface BlurHost {
   removeEventListener(type: "blur", listener: () => void): void
 }
 
-export interface TrackOptions {
+export interface ActionsOptions {
   /** `PointerEvent.pointerType`s that drive the controls. Defaults to `["touch"]`. */
   readonly pointerTypes?: ReadonlyArray<string>
 }
@@ -280,12 +280,12 @@ const lift = (track: ButtonTrack, cancelled: boolean): void => {
  * resize takes effect at the next touch). `blurHost` (usually `window`)
  * cancels held controls when the page loses focus.
  */
-export const track = <const B extends string>(
+export const actions = <const B extends string>(
   target: TouchTarget,
   blurHost: BlurHost,
   layout: (size: Size) => Layout<B>,
-  options: TrackOptions = {}
-): Touch<B> => {
+  options: ActionsOptions = {}
+): Actions<B> => {
   const pointerTypes = options.pointerTypes ?? ["touch"]
   const sizeOf = (): Size => {
     const rect = target.getBoundingClientRect()
@@ -459,7 +459,7 @@ export interface TimelineEntry<B extends string> {
 export type Timeline<B extends string> = ReadonlyArray<TimelineEntry<B>>
 
 /** Touch controls driven by a timeline instead of an element. */
-export interface Scripted<B extends string> extends Touch<B> {
+export interface Scripted<B extends string> extends Actions<B> {
   /** Number of snapshots taken so far, which is the next frame index. */
   readonly frames: () => number
 }

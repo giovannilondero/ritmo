@@ -4,7 +4,7 @@
  *
  * Declare the game's actions once with `Controls.actions([...])`, bind them
  * on every device (`Keyboard.actions`, `Gamepad.actions`, `Pointer.actions`,
- * `Touch.track`), and merge the devices with the declaration's `merge`.
+ * `Touch.actions`), and merge the devices with the declaration's `merge`.
  * Merged devices
  * behave like one device with all their bindings: an action is `held` while
  * any device holds it, `pressed` when any device pressed it, and `released`
@@ -77,7 +77,7 @@ export interface DeviceSnapshot<A extends string> {
   readonly used: boolean
 }
 
-/** A device `Controls` can merge: `Keyboard.actions`, `Gamepad.actions`, `Pointer.actions`, `Touch.track`, or their scripted forms. */
+/** A device `Controls` can merge: `Keyboard.actions`, `Gamepad.actions`, `Pointer.actions`, `Touch.actions`, or their scripted forms. */
 export interface Device<A extends string = string> extends System.Consumes<"snapshot"> {
   snapshot(): DeviceSnapshot<A>
   dispose(): void
