@@ -1,4 +1,4 @@
-import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+import { Controls, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { describe, expect, it } from "tstyche"
 
@@ -10,7 +10,7 @@ const Input = Descriptor.TransientResource<Snapshot>()("CaptureTypes/Input")
 const Wrong = Descriptor.Resource<{ readonly jump: boolean }>()("CaptureTypes/Wrong")
 const Fewer = Descriptor.TransientResource<Keyboard.Snapshot<{ readonly jump: readonly [" "]; readonly left: readonly ["a"] }>>()("CaptureTypes/Fewer")
 const Optional = Descriptor.TransientResource<{
-  readonly actions: { readonly jump: Keyboard.ActionState; readonly left?: Keyboard.ActionState }
+  readonly actions: { readonly jump: Controls.ActionState; readonly left?: Controls.ActionState }
   readonly used: boolean
 }>()("CaptureTypes/Optional")
 const Wide = Descriptor.TransientResource<unknown>()("CaptureTypes/Wide")

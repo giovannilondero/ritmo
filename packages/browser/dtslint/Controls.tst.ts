@@ -19,7 +19,7 @@ const keysWithoutPause = Keyboard.actions(host, { jump: [" "] })
 describe("Controls", () => {
   it("types merged actions by the declared names", () => {
     const input = Actions.merge({ keyboard, gamepad }).snapshot()
-    expect(input.actions.jump).type.toBe<Keyboard.ActionState>()
+    expect(input.actions.jump).type.toBe<Controls.ActionState>()
     expect(input.available.pause).type.toBe<boolean>()
     expect(Actions.buttons).type.toBe<ReadonlyArray<"jump" | "pause">>()
     // @ts-expect-error Property 'junp' does not exist
@@ -44,7 +44,7 @@ describe("Controls", () => {
 
   it("does not let a device report an action it lacks", () => {
     const input = Actions.merge({ keyboard, touch: Actions.lacking(touch, ["pause"]) }).snapshot()
-    expect(input.devices.touch.actions.jump.aim).type.toBe<Touch.Vector | null>()
+    expect(input.devices.touch.actions.jump.aim).type.toBe<Controls.Vector | null>()
     // @ts-expect-error Property 'pause' does not exist
     input.devices.touch.actions.pause
   })
@@ -186,7 +186,7 @@ describe("Controls", () => {
     const input = Moving.merge({ keyboard: keys, gamepad: pad }).snapshot()
     expect(input.vectors.move).type.toBe<Controls.Vector>()
     expect(input.available.move).type.toBe<boolean>()
-    expect(input.devices.keyboard.vectors.move).type.toBe<Keyboard.Vector>()
+    expect(input.devices.keyboard.vectors.move).type.toBe<Controls.Vector>()
     // @ts-expect-error Property 'jump' does not exist
     input.vectors.jump
     // @ts-expect-error Property 'move' does not exist
@@ -209,5 +209,20 @@ describe("Controls", () => {
     Controls.actions({ buttons: ["jump", "move"], vectors: ["move"] })
     // @ts-expect-error Type '[]' is not assignable
     Controls.actions({ buttons: [] })
+  })
+})
+
+describe("one home for the shared input types", () => {
+  it("ActionState and Vector are exported from Controls only", () => {
+    // @ts-expect-error has no exported member 'ActionState'
+    type FromKeyboard = Keyboard.ActionState
+    // @ts-expect-error has no exported member named 'Vector'
+    type FromGamepad = Gamepad.Vector
+    // @ts-expect-error has no exported member 'Vector'
+    type FromTouch = Touch.Vector
+    // @ts-expect-error has no exported member 'ActionState'
+    type FromPointer = Pointer.ActionState
+    expect<Controls.ActionState>().type.toBe<{ readonly held: boolean; readonly pressed: boolean; readonly released: boolean }>()
+    expect<Controls.Vector>().type.toBe<{ readonly x: number; readonly y: number }>()
   })
 })

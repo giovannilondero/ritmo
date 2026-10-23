@@ -42,6 +42,15 @@ describe("Session.make", () => {
     expect(Session.make).type.not.toBeCallableWith(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value, { hostClock, schedules: { update }, describe: { foreign } })
   })
 
+  it("rejects a described-only schedule named like a runnable one", () => {
+    const render = Game.Schedule(Game.System("DevtoolsTypes/RenderTwice", {}, () => {}))
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    // @ts-expect-error already a runnable schedule in schedules
+    Session.make(debugged, { hostClock, schedules: { update }, describe: { update: render } })
+    const session = Session.make(debugged, { hostClock, schedules: { update }, describe: { render } })
+    expect(session.run).type.toBeCallableWith("update")
+  })
+
   it("runs only named schedules and filters by the runtime's descriptors", () => {
     const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value, { hostClock, schedules: { update } })
     expect(session.run).type.toBeCallableWith("update")

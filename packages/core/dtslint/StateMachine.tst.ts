@@ -66,8 +66,10 @@ const TransitionSystem = Game.System(
   },
   ({ transitions }) =>
     {
-      expect(transitions.app.get().from).type.toBe<"Menu" | "Playing" | "Paused">()
-      expect(transitions.app.get().to).type.toBe<"Menu" | "Playing" | "Paused">()
+      expect(transitions.app.get()?.from).type.toBe<"Menu" | "Playing" | "Paused" | undefined>()
+      expect(transitions.app.get()?.to).type.toBe<"Menu" | "Playing" | "Paused" | undefined>()
+      // @ts-expect-error is possibly 'undefined'
+      transitions.app.get().to
     }
 )
 

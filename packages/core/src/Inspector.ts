@@ -54,11 +54,20 @@ export interface InspectorAccessInput {
   readonly relationFailures?: Record<string, System.RelationFailureRead<Relation.Relation.Any>>
 }
 
-/** Rejects unknown categories and writable query selections. */
+type DrainsService = "an inspector must not drain a service: declare it with Game.System.service, and drain it in one system"
+
+type ReadonlyServices<Services extends Record<string, System.ServiceRead<Descriptor<"service", string, any>>>> = {
+  readonly [K in keyof Services]: Services[K] extends System.ServiceRead<any, true> ? DrainsService : Services[K]
+}
+
+/** Rejects unknown categories, writable query selections, and drained (consumed) services. */
 export type ExactInspectorAccess<Access extends InspectorAccessInput> =
   System.ExactAccess<Access> & {
     readonly queries?: Access["queries"] extends Record<string, AnyQuery>
       ? ReadonlyQueries<Access["queries"]>
+      : never
+    readonly services?: Access["services"] extends Record<string, System.ServiceRead<Descriptor<"service", string, any>>>
+      ? ReadonlyServices<Access["services"]>
       : never
   }
 

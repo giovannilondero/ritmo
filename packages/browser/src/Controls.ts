@@ -82,13 +82,13 @@
 import type * as System from "@typeonce/ritmo/System"
 import * as Debug from "@typeonce/ritmo/Debug"
 
-import type { ActionState } from "./Keyboard.ts"
+import type { ActionState } from "./internal/state.ts"
 import { boundKeys, claim, ownersOf } from "./internal/introspect.ts"
 import type { ReportsBoundKeys } from "./internal/introspect.ts"
 import { longer, zero } from "./internal/vectors.ts"
 import type { Vector } from "./internal/vectors.ts"
 
-export type { Vector }
+export type { ActionState, Vector }
 
 /**
  * The part of a device's snapshot `Controls` merges: every button action's
@@ -120,9 +120,10 @@ export interface Group<Members> {
 
 /**
  * Every pad on its own, for a player pool: `Gamepad.pads(...)`. Each pad
- * joins as its own player.
+ * joins as its own player. Reading it drains the pads' presses, like every
+ * input source.
  */
-export interface Pads {
+export interface Pads extends System.Consumes<"snapshot"> {
   readonly _tag: "Pads"
   readonly max: number
   snapshot(): ReadonlyArray<DeviceSnapshot<string, string> & { readonly id: string | null; readonly connected: boolean }>

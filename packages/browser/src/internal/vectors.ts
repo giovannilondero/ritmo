@@ -1,4 +1,9 @@
-/** A direction and strength, with length at most 1. `y` grows down the screen. */
+/**
+ * A direction and strength, length at most 1, `y` growing down as on
+ * screen, the same on every device and in `Controls`: a vector action, a
+ * stick's tilt (dead zone removed, zero at rest, 1 at full tilt), or a
+ * touch stick, swipe or aim.
+ */
 export interface Vector {
   readonly x: number
   readonly y: number

@@ -1579,7 +1579,7 @@ const makeValidatedRuntime = <
   })
 
   const makeTransitionReadView = <M extends Machine.StateMachine.Any>(stateMachine: M): TransitionReadView<M> => ({
-    get: () => activeTransitions.get(stateMachine.key) as Machine.TransitionSnapshot<M>
+    get: () => activeTransitions.get(stateMachine.key) as Machine.TransitionSnapshot<M> | undefined
   })
 
   const evaluateCondition = (condition: Machine.Condition): boolean => {

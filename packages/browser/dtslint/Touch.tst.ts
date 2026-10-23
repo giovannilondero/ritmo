@@ -1,4 +1,4 @@
-import { Touch } from "@typeonce/ritmo-browser"
+import { Controls, Touch } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
 declare const target: Touch.TouchTarget
@@ -16,7 +16,7 @@ describe("Touch", () => {
   it("infers the button names from the layout", () => {
     expect(touch).type.toBe<Touch.Actions<"attack" | "dash">>()
     expect(touch.snapshot().actions.attack).type.toBe<Touch.ButtonState>()
-    expect(touch.snapshot().stick.vector).type.toBe<Touch.Vector>()
+    expect(touch.snapshot().stick.vector).type.toBe<Controls.Vector>()
     // @ts-expect-error Property 'jump' does not exist on type
     touch.snapshot().actions.jump
   })
@@ -30,7 +30,7 @@ describe("Touch", () => {
 
   it("reports the stick as the vector the layout names", () => {
     const touch = Touch.scripted({ buttons: ["attack"], vector: "move" }, [])
-    expect(touch.snapshot().vectors.move).type.toBe<Touch.Vector>()
+    expect(touch.snapshot().vectors.move).type.toBe<Controls.Vector>()
     // @ts-expect-error Property 'move' does not exist
     Touch.scripted({ buttons: ["attack"] }, []).snapshot().vectors.move
   })

@@ -1,4 +1,4 @@
-import type { ActionState } from "../Keyboard.ts"
+import type { ActionState } from "./state.ts"
 
 /**
  * Whether any action in a snapshot was pressed or is held: the `used` of a
