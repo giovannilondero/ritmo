@@ -10,6 +10,7 @@
  * @docGroup devtools
  */
 import type * as Debug from "@typeonce/ritmo/Debug"
+import type * as Machine from "@typeonce/ritmo/Machine"
 
 /** How much of a nested value the text output prints. */
 export interface ValueOptions {
@@ -87,6 +88,15 @@ export const value = (input: unknown, options: ValueOptions = {}): string => {
   return go(input, 0)
 }
 
+/**
+ * One machine value: its state's name, then its fields when it has any
+ * (`Talking {speaker:"Mira",page:2}`).
+ */
+export const state = (input: Machine.AnyValue, options: ValueOptions = {}): string => {
+  const { _tag, ...fields } = input
+  return Object.keys(fields).length === 0 ? _tag : `${_tag} ${value(fields, options)}`
+}
+
 const list = (items: ReadonlyArray<string>): string => items.length === 0 ? "-" : items.join(", ")
 
 /** One transition as `Machine from -> to`; a sub-state without a value prints `(inactive)`. */
@@ -122,6 +132,7 @@ export const system = (input: Debug.SystemDescription): string => {
   add("reads events", input.events.reads)
   add("emits events", input.events.writes)
   add("reads machines", input.machines.reads)
+  add("updates machine fields", input.machines.updates)
   add("queues next state", input.machines.next)
   add("reads transitions", input.machines.transitions)
   add("reads transition events", input.machines.transitionEvents)
@@ -176,7 +187,7 @@ export const description = (input: Debug.Description): string => {
   if (input.machines.length > 0) {
     lines.push("", "# Machines")
     for (const machine of input.machines) {
-      const current = !machine.provided ? "(not provided)" : machine.current === undefined ? "(inactive)" : String(machine.current)
+      const current = !machine.provided ? "(not provided)" : machine.current === undefined ? "(inactive)" : state(machine.current)
       lines.push(`${machine.name} = ${current}  [${machine.states.join(" | ")}]${machine.within === undefined ? "" : `  within ${machine.within}`}`)
     }
   }
@@ -238,10 +249,10 @@ export const dump = (input: Debug.WorldDump, options: ValueOptions = {}): string
     lines.push("machines:")
     for (const [name, machine] of machines) {
       const extra = [
-        machine.pending === undefined ? undefined : `pending ${String(machine.pending)}`,
-        machine.previous === undefined ? undefined : `previous ${String(machine.previous)}`
+        machine.pending === undefined ? undefined : `pending ${state(machine.pending)}`,
+        machine.previous === undefined ? undefined : `previous ${state(machine.previous)}`
       ].filter((part) => part !== undefined)
-      lines.push(`  ${name}=${String(machine.current)}${extra.length > 0 ? ` (${extra.join(", ")})` : ""}`)
+      lines.push(`  ${name}=${state(machine.current)}${extra.length > 0 ? ` (${extra.join(", ")})` : ""}`)
     }
   }
   if (input.pendingCommands.length > 0) {
@@ -293,6 +304,7 @@ export type LineKind =
   | "write"
   | "resource"
   | "event"
+  | "machine"
   | "nextState"
   | "command"
   | "effect"
@@ -478,8 +490,11 @@ export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}): Read
       for (const emitted of event.events) {
         result.push({ ...base, kind: "event", entity: undefined, subject: emitted.event, noop: false, text: `emit ${emitted.event} ${value(emitted.values, options)}${rolledBack}` })
       }
+      for (const write of event.machines) {
+        result.push({ ...base, kind: "machine", entity: undefined, subject: write.machine, noop: sameValue(write.before, write.after), text: `machine ${write.machine} ${change(write.before, write.after, options)}${rolledBack}` })
+      }
       for (const next of event.nextStates) {
-        result.push({ ...base, kind: "nextState", entity: undefined, subject: next.machine, noop: false, text: `next state ${next.machine}=${next.value === undefined ? "(cleared)" : String(next.value)}${rolledBack}` })
+        result.push({ ...base, kind: "nextState", entity: undefined, subject: next.machine, noop: false, text: `next state ${next.machine}=${next.value === undefined ? "(cleared)" : state(next.value, options)}${rolledBack}` })
       }
       if (event.commands.length > 0) {
         const counts = new Map<string, number>()

@@ -302,6 +302,22 @@ describe("Format.transition", () => {
   })
 })
 
+describe("Format.state", () => {
+  it("prints a machine value as its state, then its fields", () => {
+    expect(Format.state({ _tag: "Exploring" })).toBe("Exploring")
+    expect(Format.state({ _tag: "Talking", speaker: "Mira", page: 2 } as { readonly _tag: string })).toBe('Talking {speaker:"Mira",page:2}')
+  })
+
+  it("prints an update of a machine's fields as a journal line", () => {
+    const lines = Format.lines({
+      type: "system", frame: 3, tick: 7, schedule: "update", system: "Dev/Type", outcome: "ok", ms: 0,
+      writes: [], resources: [], events: [], nextStates: [], commands: [], missed: [],
+      machines: [{ machine: "Dev/Mode", before: { _tag: "Talking", typed: 1 } as { readonly _tag: string }, after: { _tag: "Talking", typed: 2 } as { readonly _tag: string } }]
+    })
+    expect(lines.map((line) => [line.kind, line.subject, line.text])).toEqual([["machine", "Dev/Mode", "machine Dev/Mode {_tag:\"Talking\",typed:1} -> {_tag:\"Talking\",typed:2}"]])
+  })
+})
+
 describe("Session report streams", () => {
   it("lists streams held past the frame window by a reader", () => {
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value
