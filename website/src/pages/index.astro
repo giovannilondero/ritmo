@@ -1,0 +1,255 @@
+---
+import Game from "../components/Game.astro"
+import Base from "../layouts/Base.astro"
+import { Content as Install } from "../snippets/home-install.mdx"
+import { Content as OrderError } from "../snippets/home-order.mdx"
+
+const pillars = [
+  {
+    title: "Wrong code does not compile",
+    body: "Systems declare what they read, write, spawn, and need. The order of a tick, the services a runtime provides, and every spawn are checked by the compiler, and each error names its fix.",
+    href: "/docs/type-safety/"
+  },
+  {
+    title: "Runs headless, explains itself",
+    body: "The simulation never touches the page. Play it in Node with scripted input, check rules every frame, and ask which system changed a value and when.",
+    href: "/docs/devtools/"
+  },
+  {
+    title: "Exact, every time",
+    body: "A fixed step, seeded randomness, and maths that returns the same bits on every device. The same input gives the same game, so replays and tests just work.",
+    href: "/docs/concepts/#a-fixed-step-and-the-same-result-every-time"
+  }
+]
+---
+
+<Base title="Ritmo · The agent-first, type-safe ECS runtime for games" bare>
+  <main data-pagefind-ignore>
+    <section class="hero">
+      <div class="pitch">
+        <p class="eyebrow">ECS runtime for TypeScript games</p>
+        <h1>The agent-first, type-safe ECS runtime for games.</h1>
+        <p class="sub">
+          You direct the mechanics and the feel. Your coding agent writes the simulation, and Ritmo keeps it on track:
+          wrong code does not compile, and headless runs show why each value changed.
+        </p>
+        <div class="cta">
+          <a class="button primary" href="/docs/">Get started</a>
+          <a class="button" href="/examples/">See examples</a>
+        </div>
+        <div class="install"><Install /></div>
+      </div>
+      <div class="demo">
+        <Game id="top-down" />
+      </div>
+    </section>
+
+    <section class="pillars">
+      {
+        pillars.map((pillar) => (
+          <a class="pillar" href={pillar.href}>
+            <h2>{pillar.title}</h2>
+            <p>{pillar.body}</p>
+          </a>
+        ))
+      }
+    </section>
+
+    <section class="showcase">
+      <div class="copy">
+        <p class="eyebrow">Checked order</p>
+        <h2>The compiler knows the order of a tick.</h2>
+        <p>
+          Spawns land only at an explicit <code>applyDeferred()</code>. A system that needs this tick's spawns before
+          they land is not a bug you find in a playtest: the schedule does not compile, and the error says where the
+          missing step goes.
+        </p>
+        <p><a href="/docs/type-safety/">More mistakes Ritmo catches</a></p>
+      </div>
+      <div class="code"><OrderError /></div>
+    </section>
+
+    <section class="host">
+      <p class="eyebrow">Your renderer, your loop</p>
+      <h2>Ritmo does not draw.</h2>
+      <p>
+        It runs the world and hands your game plain data. Pixi, Three.js, the DOM, or a native shell draw it; small
+        adapters handle the fixed-step loop, keyboard, gamepad, pointer and touch input, and keeping one renderer node
+        per entity. <a href="/docs/browser/">See how a page hosts a game.</a>
+      </p>
+    </section>
+  </main>
+</Base>
+
+<style>
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    gap: 48px;
+    align-items: center;
+    padding: 72px 0 64px;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.12;
+    margin: 16px 0 20px;
+  }
+
+  .sub {
+    font-size: 1.1rem;
+    color: var(--muted);
+    max-width: 46ch;
+  }
+
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 28px 0 20px;
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    height: 42px;
+    padding: 0 18px;
+    font: 600 0.9rem var(--mono);
+    text-decoration: none;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .button:hover {
+    border-color: var(--fg);
+  }
+
+  .button.primary {
+    background: var(--tick);
+    border-color: var(--tick);
+    color: var(--ink);
+  }
+
+  .button.primary:hover {
+    background: #ff6f50;
+  }
+
+  .install :global(pre) {
+    margin: 0;
+    display: inline-block;
+    padding: 0.7em 1.1em;
+  }
+
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    padding: 0 0 72px;
+  }
+
+  .pillar {
+    display: block;
+    padding: 24px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg);
+    text-decoration: none;
+    position: relative;
+  }
+
+  .pillar::before {
+    content: "";
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    width: 8px;
+    height: 8px;
+    background: var(--border);
+  }
+
+  .pillar:hover {
+    border-color: var(--muted);
+  }
+
+  .pillar:hover::before {
+    background: var(--tick);
+  }
+
+  .pillar h2 {
+    font-size: 1.05rem;
+    margin: 0 0 10px;
+    padding: 0 20px 0 0;
+    border: 0;
+  }
+
+  .pillar p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  .showcase {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+    gap: 48px;
+    align-items: center;
+    padding: 64px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .showcase h2,
+  .host h2 {
+    font-size: 1.6rem;
+    margin: 12px 0 16px;
+    padding: 0;
+    border: 0;
+  }
+
+  .showcase .copy p:not(.eyebrow) {
+    color: var(--muted);
+  }
+
+  .code :global(pre) {
+    margin: 0;
+  }
+
+  .host {
+    padding: 64px 0 80px;
+    border-top: 1px solid var(--border);
+    max-width: 760px;
+  }
+
+  .host p:not(.eyebrow) {
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+
+  @media (max-width: 960px) {
+    .hero,
+    .showcase {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 32px;
+    }
+
+    .hero {
+      padding: 40px 0 48px;
+    }
+
+    .pillars {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 720px) {
+    main {
+      padding: 0 16px;
+    }
+  }
+</style>

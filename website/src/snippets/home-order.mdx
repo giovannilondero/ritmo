@@ -1,0 +1,26 @@
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, () => {})
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (!made.ok) throw new Error()
+const runtime = made.value
+// ---cut---
+// @errors: 2345
+// Aim wants the enemies spawned this tick...
+const Enemies = Game.Query({
+  selection: { health: Game.Query.read(Health) },
+  with: [Enemy]
+})
+const Aim = Game.System(
+  "Arena/Aim",
+  { queries: { enemies: Game.System.thisTick(Enemies) } },
+  ({ queries }) => {}
+)
+
+// ...but nothing applies the spawns before it runs.
+runtime.tick(Game.Schedule(SpawnWave, Aim))
+```

@@ -1,0 +1,56 @@
+---
+import "../styles/global.css"
+import "../styles/twoslash.css"
+
+import { brand } from "../brand.ts"
+import Footer from "../components/Footer.astro"
+import Header from "../components/Header.astro"
+import TypePopups from "../components/TypePopups.astro"
+
+interface Props {
+  title: string
+  description?: string
+  /** The page's own title alone in the tab, for the home page. */
+  bare?: boolean
+}
+
+const { title, description = "The agent-first, type-safe ECS runtime for games.", bare = false } = Astro.props
+const fullTitle = bare ? title : `${title} · Ritmo`
+const social = new URL(brand.appIcon.src, Astro.site)
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0E1013" />
+    <link rel="icon" type="image/svg+xml" href={brand.favicon.src} />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={social} />
+    <meta name="twitter:card" content="summary" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
+    />
+    <script is:inline>
+      // Apply a saved theme choice before the first paint.
+      try {
+        const saved = localStorage.getItem("ritmo-theme")
+        if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <Header />
+    <slot />
+    <Footer />
+    <TypePopups />
+  </body>
+</html>

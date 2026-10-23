@@ -1,0 +1,134 @@
+---
+// One game alone on a page: what `<Game />` embeds, and what "full screen"
+// opens. It owns the whole window, so its keyboard and gamepad never reach
+// another game on the same docs page.
+import { brand } from "../../brand.ts"
+import { demos } from "../../demos/index.ts"
+import type { DemoId } from "../../demos/index.ts"
+
+export const getStaticPaths = () => Object.keys(demos).map((demo) => ({ params: { demo } }))
+
+const id = Astro.params.demo as DemoId
+const demo = demos[id]
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>{demo.title} · Ritmo</title>
+    <link rel="icon" type="image/svg+xml" href={brand.favicon.src} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" />
+  </head>
+  <body data-demo={id}>
+    <div class="stage"></div>
+    <button type="button" class="start">
+      <img src={brand.iconInverse.src} alt="" width="40" height="40" />
+      <span class="title">Play {demo.title}</span>
+      <span class="controls">{demo.controls}</span>
+    </button>
+
+    <script>
+      import { demos } from "../../demos/index.ts"
+      import type { Demo, DemoId } from "../../demos/index.ts"
+
+      const id = document.body.dataset.demo as DemoId
+      const stage = document.querySelector<HTMLElement>(".stage")!
+      const start = document.querySelector<HTMLButtonElement>(".start")!
+
+      // Started on a click, so the game has the page's focus (and its
+      // keyboard) from the first frame.
+      start.addEventListener("click", async () => {
+        start.disabled = true
+        window.focus()
+        const demo: Demo = await demos[id].load()
+        await demo.mount(stage)
+        start.remove()
+      }, { once: true })
+    </script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0e1013;
+        color: #f3f1ec;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        overflow: hidden;
+      }
+
+      .stage {
+        position: fixed;
+        inset: 0;
+      }
+
+      :global(.hud) {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+        pointer-events: none;
+      }
+
+      :global(.hud span:not(:empty)) {
+        background: rgba(14, 16, 19, 0.8);
+        border: 1px solid #262a31;
+        padding: 4px 10px;
+        border-radius: 4px;
+      }
+
+      :global(.hud .accent) {
+        color: #ff5a36;
+      }
+
+      .start {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        border: 0;
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+        background:
+          linear-gradient(#1f2329 2px, transparent 2px) 0 0 / 32px 32px,
+          linear-gradient(90deg, #1f2329 2px, transparent 2px) 0 0 / 32px 32px,
+          #0e1013;
+      }
+
+      .start:hover .title {
+        border-color: #ff5a36;
+      }
+
+      .title {
+        font-size: 15px;
+        font-weight: 600;
+        padding: 8px 16px;
+        border: 1px solid #3a3f48;
+        border-radius: 4px;
+        background: #0e1013;
+      }
+
+      .controls {
+        font-size: 12px;
+        color: #8a8f98;
+        max-width: 32ch;
+        text-align: center;
+        background: #0e1013;
+      }
+    </style>
+  </body>
+</html>

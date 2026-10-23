@@ -1,0 +1,231 @@
+---
+layout: ../../layouts/Docs.astro
+title: Concepts
+description: The pieces of a Ritmo game, and the rule each one keeps.
+---
+
+A Ritmo game is a **world** (entities with components, plus resources and
+events), **systems** that read and change it, and **schedules** that run
+those systems in a checked order, one fixed step at a time.
+
+Every snippet on this page compiles against the current release. Hover a name
+to see its type.
+
+## The world
+
+A **component** is data attached to an entity: a position, a health value, a
+tag. A **resource** is one value for the whole world: the clock, the score,
+the input of this frame. An **event** is a message sent during a tick and
+read by the systems that asked for it.
+
+Each one is a descriptor with a name and a type. A schema gathers them, and
+`Schema.bind` turns the schema into `Game`, the one object every other API
+hangs from.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Score = Descriptor.Resource<number>()("Arena/Score")
+const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Health, Enemy },
+    resources: { Score },
+    events: { Hit }
+  })
+)
+```
+
+The schema is closed: a system can only name what is in it, and two
+descriptors with the same name do not compile. Large games split it into
+several `Schema.fragment(...)`s and bind them together.
+
+## Systems
+
+A system is a name, a spec, and a function. The spec declares everything the
+system touches: its queries, the resources it reads or writes, the events it
+sends or reads, the commands it may queue. The function receives exactly that,
+typed, and nothing more.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Score = Descriptor.Resource<number>()("Arena/Score")
+const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, resources: { Score }, events: { Hit } }))
+// ---cut---
+const Damage = Game.System(
+  "Arena/Damage",
+  {
+    queries: {
+      enemies: Game.Query({ selection: { health: Game.Query.write(Health) }, with: [Enemy] })
+    },
+    events: { hits: Game.System.readEvent(Hit) }
+  },
+  ({ queries, events }) => {
+    for (const hit of events.hits.all()) {
+      for (const match of queries.enemies.each()) {
+        match.data.health.set(match.data.health.get() - hit.amount)
+      }
+    }
+  }
+)
+```
+
+Because access is declared, the runtime knows who reads and who writes every
+piece of the world. That is what lets it check a schedule's order at compile
+time, roll back a failed system's writes, and explain later which system
+changed a value.
+
+## Queries
+
+A query selects entities by their components. `selection` names the data the
+system gets per entity (`read` or `write`, or `optional`); `with` and
+`without` filter without reading; `added` and `changed` filters keep only
+what changed since this system's own previous run.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+// ---cut---
+const Wounded = Game.Query({
+  selection: {
+    position: Game.Query.read(Position),
+    health: Game.Query.read(Health)
+  },
+  with: [Enemy],
+  filters: [Game.Query.changed(Health)]
+})
+```
+
+Change detection is per reader: each system sees every change exactly once,
+however often it runs, wherever it sits in the schedule.
+
+## Commands
+
+Spawning, despawning, and adding or removing components change the shape of
+the world, so they do not happen in the middle of a system. A system queues
+them as **commands**, and they apply together at the next
+`Game.Schedule.applyDeferred()`. A system declares which components it may
+spawn, insert, remove, or despawn, and anything else does not compile.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+// ---cut---
+const SpawnWave = Game.System(
+  "Arena/SpawnWave",
+  { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) },
+  ({ commands }) => {
+    for (let index = 0; index < 5; index++) {
+      commands.spawn(Game.Command.spawn([Position, { x: index * 40, y: 0 }], [Health, 3], [Enemy, {}]))
+    }
+  }
+)
+
+const Cull = Game.System(
+  "Arena/Cull",
+  {
+    queries: { enemies: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] }) },
+    commands: Game.System.commands(Game.System.despawns(Enemy))
+  },
+  ({ queries, commands }) => {
+    for (const match of queries.enemies.each()) {
+      if (match.data.health.get() <= 0) commands.despawn(match.entity)
+    }
+  }
+)
+```
+
+`despawn` takes `match.entity`, a handle that proves the entity has `Enemy`.
+A raw number is not accepted.
+
+## Schedules and the tick
+
+A schedule is the ordered list of systems one tick runs, with the explicit
+points where queued commands land. `runtime.tick(schedule)` runs it and
+returns a `Result`: a system that fails rolls back its own writes, and the
+tick reports the failure instead of throwing.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, events: { Hit } }))
+const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, () => {})
+const Damage = Game.System("Arena/Damage", { queries: { enemies: Game.Query({ selection: { health: Game.Query.write(Health) }, with: [Enemy] }) }, events: { hits: Game.System.readEvent(Hit) } }, () => {})
+const Cull = Game.System("Arena/Cull", { queries: { enemies: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] }) }, commands: Game.System.commands(Game.System.despawns(Enemy)) }, () => {})
+// ---cut---
+const update = Game.Schedule(
+  SpawnWave,
+  Damage,
+  Cull,
+  Game.Schedule.applyDeferred()
+)
+
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (made.ok) {
+  const ticked = made.value.tick(update)
+  //    ^?
+}
+```
+
+The runtime is made with every service and resource the schedules need, and
+a schedule that needs something the runtime does not have does not compile
+(see [Type safety](/docs/type-safety/)).
+
+## State machines
+
+Game flow (menu, playing, paused) is a **state machine**: a closed list of
+states. A system asks for the next state, the change applies at
+`applyStateTransitions()`, and conditions run systems only in some states.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+// ---cut---
+const Flow = Game.StateMachine("Arena/Flow", ["Menu", "Playing", "Paused"])
+
+const Pause = Game.System(
+  "Arena/Pause",
+  { nextMachines: { flow: Game.System.nextState(Flow) } },
+  ({ nextMachines }) => nextMachines.flow.set("Paused")
+)
+
+const Simulate = Game.System(
+  "Arena/Simulate",
+  { when: [Game.Condition.inState(Flow, "Playing")] },
+  () => {}
+)
+```
+
+A state name that is not in the list, like `"Pausd"`, does not compile.
+
+## A fixed step, and the same result every time
+
+The simulation advances in fixed steps (`Clock.hz(60)`), whatever the frame
+rate: the [loop](/docs/browser/) runs as many steps as the time that passed,
+and the renderer draws between them. Time comes from the world's clock,
+randomness from a seeded `Random` resource, and trigonometry from `Ops`,
+which returns the same bits on every device.
+
+With all three, the same inputs give the same world, frame for frame. That is
+what makes replays, headless tests, and [debugging](/docs/devtools/)
+possible, and `@typeonce/oxlint-plugin-ritmo` keeps it true: it rejects
+`Math.random`, `Date.now`, `Math.sin`, and page APIs inside simulation code,
+and names what to use instead.

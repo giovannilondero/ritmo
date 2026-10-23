@@ -1,0 +1,72 @@
+@import "@shikijs/twoslash/style-rich.css";
+
+/* Twoslash in the brand's colours: popups on graphite, compiler errors in
+   Tick, since an error that names its fix is the point of these snippets. */
+:root {
+  --twoslash-border-color: #3a3f48;
+  --twoslash-underline-color: #8a8f98;
+  --twoslash-popup-bg: #262a31;
+  --twoslash-popup-color: #f3f1ec;
+  --twoslash-popup-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  --twoslash-docs-color: #b4b8bf;
+  --twoslash-docs-font: var(--sans);
+  --twoslash-code-font: var(--mono);
+  --twoslash-code-font-size: 0.82rem;
+  --twoslash-error-color: #ff5a36;
+  --twoslash-error-bg: rgba(255, 90, 54, 0.12);
+  --twoslash-highlighted-border: rgba(255, 90, 54, 0.4);
+  --twoslash-highlighted-bg: rgba(255, 90, 54, 0.1);
+  --twoslash-tag-color: #8a8f98;
+  --twoslash-tag-bg: rgba(138, 143, 152, 0.14);
+  --twoslash-cursor-color: #8a8f98;
+}
+
+pre.twoslash {
+  /* Popups and error lines must not be clipped vertically. */
+  overflow: visible;
+  overflow-x: auto;
+}
+
+.twoslash .twoslash-popup-container {
+  border-radius: 4px;
+  max-width: min(640px, 90vw);
+}
+
+.twoslash .twoslash-popup-code {
+  white-space: pre-wrap;
+  background: transparent !important;
+  border: 0;
+  padding: 8px 12px;
+}
+
+.twoslash .twoslash-popup-docs:empty {
+  display: none;
+}
+
+/* Wrapped to the visible width of the block, and kept in view when the code
+   scrolls sideways. */
+.twoslash .twoslash-error-line {
+  width: auto;
+  min-width: 0;
+  position: sticky;
+  left: 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  border-left-width: 3px;
+  margin: 0.3em 0 0.5em;
+  padding: 0.5em 0.8em;
+  border-radius: 0 4px 4px 0;
+}
+
+.twoslash .twoslash-error {
+  background: none;
+  text-decoration: underline wavy #ff5a36;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.twoslash .twoslash-query-presisted .twoslash-popup-container,
+.twoslash .twoslash-query-persisted .twoslash-popup-container {
+  background: #262a31;
+}

@@ -1,0 +1,32 @@
+---
+layout: ../layouts/Docs.astro
+title: Examples
+description: Games made with Ritmo, running in the page and in the wild.
+---
+
+import Game from "../components/Game.astro"
+
+## Top-down
+
+A small world to walk around: five parts to find, walls to slide along. The
+rules (movement, collision, what is in reach, picking up) are the simulation
+in [`integration/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/integration/top-down),
+the same schedules its headless tests run. The page adds the loop, the
+keyboard and gamepad, and a Pixi renderer.
+
+<Game id="top-down" />
+
+Read how the page puts it together in
+[Loop, input, rendering](/docs/browser/), and how its tests drive it without a
+browser in [Headless debugging](/docs/devtools/).
+
+## Games built with Ritmo
+
+**[Spirit Call](https://spirit-call.typeonce.dev)**: a top-down action game
+for the phone, with teams of elemental spirits, rendered in 3D with Three.js
+and shipped to Android and iOS.
+[Play it](https://spirit-call.typeonce.dev) or read
+[its source](https://github.com/SandroMaglione/spirit-call).
+
+**[Inkline Town](https://github.com/SandroMaglione/inkline-town)**: a town
+simulation in isometric line art, rendered with Three.js.

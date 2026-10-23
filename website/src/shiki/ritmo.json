@@ -1,0 +1,21 @@
+{
+  "name": "ritmo",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#16191E",
+    "editor.foreground": "#F3F1EC"
+  },
+  "tokenColors": [
+    { "scope": ["comment", "punctuation.definition.comment"], "settings": { "foreground": "#8A8F98", "fontStyle": "italic" } },
+    { "scope": ["keyword", "storage", "storage.type", "storage.modifier", "keyword.operator.new", "keyword.control"], "settings": { "foreground": "#FF5A36" } },
+    { "scope": ["keyword.operator", "punctuation"], "settings": { "foreground": "#A9AEB6" } },
+    { "scope": ["string", "string.template", "punctuation.definition.string"], "settings": { "foreground": "#F2B8A2" } },
+    { "scope": ["constant.numeric", "constant.language", "constant.character"], "settings": { "foreground": "#FFB199" } },
+    { "scope": ["entity.name.type", "entity.name.class", "support.type", "support.class", "entity.other.inherited-class"], "settings": { "foreground": "#D9D5CC", "fontStyle": "bold" } },
+    { "scope": ["entity.name.function", "support.function", "meta.function-call"], "settings": { "foreground": "#F3F1EC" } },
+    { "scope": ["variable.other.property", "meta.object-literal.key", "support.variable.property"], "settings": { "foreground": "#C7CBD1" } },
+    { "scope": ["variable", "variable.other.readwrite", "variable.parameter"], "settings": { "foreground": "#F3F1EC" } },
+    { "scope": ["variable.other.constant"], "settings": { "foreground": "#F3F1EC" } },
+    { "scope": ["markup.heading", "entity.name.section"], "settings": { "foreground": "#FF5A36", "fontStyle": "bold" } }
+  ]
+}

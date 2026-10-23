@@ -1,0 +1,4 @@
+site: dist
+exclude_selectors:
+  - ".twoslash-popup-container"
+  - ".twoslash-error-line"

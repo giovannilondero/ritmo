@@ -1,0 +1,31 @@
+{
+  "name": "@typeonce/ritmo-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && pagefind",
+    "preview": "astro preview",
+    "typecheck": "tsc --noEmit -p .",
+    "deploy:cloudflare": "wrangler deploy"
+  },
+  "dependencies": {
+    "@typeonce/ritmo": "workspace:*",
+    "@typeonce/ritmo-browser": "workspace:*",
+    "@typeonce/ritmo-integration-top-down": "workspace:*",
+    "@typeonce/ritmo-math": "workspace:*",
+    "@typeonce/ritmo-pixi": "workspace:*",
+    "@typeonce/ritmo-render": "workspace:*",
+    "pixi.js": "8.22.0"
+  },
+  "devDependencies": {
+    "@astrojs/mdx": "8.1.1",
+    "@shikijs/twoslash": "4.5.0",
+    "@typeonce/ritmo-devtools": "workspace:*",
+    "astro": "7.4.2",
+    "pagefind": "1.5.2",
+    "twoslash": "0.3.9",
+    "typescript": "6.0.3",
+    "wrangler": "4.152.0"
+  }
+}

@@ -6,3 +6,7 @@ coverage/
 *.tsbuildinfo
 .bench/
 .tstyche/
+
+# The website
+.astro/
+.wrangler/

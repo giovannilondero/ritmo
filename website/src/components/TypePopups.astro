@@ -1,0 +1,25 @@
+<script>
+  // Twoslash places a type popup under its token, inside the code block. A
+  // block that scrolls sideways clips it, so a popup being shown is placed
+  // against the viewport instead, kept on screen.
+  const place = (hover: Element) => {
+    const popup = hover.querySelector<HTMLElement>(":scope > .twoslash-popup-container")
+    if (popup === null || hover.closest(".twoslash-query-persisted, .twoslash-query-line") !== null) return
+    const token = hover.getBoundingClientRect()
+    popup.style.position = "fixed"
+    popup.style.transform = "none"
+    popup.style.top = `${token.bottom + 6}px`
+    popup.style.left = "0px"
+    const width = popup.getBoundingClientRect().width
+    popup.style.left = `${Math.max(8, Math.min(token.left, window.innerWidth - width - 8))}px`
+    const height = popup.getBoundingClientRect().height
+    if (token.bottom + 6 + height > window.innerHeight && token.top - 6 - height > 0) {
+      popup.style.top = `${token.top - 6 - height}px`
+    }
+  }
+
+  document.addEventListener("pointerover", (event) => {
+    const hover = event.target instanceof Element ? event.target.closest(".twoslash-hover") : null
+    if (hover !== null) place(hover)
+  })
+</script>

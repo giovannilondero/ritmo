@@ -1,0 +1,53 @@
+---
+import { brand } from "../brand.ts"
+import { repository } from "../nav.ts"
+---
+
+<footer class="footer">
+  <img src={brand.iconInverse.src} alt="" width="20" height="20" />
+  <span>Ritmo is MIT licensed.</span>
+  <a href={repository}>GitHub</a>
+  <a href="https://www.npmjs.com/package/@typeonce/ritmo">npm</a>
+  <a href="/brand/">Brand</a>
+</footer>
+
+<style>
+  .footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 20px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 24px 40px;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .footer span {
+    margin-right: auto;
+  }
+
+  .footer a {
+    color: var(--muted);
+  }
+
+  .footer a:hover {
+    color: var(--fg);
+  }
+
+  :global(:root[data-theme="light"]) .footer img {
+    filter: invert(1) hue-rotate(180deg);
+  }
+  @media (prefers-color-scheme: light) {
+    :global(:root:not([data-theme="dark"])) .footer img {
+      filter: invert(1) hue-rotate(180deg);
+    }
+  }
+  @media (max-width: 720px) {
+    .footer {
+      padding: 24px 16px 32px;
+    }
+  }
+</style>

@@ -1,0 +1,50 @@
+---
+layout: ../layouts/Docs.astro
+title: Brand
+description: The Ritmo logo, colours, and type, for talks, posts, and projects built with Ritmo.
+---
+
+import BrandAssets from "../components/BrandAssets.astro"
+import Palette from "../components/Palette.astro"
+
+**Ritmo** is rhythm as discipline, not mood: a beat that never drifts. Every
+tick lands on the grid, every system plays its part in a checked order, and
+changes land only on explicit beats.
+
+- **The icon** is the world as cells: three blocks an entity is built from,
+  and one smaller cell, the one that changes this tick. It reads as ECS and as
+  pixel art, and survives one colour at 16px.
+- **The wordmark** is drawn from fixed strokes (no font), so it is identical
+  everywhere. The dot of the `i` is the icon's small cell. The ruler
+  underneath says *measured*.
+
+## Logos
+
+`-inverse` files are for dark backgrounds. Every file, with the generators
+that draw them, is in
+[`brand/`](https://github.com/typeonce-dev/ritmo/tree/main/brand).
+
+<BrandAssets />
+
+## Colours
+
+<Palette />
+
+## Type
+
+A monospace face for headings and code (JetBrains Mono or IBM Plex Mono), and
+a sans for body text (Inter or IBM Plex Sans). This site uses JetBrains Mono
+and Inter.
+
+## Rules
+
+- **Accent marks the changing cell.** Tick is for the icon's small square and
+  the wordmark's dot. The round avatar is the only solid accent background.
+- **Clear space.** Keep one icon cell (a big square) of empty space around the
+  icon and the lockups.
+- **Minimum sizes.** The icon at 16px. The wordmark with the ruler at 120px
+  wide; below that, use the compact wordmark.
+- **Precision, not music.** No notes, waves, headphones, or soft gradients.
+  Grids, ticks, and blocks only.
+- **Words.** Say step, tick, order, exact, checked, declared, deterministic,
+  replay. Avoid flow, groove, vibe, harmony, and musical puns.
