@@ -30,6 +30,7 @@ const social = new URL(brand.appIcon.src, Astro.site)
     <meta name="theme-color" content="#0E1013" />
     <link rel="icon" type="image/svg+xml" href={brand.favicon.src} />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <link rel="describedby" type="text/plain" href="/llms.txt" />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={social} />
