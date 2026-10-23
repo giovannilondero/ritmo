@@ -1,5 +1,88 @@
 # @typeonce/ritmo-browser
 
+## 0.11.0
+
+### Minor Changes
+
+- 778301a: **Draining a service is declared, checked at compile time, and observed at run time.**
+
+  - **`System.Consumes<"snapshot">`** marks the methods of a service type that drain it. A system that declares the service with `Game.System.service` sees those methods as a compile error naming the fix (`snapshot() drains Game/Controls: declare it with Game.System.consumeService, or read the resource its capture writes`); `Game.System.consumeService` calls them. Its other methods stay available through `service` (a settings screen can still `rebind`).
+  - Every input source is marked: `Keyboard.Actions`, `Keyboard.Presses`, `Gamepad.Actions`, `Gamepad.Pads`, `Touch.Actions`, `Pointer.Actions`, `Controls.Device`, `Controls.Controls`, `Controls.Pool`, and `InputCapture.Source`. **Breaking:** a system that called `snapshot()` through `Game.System.service` no longer compiles; read the resource `InputCapture.system` writes instead (or, for a system that must drain the source itself, declare it with `Game.System.consumeService`).
+  - `Game.System.service` returns `ServiceRead<D, false>` and `consumeService` returns `ServiceRead<D, true>`.
+  - The `service-consumed-twice` lint also reports what a debug runtime saw: a consumed service whose consumers ran at more than one placement in the session, in unnamed schedules too (`Game/Drain (schedule#2, step 0, unnamed)`). Named schedules are reported once, by the static lint.
+
+- 866bcff: **`Controls` merges several input devices into one source, every device snapshot shares one shape, and capturing input is checked at compile time and by `describe()`.**
+
+  - **`Controls.actions({ buttons: [...] })`** declares the game's actions once. Its `merge({ keyboard, gamepad, touch })` builds one input source: an action is `held` while any device holds it, `pressed` when any device pressed it, and `released` when a device released it and none holds it now (the same rules as one device with all the bindings). Each device binds every declared action; a device that cannot is passed as `lacking(device, ["pause"])`, which must name exactly the actions it lacks (autocomplete offers them). A device binding an undeclared action, a device missing an action, and an action no device binds do not compile.
+  - The merged snapshot has `actions`, `vectors`, `available` (whether the last used device binds each action, so a game can offer a lacking action another way), `devices` (each device's own snapshot, keyed by the merge names: sticks, triggers, touch aim), and `lastUsed` (`null` until a device is used). The merged source exposes `rebind.<device>` for devices that can rebind, and `dispose()`. `idle({ keyboard: Keyboard.idle(...), ... })` initializes the input resource. Reading an action on a device that lacks it does not compile.
+  - **Breaking: `Keyboard.Snapshot` is `{ actions, vectors, used }`.** Read `input.actions.jump.pressed` instead of `input.jump.pressed`. Hand-written timelines and bindings are unchanged.
+  - **Breaking: `Touch.Snapshot` renames `buttons` to `actions`** (each still a `ButtonState` with `aim` and `cancelled`) **and replaces `touched` with `used`.** Read `input.actions.fire` instead of `input.buttons.fire`. `Layout.buttons` and `View.buttons` are unchanged.
+  - Every device snapshot (`Keyboard`, `Gamepad`, `Pointer`, `Touch`) has `used`: something pressed in this window or held, or a stick or swipe in use. Releases do not count, so a blur or a disconnect does not change `lastUsed`.
+  - **`Game.System.consumeService(Service)`** declares a service a system drains on each run (an input source's `snapshot()`, a message queue); it is the only way to call the draining methods (see `System.Consumes`). `describe()` warns with the new `service-consumed-twice` lint when a consumed service has more than one placement, for example the same input captured in a fixed and a render schedule, where each capture sees only the presses since the other ran. `SystemDescription.consumes` lists them.
+  - **Breaking: `InputCapture.system` keeps its declared access**: it consumes the source and writes the resource, so a `Game.System.thisTick` reader of the resource placed before the capture no longer compiles (the error names both systems and the fix: place the reader after the capture), and capturing one source twice is reported by `describe()`. The exported `InputCapture.CaptureSystem` type is removed: let the system's type be inferred.
+  - **`Debug.serviceLints`** lets a service value add findings to `describe()` lints, reported as `service-lint` with the service as subject; `Controls` uses it to list every device that lacks an action.
+
+- deaed5a: **`Gamepad` reads controllers as named actions, and keyboard and gamepad bindings can change at runtime.**
+
+  - **`Gamepad.actions(window, bindings, options)`** binds actions to buttons named by the browser's standard mapping (`"south"`, `"west"`, `"rightTrigger"`, `"dpadUp"`, `"start"`...). Each snapshot has `actions` (as `Keyboard`'s), every `buttons` state by name whatever the bindings (for menu navigation and for a settings screen waiting for the button to bind), the `left` and `right` sticks with a radial dead zone (`y` grows down, as `Touch`'s stick), how far each trigger is pulled, and the followed pad's `id`. It follows the pad used last and releases everything held when that pad disconnects. It reads the pads on every animation frame (and on every snapshot) until `dispose()`, so taps shorter than an update count with nothing to call; the lifecycle is `snapshot` / `rebind` / `dispose`, as for `Keyboard`. `Gamepad.idle`, `scripted`, `recording`, `parseTimeline`, and `isButton` match the other devices; timelines name buttons, so a replay follows the bindings, and an entry's `connected` records a disconnect or reconnect, so a replay drops and regains the pad on the same frames.
+  - **`rebind(bindings)`** on `Keyboard.actions(...)` and `Gamepad.actions(...)` binds the same actions to new keys or buttons, for players who remap their controls. An action held only through a key it lost reports `released`; a key held across the rebind holds a newly bound action only after a fresh press, so an action never turns held without a press. It takes exactly the actions the source was made with: an extra action fails to compile with `<name> is not an action of these bindings`, even from an object not written inline. Scripted keyboard actions ignore it (their timeline names actions).
+  - **`Keyboard.presses(window)`** reports every key that went down since the previous snapshot, bound or not, as `{ key, code }`, so a settings screen can wait for the key to bind (the gamepad equivalent is the snapshot's `buttons`).
+  - **`Keyboard.parseRebinding(bindings, data)`** and **`Gamepad.parseRebinding(bindings, data)`** validate saved bindings (for example from `localStorage`) as a `Result` ready for `rebind`, with the offending `path` on failure.
+  - **Timelines replay a release and press inside one update.** An action (keyboard) or button (gamepad) in both `press` and `release` of one entry is now a release then a new press when it was held, and still a tap when it was up, so `recording(...)` captures a quick double tap and the replay matches.
+  - **Breaking: `InputCapture.system` requires the resource's value type to be exactly the source's snapshot type.** A resource that only matched both ways (for example one with an extra optional field) now fails with a message naming the fix: declare it as `Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Source>>()`.
+  - **Breaking for hand-written sources:** `Keyboard.Actions` now requires `rebind`. An object implementing it by hand adds `rebind() {}`.
+
+- 57430bb: **Local multiplayer: players join slots by pressing a button on any pooled device.**
+
+  - **`Controls.players(Actions, { slots, join, leave })`** declares the players: the slots (the most at once, in join order), the button action that joins (or `"any"` for any button), and the one that leaves while joining is open. A misspelled or vector action, no slot, a slot named `joining`, and a button action named `any` (it would read as `join: "any"`) do not compile.
+  - **`pool(devices)`** on the declared players builds one input source from devices nobody holds yet. Pressing join on one gives it the first free slot; that snapshot reports `event: "joined"` with the player's input idle, so the press does nothing else (joining with the jump button does not jump). One device holds one slot; slots keep their names when another empties, and the next player fills the gap. Each pooled device binds every action (or is passed through `lacking`), and the join action always.
+  - The snapshot has every slot by name (`input.p2`): `joined`, `device` (what it joined with), `connected`, `event` (`"joined"`, `"left"`, or `null`), and the player's `actions`, `vectors`, and `available`, idle while the slot is empty. A device's own snapshot is behind a check of `device` (`if (input.p2.device === "pads") input.p2.devices.pads.left`). The declared players' `idle(...)` initializes the resource.
+  - Systems call `setJoining(open)` (closed at the start: open it on a join screen, or once for drop-in play), `seat(slot, device)` (a player in from the start, or picked on a menu: a pool name, or `{ pads: index }` for one pad; returns `{ ok: false, reason }` when the slot or device is taken), `leave(slot)` (a pause menu), and `rebind.<device>` through a plain service. Leaving by button works only while joining is open; otherwise `leave` is an ordinary action.
+  - **`Gamepad.pads(host, bindings, max)`** reads every pad on its own, for a pool: each pad joins as its own player. An unplugged pad keeps its slot (`connected: false`) and returns to it when it comes back; two pads of one model share an id, so they are told apart by their place in the pad list. `Gamepad.scriptedPads(bindings, timelines)` drives one timeline per pad in tests.
+  - `describe()` lints two keyboard devices that bind the same key, a device taken by two sources (a merge and a pool), and joining never opened.
+
+- 97e39c5: **`Pointer` binds actions like `Keyboard` and `Gamepad` and merges into `Controls`, and `Controls.group` makes devices used together count as one.**
+
+  - **Breaking: `Pointer.track(target, blurHost, options?)` is `Pointer.actions(target, blurHost, bindings, options?)`.** Bindings map actions to buttons (`{ fire: ["primary"] }`); a misspelled button or an empty list does not compile. Pass `{}` for position and raw buttons only. The `Pointer.Pointer` type is `Pointer.Actions<B>` and `TrackOptions` is `ActionsOptions`.
+  - **Breaking: the snapshot is `{ actions, vectors, buttons, position, movement, wheel, over, locked, used }`.** Read `input.buttons.primary` (or a bound action) instead of `input.primary`. `used` is a press, a hold, or movement over the element; releases do not count. `movement`, `wheel`, and `locked` come with the wheel and the pointer lock.
+  - **The `back` and `forward` side buttons** (`PointerEvent.button` 3 and 4) are reported and bindable. `Pointer.buttonNames` and `Pointer.isButton` list and check them.
+  - `rebind(...)` swaps the buttons of the same actions; `Pointer.parseRebinding(bindings, data)` validates saved ones.
+  - **Breaking: `Pointer.idle(bindings, position?)` and `Pointer.scripted(bindings, timeline, start?)`** take the bindings first. Timelines still name buttons, so a replay follows the bindings as live play does.
+  - **`actions.group({ keyboard, mouse })`** groups devices into one merge entry: it binds what its devices bind between them, and `lastUsed` and `available` follow it as a whole, so walking with the keyboard while aiming with the mouse stays on one device. Grouped devices keep their own names in `devices`, `rebind`, and `idle`; `lastUsed` names the group. Pass the group to `lacking(...)` for actions none of its devices binds. A group of fewer than two devices, a `lacking` device or a group inside a group, a device binding an undeclared action, and a name used twice across devices and groups do not compile.
+
+- bb371d4: **`Pointer` reads the wheel and the pointer lock, and `Touch.track` is `Touch.actions`, so every device is built the same way.**
+
+  - **The wheel**, read two ways for two jobs. `wheel` is how far it scrolled since the previous snapshot, in CSS pixels (lines and pages are converted), for zoom. The `wheelUp`, `wheelDown`, `wheelLeft`, and `wheelRight` buttons pulse (pressed and released in one window) once per `Pointer.wheelStep` (100 px, one notch), so a stepping action binds them (`nextWeapon: ["wheelDown"]`) and merges with a gamepad bumper in `Controls`. The page does not scroll over the element unless `preventScroll: false`. `PointerTarget` gains the `wheel` listener.
+  - **Mouse look:** `movement` is the raw motion since the previous snapshot (`movementX`/`movementY`), locked or not. With `lock: document`, a click on the element locks the pointer (the browser grants a lock only inside a click, so the module asks in its own listener); that click is not reported as a press. `locked` turns `false` when the player leaves with Escape, which releases what was held. `used` also counts motion and scrolling.
+  - Timelines record and replay `wheel`, `movement`, and `locked`. Their `press`/`release` take `Pointer.PhysicalButton`s; wheel pulses come from `wheel`.
+  - **Breaking: `Touch.track(target, blurHost, layout, options?)` is `Touch.actions(...)`, the `Touch.Touch<B>` type is `Touch.Actions<B>`, and `Touch.TrackOptions` is `Touch.ActionsOptions`,** matching `Keyboard.actions`, `Gamepad.actions`, and `Pointer.actions`. Arguments and behavior are unchanged.
+
+- b3b16fd: **Movement is one vector action: declared once, bound per device, merged by `Controls`, and checked like every other action.**
+
+  - **`Controls.actions({ buttons: [...], vectors: [...] })`** declares both kinds. A button action is pressed and held (jump); a vector action is a direction with length at most 1, `y` growing down (move). A name declared as both kinds does not compile. The declared names are listed in the set's `buttons` and `vectors`.
+  - **`Keyboard.vector({ up, down, left, right })`** binds a vector to keys: opposite keys cancel and a diagonal has length 1. **`Gamepad.vector({ stick, up, down, left, right })`** binds it to a stick, the d-pad, or both (the longer wins). **A `Touch` layout's `stick.vector`** names the vector the stick drives. Every device snapshot has `vectors`; read `input.vectors.move` (`Pointer`'s is empty: it reports `position` and `movement`).
+  - `Controls` merges a vector as the longest any device reports, so devices never add up past 1 or cancel each other. Vectors work with `lacking`, `available`, `idle`, and `lastUsed` (a vector in use counts as use). Binding a vector action as a button (or the reverse), missing a vector, and reading `actions.move` or `vectors.jump` do not compile, each with an error naming the fix.
+  - `rebind` and `parseRebinding` take vector bindings (`Gamepad` can swap sticks).
+  - Keyboard timelines name a vector by direction, `press: ["move.right"]`; `parseTimeline` validates it. Button actions are named as before.
+  - **Breaking: `Touch.idle` and `Touch.scripted` take the names as an object**, `{ buttons, vector? }` (`vector` as the layout's `stick.vector`):
+
+    ```diff
+    -Touch.idle(["fire"])
+    -Touch.scripted(["fire"], timeline)
+    +Touch.idle({ buttons: ["fire"] })
+    +Touch.scripted({ buttons: ["fire"] }, timeline)
+    ```
+
+  - Directions that step one tile at a time (a grid game reading taps) stay button actions.
+
+### Patch Changes
+
+- e46f284: **Documentation pass over every public module.** Every export has JSDoc saying what it is for and which neighbouring API to use instead; examples that no longer compiled (`Session.make` without `hostClock`, `Replay.session`, the `Pointer` rebind) are fixed; `Debug.Lint` lists every lint code the runtime emits. The `stale-target` lint's fix now names `queries.x.getHandle(handle)`.
+- Updated dependencies [778301a]
+- Updated dependencies [866bcff]
+- Updated dependencies [e46f284]
+  - @typeonce/ritmo@0.11.0
+
 ## 0.10.0
 
 ### Patch Changes
