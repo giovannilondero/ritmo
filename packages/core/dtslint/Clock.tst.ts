@@ -7,7 +7,7 @@ const Time = Clock.resource("ClockTypes/Time", step)
 const Slow = Clock.resource("ClockTypes/Slow", Clock.hz(10))
 const Paused = Descriptor.Resource<boolean>()("ClockTypes/Paused")
 const Game = Schema.bind(Schema.fragment({ resources: { Time, Slow, Paused } }))
-const Flow = Game.StateMachine("ClockTypes/Flow", ["Playing", "Menu"])
+const Flow = Game.StateMachine("ClockTypes/Flow", { Playing: {}, Menu: {} })
 const inMenu = Game.Condition.inState(Flow, "Menu")
 
 describe("Clock.hz", () => {
@@ -102,7 +102,7 @@ describe("Clock.system", () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
     resources: { Time: Clock.start(step), Slow: Clock.start(Clock.hz(10)), Paused: false },
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" }))
   })
   if (!made.ok) throw new Error("unreachable")
   const runtime = made.value

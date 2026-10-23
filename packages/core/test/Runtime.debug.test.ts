@@ -18,12 +18,12 @@ const Game = Schema.bind(Schema.fragment({
   events: { Ping, Lonely },
   relations: { ChildOf }
 }))
-const Flow = Game.StateMachine("Debug/Flow", ["Menu", "Playing"])
+const Flow = Game.StateMachine("Debug/Flow", { Menu: {}, Playing: {} })
 
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(Game.Runtime.service(Clock, { now: () => 0 })),
   resources: { Score: 0 },
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu")),
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" })),
   debug: { hostClock }
 }).value
 
@@ -47,7 +47,7 @@ const Move = Game.System("Debug/Move", {
   }
   resources.score.update((score) => score + 10)
   events.ping.emit(7)
-  nextMachines.flow.set("Playing")
+  nextMachines.flow.set({ _tag: "Playing" })
 })
 
 const collect = (runtime: ReturnType<typeof makeRuntime>) => {
@@ -77,7 +77,7 @@ describe("Runtime debug handle", () => {
       { id: 2, components: { "Debug/Tagged": {} }, relations: { "Debug/ChildOf": 1 } }
     ])
     expect(dump.resources).toEqual({ "Debug/Score": 0 })
-    expect(dump.machines).toEqual({ "Debug/Flow": { current: "Menu" } })
+    expect(dump.machines).toEqual({ "Debug/Flow": { current: { _tag: "Menu" } } })
     expect(dump.pendingCommands).toEqual([
       { tag: "spawn", system: "Debug/Spawn" },
       { tag: "spawn", system: "Debug/Spawn" }
@@ -98,7 +98,7 @@ describe("Runtime debug handle", () => {
       { name: "Debug/Tagged", storage: "plain", immutable: false, requires: [] },
       { name: "Debug/Sprite", storage: "transient", immutable: false, requires: [] }
     ])
-    expect(description.machines).toEqual([{ name: "Debug/Flow", states: ["Menu", "Playing"], current: "Menu", provided: true, within: undefined }])
+    expect(description.machines).toEqual([{ name: "Debug/Flow", states: ["Menu", "Playing"], current: { _tag: "Menu" }, provided: true, within: undefined }])
     expect(description.scopes).toEqual([])
     expect(description.services).toEqual([{ name: "Debug/Clock", provided: true }])
     expect(description.schedules).toEqual([{
@@ -150,7 +150,7 @@ describe("Runtime debug handle", () => {
     const runtime = makeRuntime()
     const queue = (name: string, value: "Menu" | "Playing") =>
       Game.System(`Debug/Queue${name}`, { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-        nextMachines.flow.set(value)
+        nextMachines.flow.set({ _tag: value })
       })
     const Lose = queue("Lose", "Menu")
     const Win = queue("Win", "Playing")
@@ -269,7 +269,7 @@ describe("Runtime debug handle", () => {
       writes: [{ entity: 1, component: "Debug/Position", before: { x: 1 }, after: { x: 2 } }],
       resources: [{ resource: "Debug/Score", before: 0, after: 10 }],
       events: [{ event: "Debug/Ping", values: [7] }],
-      nextStates: [{ machine: "Debug/Flow", value: "Playing" }],
+      nextStates: [{ machine: "Debug/Flow", value: { _tag: "Playing" } }],
       commands: [],
       missed: []
     })
@@ -312,10 +312,10 @@ describe("Runtime debug handle", () => {
       when: [Game.Condition.inState(Flow, "Playing")]
     }, () => {})
     const Start = Game.System("Debug/Start", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-      nextMachines.flow.set("Playing")
+      nextMachines.flow.set({ _tag: "Playing" })
     })
     const Stop = Game.System("Debug/Stop", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-      nextMachines.flow.set("Menu")
+      nextMachines.flow.set({ _tag: "Menu" })
     })
     const OnPlay = Game.Schedule.onEnter(Flow, "Playing", [Emit])
     const transitions = Game.Schedule.transitions(OnPlay)

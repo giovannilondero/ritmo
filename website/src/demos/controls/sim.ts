@@ -96,7 +96,7 @@ export const Game = Schema.bind(
   Schema.defineRoot("Controls")
 )
 
-export const Mode = Game.StateMachine("Controls/Mode", ["Playing", "Paused"])
+export const Mode = Game.StateMachine("Controls/Mode", { Playing: {}, Paused: {} })
 
 // ── Rules ───────────────────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ export const initialResources = () => ({
   })
 } as const)
 
-export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, "Playing"))
+export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Playing" }))
 
 const world = (controls: ControlsSource) => ({
   services: Game.Runtime.services(Game.Runtime.service(ControlsInput, controls)),

@@ -237,12 +237,12 @@ const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const step = Clock.hz(59.94)
 
 // A state is one of the listed names
-const Flow = Game.StateMachine("Arena/Flow", ["Menu", "Playing", "Paused"])
+const Flow = Game.StateMachine("Arena/Flow", { Menu: {}, Playing: {}, Paused: {} })
 
 Game.System(
   "Arena/Pause",
   { nextMachines: { flow: Game.System.nextState(Flow) } },
-  ({ nextMachines }) => nextMachines.flow.set("Pausd")
+  ({ nextMachines }) => nextMachines.flow.set({ _tag: "Pausd" })
 )
 ```
 

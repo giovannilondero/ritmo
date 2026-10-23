@@ -5,7 +5,7 @@ const step = Clock.hz(60)
 const Time = Clock.resource("ClockRun/Time", step)
 const Slow = Clock.resource("ClockRun/Slow", Clock.hz(10))
 const Game = Schema.bind(Schema.fragment({ resources: { Time, Slow } }))
-const Flow = Game.StateMachine("ClockRun/Flow", ["Playing", "Paused"])
+const Flow = Game.StateMachine("ClockRun/Flow", { Playing: {}, Paused: {} })
 const paused = Game.Condition.inState(Flow, "Paused")
 
 const AdvanceTime = Clock.system(Game, { name: "ClockRun/AdvanceTime", resource: Time, hold: [paused] })
@@ -17,17 +17,17 @@ const Watch = Game.System("ClockRun/Watch", { resources: { time: Game.System.thi
   seen.push({ step: time.step, dt: time.dt, every: Clock.every(time, Clock.duration(step, 0.05)) })
 })
 const Pause = Game.System("ClockRun/Pause", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const Resume = Game.System("ClockRun/Resume", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-  nextMachines.flow.set("Playing")
+  nextMachines.flow.set({ _tag: "Playing" })
 })
 
 const make = () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
     resources: { Time: Clock.start(step), Slow: Clock.start(Clock.hz(10)) },
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" }))
   })
   if (!made.ok) throw new Error("clock values are valid")
   return made.value

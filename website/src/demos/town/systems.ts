@@ -434,7 +434,7 @@ export const StartTalk = Game.System(
           page: 0,
           typed: 0
         })
-        nextMachines.mode.set("Talking")
+        nextMachines.mode.set({ _tag: "Talking" })
         other.data.facing.set(opposite[facing])
         return
       }
@@ -444,7 +444,7 @@ export const StartTalk = Game.System(
 
       const { speaker, pages } = found.data.talkable.get()
       resources.dialogue.set({ speaker, pages, page: 0, typed: 0 })
-      nextMachines.mode.set("Talking")
+      nextMachines.mode.set({ _tag: "Talking" })
       const listener = queries.listeners.get(found.entity.id)
       if (listener.ok) listener.value.data.facing.set(opposite[facing])
       return
@@ -500,6 +500,6 @@ export const AdvanceDialogue = Game.System(
       return
     }
     resources.dialogue.set(null)
-    nextMachines.mode.set("Exploring")
+    nextMachines.mode.set({ _tag: "Exploring" })
   }
 )

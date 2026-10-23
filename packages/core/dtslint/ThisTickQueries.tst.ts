@@ -10,7 +10,7 @@ const Stunned = Descriptor.Component<{ readonly seconds: number }>()("Tick/Stunn
 const Frozen = Descriptor.Component<{}>()("Tick/Frozen")
 const Hit = Descriptor.Event<{ readonly amount: number }>()("Tick/Hit")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy, Health, Stunned, Frozen }, events: { Hit } }))
-const Flow = Game.StateMachine("Tick/Flow", ["Menu", "Playing"])
+const Flow = Game.StateMachine("Tick/Flow", { Menu: {}, Playing: {} })
 
 const Newest = Game.Query({ selection: { position: Game.Query.read(Position), health: Game.Query.read(Health) }, with: [Enemy] })
 
@@ -52,7 +52,7 @@ const Feel = Game.System("Tick/Feel", { events: { hit: Game.System.thisTick(Game
 
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
 }).value
 const deferred = Game.Schedule.applyDeferred()
 const playing = [Game.Condition.inState(Flow, "Playing")] as const

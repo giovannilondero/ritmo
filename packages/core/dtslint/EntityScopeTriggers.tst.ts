@@ -5,8 +5,8 @@ import { describe, expect, it } from "tstyche"
 const Name = Descriptor.Component<string>()("ScopeTriggersTypes/Name")
 const Game = Schema.bind(Schema.fragment({ components: { Name } }))
 const OtherGame = Schema.bind(Schema.fragment({ resources: {} }))
-const Flow = Game.StateMachine("ScopeTriggersTypes/Flow", ["Menu", "Playing"] as const)
-const OtherFlow = OtherGame.StateMachine("ScopeTriggersTypes/OtherFlow", ["Idle"] as const)
+const Flow = Game.StateMachine("ScopeTriggersTypes/Flow", { Menu: {}, Playing: {} })
+const OtherFlow = OtherGame.StateMachine("ScopeTriggersTypes/OtherFlow", { Idle: {} })
 
 describe("Game.EntityScope triggers", () => {
   it("takes a machine of this game and one of its states", () => {

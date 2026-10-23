@@ -16,13 +16,13 @@ const Game = Schema.bind(Schema.fragment({
   resources: { Score, Frame },
   relations: { ChildOf }
 }), Root)
-const Flow = Game.StateMachine("Snapshot/Flow", ["Menu", "Playing"])
+const Flow = Game.StateMachine("Snapshot/Flow", { Menu: {}, Playing: {} })
 
 const makeRuntime = (score: number, frame = 0) => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
     resources: { Score: score, Frame: frame },
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
   })
   if (!made.ok) throw new Error("invalid fixture")
   return made.value
@@ -56,7 +56,7 @@ const populate = (runtime: ReturnType<typeof makeRuntime>) => {
     commands.spawn(Game.Command.relate(Game.Command.spawn([Name, "second"]), ChildOf, parent))
     commands.spawn(Game.Command.spawn([Target, { handle: Game.Entity.handle(first, Name) }]))
     resources.score.set(42)
-    nextMachines.flow.set("Playing")
+    nextMachines.flow.set({ _tag: "Playing" })
   })
   runtime.tick(Game.Schedule(Setup, Game.Schedule.applyStateTransitions()))
 }
@@ -140,7 +140,8 @@ describe("Runtime snapshots", () => {
     const cases: ReadonlyArray<readonly [unknown, Snapshot.RestoreError["_tag"]]> = [
       [null, "InvalidSnapshot"],
       [{ ...good, version: 1 }, "UnsupportedVersion"],
-      [{ ...good, version: 3 }, "UnsupportedVersion"],
+      [{ ...good, version: 2 }, "UnsupportedVersion"],
+      [{ ...good, version: 4 }, "UnsupportedVersion"],
       [{ ...good, scopes: { "Snapshot/Level": [0] } }, "InvalidSnapshot"],
       [{ ...good, entities: [{ id: firstId, components: { Missing: 1 } }] }, "UnknownComponent"],
       [{ ...good, entities: [{ id: firstId, components: { "Snapshot/Position": { x: Number.NaN, y: 0 } } }] }, "InvalidComponent"],

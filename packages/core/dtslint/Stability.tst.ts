@@ -165,11 +165,11 @@ describe("stability types", () => {
   })
 
   it("carries failures through state-transition bundles", () => {
-    const Mode = Game.StateMachine("StabilityTypes/Mode", ["Menu", "Playing"] as const)
+    const Mode = Game.StateMachine("StabilityTypes/Mode", { Menu: {}, Playing: {} })
     const start = Game.System(
       "StabilityTypes/Start",
       { nextMachines: { mode: Game.System.nextState(Mode) } },
-      ({ nextMachines }) => { nextMachines.mode.set("Playing") }
+      ({ nextMachines }) => { nextMachines.mode.set({ _tag: "Playing" }) }
     )
     const load = Game.System(
       "StabilityTypes/LoadLevel",
@@ -186,7 +186,7 @@ describe("stability types", () => {
     const transitionRuntime = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Value: 0 },
-      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Menu"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Menu" }))
     }).value
 
     expect(transitionRuntime.tick(transitionSchedule)).type.toBe<

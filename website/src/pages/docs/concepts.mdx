@@ -171,13 +171,13 @@ const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
 // A closed list of states
-const Flow = Game.StateMachine("Arena/Flow", ["Menu", "Playing", "Paused"])
+const Flow = Game.StateMachine("Arena/Flow", { Menu: {}, Playing: {}, Paused: {} })
 
 // Asks for the next state...
 const Pause = Game.System(
   "Arena/Pause",
   { nextMachines: { flow: Game.System.nextState(Flow) } },
-  ({ nextMachines }) => nextMachines.flow.set("Paused") // [!code highlight]
+  ({ nextMachines }) => nextMachines.flow.set({ _tag: "Paused" }) // [!code highlight]
 )
 
 // ...and this one runs only while playing

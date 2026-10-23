@@ -5,8 +5,8 @@ const Name = Descriptor.ConstructedComponent(Decode.string)("ExitPhase/Name")
 const Saved = Descriptor.Resource<number>()("ExitPhase/Saved")
 const Left = Descriptor.Event<string>()("ExitPhase/Left")
 const Game = Schema.bind(Schema.fragment({ components: { Name }, resources: { Saved }, events: { Left } }))
-const Flow = Game.StateMachine("ExitPhase/Flow", ["Playing", "Menu"] as const)
-const Music = Game.StateMachine("ExitPhase/Music", ["Loud", "Quiet"] as const)
+const Flow = Game.StateMachine("ExitPhase/Flow", { Playing: {}, Menu: {} })
+const Music = Game.StateMachine("ExitPhase/Music", { Loud: {}, Quiet: {} })
 
 const State = Game.Inspector("ExitPhase/State", {
   queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) },
@@ -22,7 +22,7 @@ const State = Game.Inspector("ExitPhase/State", {
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Saved: 0 },
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"), Game.Runtime.machine(Music, "Loud"))
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" }), Game.Runtime.machine(Music, { _tag: "Loud" }))
 }).value
 
 describe("the exit phase of a transition", () => {
@@ -37,7 +37,7 @@ describe("the exit phase of a transition", () => {
     }, ({ resources, events, nextMachines, commands }) => {
       resources.saved.update((saved) => saved + 1)
       events.left.emit("score saved")
-      nextMachines.music.set("Quiet")
+      nextMachines.music.set({ _tag: "Quiet" })
       commands.spawn(Game.Command.spawn([Name, "ghost"]))
     })
     const ReadLeft = Game.System("ExitPhase/ReadLeft", {
@@ -57,24 +57,24 @@ describe("the exit phase of a transition", () => {
       Game.Schedule.onTransition(Flow, ["Playing", "Menu"], [CloseSockets])
     )
     const ToMenu = Game.System("ExitPhase/ToMenu", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-      nextMachines.flow.set("Menu")
+      nextMachines.flow.set({ _tag: "Menu" })
     })
     const runtime = makeRuntime()
 
     const failed = runtime.tick(Game.Schedule(ToMenu, Game.Schedule.applyStateTransitions(transitions), Game.Schedule.applyDeferred()))
     expect(failed).toEqual({ ok: false, error: { kind: "SystemFailure", system: "ExitPhase/CloseSockets", error: "socket busy" } })
-    expect(runtime.inspect(State)).toEqual({ flow: "Playing", music: "Loud", saved: 0, names: 0 })
+    expect(runtime.inspect(State)).toEqual({ flow: { _tag: "Playing" }, music: { _tag: "Loud" }, saved: 0, names: 0 })
     expect(seen).toEqual([["score saved"]])
 
     // The retry: the queued transition runs the phase once more, from the same state.
     const retried = runtime.tick(Game.Schedule(Game.Schedule.applyStateTransitions(transitions), Game.Schedule.applyDeferred()))
     expect(retried.ok).toBe(true)
-    expect(runtime.inspect(State)).toEqual({ flow: "Menu", music: "Loud", saved: 1, names: 1 })
+    expect(runtime.inspect(State)).toEqual({ flow: { _tag: "Menu" }, music: { _tag: "Loud" }, saved: 1, names: 1 })
     // The rolled-back event was retracted: the reader sees the new one, once.
     expect(seen).toEqual([["score saved"], ["score saved"]])
     // The next state queued in the phase was kept by the successful attempt only.
     runtime.tick(Game.Schedule(Game.Schedule.applyStateTransitions(transitions)))
-    expect(runtime.inspect(State)).toEqual({ flow: "Menu", music: "Quiet", saved: 1, names: 1 })
+    expect(runtime.inspect(State)).toEqual({ flow: { _tag: "Menu" }, music: { _tag: "Quiet" }, saved: 1, names: 1 })
   })
 
   it("cannot contain applyDeferred()", () => {

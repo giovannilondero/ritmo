@@ -21,6 +21,6 @@ export const initialResources = (frame: FrameContextValue) => ({
 
 export const initialMachines = () =>
   Game.Runtime.machines(
-    Game.Runtime.machine(Facing, "Down"),
-    Game.Runtime.machine(Locomotion, "Idle")
+    Game.Runtime.machine(Facing, { _tag: "Down" }),
+    Game.Runtime.machine(Locomotion, { _tag: "Idle" })
   )

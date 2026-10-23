@@ -182,4 +182,4 @@ export const Game = Schema.bind(
  * while `Exploring`; while `Talking`, only the dialogue box listens, so the
  * world holds still.
  */
-export const Mode = Game.StateMachine("Town/Mode", ["Exploring", "Talking"])
+export const Mode = Game.StateMachine("Town/Mode", { Exploring: {}, Talking: {} })

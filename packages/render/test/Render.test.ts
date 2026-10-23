@@ -241,7 +241,7 @@ describe("@typeonce/ritmo-render", () => {
   })
 
   it("creates, updates, and destroys nothing while its run conditions fail, and catches up after", () => {
-    const Mode = Game.StateMachine("RenderTest/Mode", ["Visible", "Hidden"] as const)
+    const Mode = Game.StateMachine("RenderTest/Mode", { Visible: {}, Hidden: {} })
     const layer = new FakeLayer()
     const render = RenderSync.system(Game, {
       name: "RenderTest/Gated",
@@ -258,11 +258,11 @@ describe("@typeonce/ritmo-render", () => {
       commands.spawn(Game.Command.spawn([Position, { x: 4, y: 0 }], [Sprite, { label: "late" }]))
     })
     const Show = Game.System("RenderTest/Show", { nextMachines: { mode: Game.System.nextState(Mode) } }, ({ nextMachines }) => {
-      nextMachines.mode.set("Visible")
+      nextMachines.mode.set({ _tag: "Visible" })
     })
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, inLayer(layer))),
-      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Hidden"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Hidden" }))
     }).value
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), render))
     expect(layer.children).toEqual([])

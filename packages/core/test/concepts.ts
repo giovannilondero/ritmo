@@ -32,7 +32,7 @@ export const Game = Schema.bind(Schema.fragment({
 }), Root)
 
 // 3. State machines model modes whose transitions matter.
-const Flow = Game.StateMachine("Concepts/Flow", ["Playing", "Won"])
+const Flow = Game.StateMachine("Concepts/Flow", { Playing: {}, Won: {} })
 
 // 4. Systems declare everything they touch; the callback sees nothing else.
 const Moving = Game.Query({
@@ -94,7 +94,7 @@ const ApplyHits = Game.System("Concepts/ApplyHits", {
   }
   resources.score.update((score) => score + total)
   if (resources.score.get() >= 3) {
-    nextMachines.flow.set("Won")
+    nextMachines.flow.set({ _tag: "Won" })
   }
 })
 
@@ -104,7 +104,7 @@ const Report = Game.System("Concepts/Report", {
   machines: { flow: Game.System.machine(Flow) },
   services: { log: Game.System.service(Log) }
 }, ({ queries, machines, services }) => {
-  services.log.write(`${machines.flow.get()}: ${queries.moved.each().length} moved`)
+  services.log.write(`${machines.flow.get()._tag}: ${queries.moved.each().length} moved`)
 })
 
 // 9. Schedules order systems and make every visibility boundary explicit.
@@ -126,13 +126,13 @@ const InspectPosition = Game.Inspector("Concepts/InspectPosition", {
   machines: { flow: Game.System.machine(Flow) }
 }, ({ queries, machines }) => ({
   position: queries.moving.each().map(({ data }) => data.position.get()),
-  flow: machines.flow.get()
+  flow: machines.flow.get()._tag
 }))
 
 export const runLookups = () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" }))
   }).value
   made.tick(setup)
   let found = false
@@ -155,7 +155,7 @@ export const runConcepts = (frames: number): { readonly log: ReadonlyArray<strin
   const made = Game.Runtime.make({
     services: Game.Runtime.services(Game.Runtime.service(Log, { write: (line) => log.push(line) })),
     resources: { DeltaTime: 1, Score: 0 },
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" }))
   })
   if (!made.ok) {
     return { log, failure: "InvalidResources" }

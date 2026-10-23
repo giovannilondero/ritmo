@@ -38,8 +38,8 @@ describe("top-down simulation", () => {
     expect(position?.x).toBeCloseTo(640 + 280 * 30 / 60)
     expect(position?.y).toBe(260)
     expect(runtime.debug.dump().machines).toEqual({
-      "TopDown/Facing": { current: "Right", previous: "Down" },
-      "TopDown/Locomotion": { current: "Idle", previous: "Walking" }
+      "TopDown/Facing": { current: { _tag: "Right" }, previous: { _tag: "Down" } },
+      "TopDown/Locomotion": { current: { _tag: "Idle" }, previous: { _tag: "Walking" } }
     })
   })
 

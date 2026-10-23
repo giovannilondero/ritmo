@@ -25,9 +25,9 @@ const otherSchema = Schema.fragment({
 })
 const OtherGame = Schema.bind(otherSchema)
 
-const AppState = Game.StateMachine("AppState", ["Menu", "Playing", "Paused"] as const)
-const RoundState = Game.StateMachine("RoundState", ["Warmup", "Live", "SuddenDeath"] as const)
-const OtherState = OtherGame.StateMachine("OtherState", ["Idle", "Running"] as const)
+const AppState = Game.StateMachine("AppState", { Menu: {}, Playing: {}, Paused: {} })
+const RoundState = Game.StateMachine("RoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
+const OtherState = OtherGame.StateMachine("OtherState", { Idle: {}, Running: {} })
 
 const ReaderSystem = Game.System(
   "StateMachine/Reader",
@@ -51,8 +51,8 @@ const WriterSystem = Game.System(
   },
   ({ nextMachines }) =>
     {
-      nextMachines.app.set("Playing")
-      nextMachines.app.setIfChanged("Paused")
+      nextMachines.app.set({ _tag: "Playing" })
+      nextMachines.app.setIfChanged({ _tag: "Paused" })
       expect(nextMachines.app.getPending()).type.toBe<"Menu" | "Playing" | "Paused" | undefined>()
     }
 )
@@ -128,9 +128,9 @@ describe("StateMachine", () => {
         {
           expect(machines.app.get()).type.toBe<"Menu" | "Playing" | "Paused">()
           expect(machines.round.get()).type.toBe<"Warmup" | "Live" | "SuddenDeath">()
-          nextMachines.round.set("Live")
+          nextMachines.round.set({ _tag: "Live" })
           // @ts-expect-error Argument of type '"Paused"' is not assignable to parameter of type
-          nextMachines.round.set("Paused")
+          nextMachines.round.set({ _tag: "Paused" })
         }
     )
   })
@@ -152,7 +152,7 @@ describe("StateMachine", () => {
       ({ nextMachines }) =>
         {
           // @ts-expect-error Argument of type '"GameOver"' is not assignable to parameter of type
-          nextMachines.app.set("GameOver")
+          nextMachines.app.set({ _tag: "GameOver" })
         }
     )
   })
@@ -212,8 +212,8 @@ describe("StateMachine", () => {
         Counter: 0
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
 
@@ -243,8 +243,8 @@ describe("StateMachine", () => {
         Counter: 0
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
 
@@ -258,7 +258,7 @@ describe("StateMachine", () => {
         Counter: 0
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
+        Runtime.machine(AppState, { _tag: "Menu" }),
         Runtime.machine(
           RoundState,
           // @ts-expect-error Argument of type '"Playing"' is not assignable to parameter of type
@@ -351,13 +351,13 @@ describe("StateMachine", () => {
     const withMachine = Game.Runtime.make({
       services: Runtime.services(),
       resources: { Counter: 0 },
-      machines: Runtime.machines(Runtime.machine(RoundState, "Warmup"))
+      machines: Runtime.machines(Runtime.machine(RoundState, { _tag: "Warmup" }))
     }).value
     withMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
     const withoutMachine = Game.Runtime.make({
       services: Runtime.services(),
       resources: { Counter: 0 },
-      machines: Runtime.machines(Runtime.machine(AppState, "Menu"))
+      machines: Runtime.machines(Runtime.machine(AppState, { _tag: "Menu" }))
     }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "RoundState"
     withoutMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
@@ -372,7 +372,7 @@ describe("StateMachine", () => {
     const withMachine = Game.Runtime.make({
       services: Runtime.services(),
       resources: { Counter: 0 },
-      machines: Runtime.machines(Runtime.machine(AppState, "Menu"))
+      machines: Runtime.machines(Runtime.machine(AppState, { _tag: "Menu" }))
     }).value
     withMachine.tick(gated)
 

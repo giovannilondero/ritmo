@@ -7,7 +7,7 @@ const hostClock = HostClock.test()
 const Position = Descriptor.Component<number>()("TickQuery/Position")
 const Enemy = Descriptor.Component<{}>()("TickQuery/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy } }))
-const Flow = Game.StateMachine("TickQuery/Flow", ["Menu", "Playing"])
+const Flow = Game.StateMachine("TickQuery/Flow", { Menu: {}, Playing: {} })
 
 const Enemies = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Enemy] })
 const SpawnWave = Game.System("TickQuery/SpawnWave", {
@@ -24,7 +24,7 @@ const Aim = Game.System("TickQuery/Aim", { queries: { enemies: Game.System.thisT
 const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, any>): ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema> =>
   schedule as ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema>
 
-const machines = Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
+const machines = Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
 const make = () => Game.Runtime.make({ services: Game.Runtime.services(), machines }).value
 const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), machines, debug: { hostClock } }).value
 

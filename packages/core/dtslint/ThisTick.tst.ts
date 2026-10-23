@@ -6,7 +6,7 @@ import { describe, expect, it } from "tstyche"
 const Damage = Descriptor.Event<{ readonly amount: number }>()("ThisTick/Damage")
 const Score = Descriptor.Resource<number>()("ThisTick/Score")
 const Game = Schema.bind(Schema.fragment({ resources: { Score }, events: { Damage } }))
-const Flow = Game.StateMachine("ThisTick/Flow", ["Playing", "Paused"])
+const Flow = Game.StateMachine("ThisTick/Flow", { Playing: {}, Paused: {} })
 
 const Deal = Game.System("ThisTick/Deal", { events: { damage: Game.System.writeEvent(Damage) } }, ({ events }) => {
   events.damage.emit({ amount: 1 })
@@ -28,7 +28,7 @@ const Show = Game.System("ThisTick/Show", {
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Score: 0 },
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" }))
 }).value
 
 describe("Game.System.thisTick", () => {

@@ -225,7 +225,8 @@ export type Condition<Root = unknown> =
 export interface InStateCondition<M extends StateMachineDefinition = StateMachineDefinition> {
   readonly kind: "inState"
   readonly machine: M
-  readonly state: StateMachine.State<M>
+  /** Checked against `M` by `inState`; a plain string keeps the condition covariant in `M`. */
+  readonly state: string
   readonly requirements: ReadonlyArray<Requirement.RequirementValue>
   readonly __conditionNeeds?: M | undefined
 }
@@ -328,9 +329,12 @@ export interface TransitionScheduleDefinition<
   readonly transition: {
     readonly machine: M
     readonly phase: "enter" | "exit" | "transition"
-    readonly state?: StateMachine.State<M>
-    readonly from?: StateMachine.State<M>
-    readonly to?: StateMachine.State<M>
+    // State names as plain strings: `onEnter` / `onExit` / `onTransition`
+    // check them against `M`, and a name type here would make the schedule
+    // invariant in `M` (`keyof`), so it would not fit `AnyTransitionSchedule`.
+    readonly state?: string
+    readonly from?: string
+    readonly to?: string
   }
 }
 

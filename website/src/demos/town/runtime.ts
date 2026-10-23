@@ -17,7 +17,7 @@ export const initialResources = (host: HostValue) => ({
   Dialogue: null
 } as const)
 
-export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, "Exploring"))
+export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Exploring" }))
 
 /**
  * The town without a page: scripted devices, the debug handle on, and the

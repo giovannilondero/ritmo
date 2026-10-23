@@ -66,7 +66,7 @@ const Game = Schema.bind(
   Schema.fragment({ requires: [Schema.requires(C28, C29, C30), Schema.requires(C29, C31), Schema.requires(C30, C31)] })
 )
 
-const Flow = Game.StateMachine("Stress/Flow", ["Menu", "Playing", "Paused"])
+const Flow = Game.StateMachine("Stress/Flow", { Menu: {}, Playing: {}, Paused: {} })
 
 const S00 = Game.System("Stress/S00", {
   queries: {
@@ -87,7 +87,7 @@ const S00 = Game.System("Stress/S00", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S01 = Game.System("Stress/S01", {
   queries: {
@@ -222,7 +222,7 @@ const S08 = Game.System("Stress/S08", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S09 = Game.System("Stress/S09", {
   queries: {
@@ -358,7 +358,7 @@ const S16 = Game.System("Stress/S16", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S17 = Game.System("Stress/S17", {
   queries: {
@@ -493,7 +493,7 @@ const S24 = Game.System("Stress/S24", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S25 = Game.System("Stress/S25", {
   queries: {
@@ -629,7 +629,7 @@ const S32 = Game.System("Stress/S32", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S33 = Game.System("Stress/S33", {
   queries: {
@@ -765,7 +765,7 @@ const S40 = Game.System("Stress/S40", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S41 = Game.System("Stress/S41", {
   queries: {
@@ -900,7 +900,7 @@ const S48 = Game.System("Stress/S48", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S49 = Game.System("Stress/S49", {
   queries: {
@@ -1036,7 +1036,7 @@ const S56 = Game.System("Stress/S56", {
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
   void services.clock.now()
-  nextMachines.flow.set("Paused")
+  nextMachines.flow.set({ _tag: "Paused" })
 })
 const S57 = Game.System("Stress/S57", {
   queries: {
@@ -1164,7 +1164,7 @@ const Update = Game.Schedule(Group0, Group1, Group2, Group3, Game.Schedule.apply
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(Game.Runtime.service(Clock, { now: () => 0 })),
   resources: { R00: 0, R01: 0, R02: 0, R03: 0, R04: 0, R05: 0, R06: 0, R07: 0, R08: 0, R09: 0, R10: 0, R11: 0, R12: 0, R13: 0, R14: 0, R15: 0 },
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
 }).value
 
 runtime.tick(Update)
