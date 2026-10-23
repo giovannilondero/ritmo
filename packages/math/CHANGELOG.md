@@ -1,5 +1,12 @@
 # @typeonce/ritmo-math
 
+## 0.12.0
+
+### Patch Changes
+
+- Updated dependencies [04a2ac7]
+  - @typeonce/ritmo@0.12.0
+
 ## 0.11.0
 
 ### Patch Changes
