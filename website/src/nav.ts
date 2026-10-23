@@ -28,7 +28,8 @@ export const sections = [
       { href: "/features/rebinding/", title: "Rebinding" },
       { href: "/features/multiplayer/", title: "Local multiplayer" },
       { href: "/features/replays/", title: "Replays that become tests" },
-      { href: "/features/determinism/", title: "Same game everywhere" }
+      { href: "/features/determinism/", title: "Same game everywhere" },
+      { href: "/features/states/", title: "States that can't go wrong" }
     ]
   },
   {
