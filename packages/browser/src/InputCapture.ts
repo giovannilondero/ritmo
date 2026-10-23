@@ -18,8 +18,11 @@
  * a reader declared with `Game.System.thisTick(...)` placed before it does
  * not compile, and it consumes the source (`Game.System.consumeService`), so
  * `describe()` warns with `service-consumed-twice` when one source is
- * captured at more than one placement. Capture each source once and read
- * the resource everywhere else.
+ * captured at more than one placement (in named schedules, or wherever a
+ * debug runtime saw it run). Every input source marks `snapshot()` with
+ * `System.Consumes`, so another system that declares the source with
+ * `Game.System.service` (to rebind it, say) cannot call `snapshot()`.
+ * Capture each source once and read the resource everywhere else.
  *
  * @module InputCapture
  * @docGroup browser
@@ -40,14 +43,17 @@
  * }).value
  * ```
  */
+import type * as System from "@typeonce/ritmo/System"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import type { Condition } from "@typeonce/ritmo/Machine"
 import type { Schema } from "@typeonce/ritmo/Schema"
 
 /**
- * Anything that produces one input snapshot per call.
+ * Anything that produces one input snapshot per call. `snapshot()` drains
+ * the source, so only a system that declares it with
+ * `Game.System.consumeService` (like `InputCapture.system`) calls it.
  */
-export interface Source<Value> {
+export interface Source<Value> extends System.Consumes<"snapshot"> {
   readonly snapshot: () => Value
 }
 

@@ -935,6 +935,35 @@ const makeValidatedRuntime = <
   let runningSystem = "(host)"
   /** With `debug`, next states one system queued and another replaced before the marker. */
   const nextStateReplacements = new Map<string, Debug.NextStateReplacement>()
+  /**
+   * With `debug`, the placements (schedule and step) where a system that
+   * consumes a service ran, by service: for the observed
+   * `service-consumed-twice` lint, which also covers unnamed schedules.
+   */
+  const consumedAt = new Map<string, Map<object, Map<number, string>>>()
+  const consumesOf = new WeakMap<object, ReadonlyArray<string>>()
+  const noteConsumed = (system: SystemDefinition<any, any, any>, schedule: object, index: number): void => {
+    let names = consumesOf.get(system)
+    if (names === undefined) {
+      names = Object.values(system.spec.services as Record<string, { readonly descriptor: Descriptor.Any; readonly consumes?: true }>)
+        .filter((access) => access.consumes === true)
+        .map((access) => access.descriptor.name)
+      consumesOf.set(system, names)
+    }
+    for (const name of names) {
+      let bySchedule = consumedAt.get(name)
+      if (bySchedule === undefined) {
+        bySchedule = new Map()
+        consumedAt.set(name, bySchedule)
+      }
+      let steps = bySchedule.get(schedule)
+      if (steps === undefined) {
+        steps = new Map()
+        bySchedule.set(schedule, steps)
+      }
+      steps.set(index, system.name)
+    }
+  }
   const noteCommand = (kind: string, name: string): void => {
     let uses = commandUses.get(commandOrigin)
     if (uses === undefined) {
@@ -1828,7 +1857,7 @@ const makeValidatedRuntime = <
    * expected failure its ECS writes are rolled back and its commands dropped.
    * A thrown defect is rethrown after the same rollback.
    */
-  const runSystem = (system: SystemDefinition<any, any, any>): Result.Result<void, SystemFailure> => {
+  const runSystem = (system: SystemDefinition<any, any, any>, schedule: object, index: number): Result.Result<void, SystemFailure> => {
     for (const condition of system.spec.when as ReadonlyArray<Machine.Condition>) {
       if (!evaluateCondition(condition)) {
         // A skipped system discards the messages published meanwhile, so it
@@ -1854,6 +1883,7 @@ const makeValidatedRuntime = <
     if (debugEnabled) {
       ranSystems.add(system.name)
       runningSystem = system.name
+      noteConsumed(system, schedule, index)
     }
     journalReader(reader)
     // Changes stamped after the previous completed run are visible to this run.
@@ -1973,8 +2003,8 @@ const makeValidatedRuntime = <
     activeTransitions.set(schedule.transition.machine.key, snapshot)
     try {
       return tracing
-        ? traceSchedule(DebugInternal.transitionScheduleName(schedule), () => runSteps(schedule.steps))
-        : runSteps(schedule.steps)
+        ? traceSchedule(DebugInternal.transitionScheduleName(schedule), () => runSteps(schedule))
+        : runSteps(schedule)
     } finally {
       activeTransitions.delete(schedule.transition.machine.key)
     }
@@ -2198,10 +2228,12 @@ const makeValidatedRuntime = <
    * and relation failures stay pending, across schedule runs if needed, until
    * a marker step advances them.
    */
-  function runSteps(steps: ReadonlyArray<Schedule.ScheduleStep>): Result.Result<void, SystemFailure> {
-    for (const step of steps) {
+  function runSteps(schedule: { readonly steps: ReadonlyArray<Schedule.ScheduleStep> }): Result.Result<void, SystemFailure> {
+    const steps = schedule.steps
+    for (let index = 0; index < steps.length; index++) {
+      const step = steps[index]!
       if (Schedule.isSystemStep(step)) {
-        const result = runSystem(step as SystemDefinition<any, any, any>)
+        const result = runSystem(step as SystemDefinition<any, any, any>, schedule, index)
         if (!result.ok) {
           return result
         }
@@ -2239,8 +2271,8 @@ const makeValidatedRuntime = <
   const runScheduleUnsafe = (schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>): Result.Result<void, SystemFailure> => {
     changedMachines = new Set()
     return tracing
-      ? traceSchedule(scheduleName(schedule), () => runSteps(schedule.steps))
-      : runSteps(schedule.steps)
+      ? traceSchedule(scheduleName(schedule), () => runSteps(schedule))
+      : runSteps(schedule)
   }
 
   const eventsByKey = new Set((Object.values(options.schema.events) as ReadonlyArray<Descriptor.Any>).map((descriptor) => descriptor.key))
@@ -2761,6 +2793,13 @@ const makeValidatedRuntime = <
       relationMutations,
       commandUses,
       ranSystems,
+      consumedPlacements: [...consumedAt].map(([name, bySchedule]) => [name, [...bySchedule].flatMap(([schedule, steps]) => {
+        const named = scheduleNames.get(schedule)
+          ?? ("transition" in schedule ? DebugInternal.transitionScheduleName(schedule as Machine.StateMachine.AnyTransitionSchedule<S, Root>) : undefined)
+        return [...steps].map(([index, system]) => named === undefined
+          ? `${system} (${scheduleName(schedule)}, step ${index}, unnamed)`
+          : `${system} (${named}#${index})`)
+      })] as const),
       requirementViolations: [...requirementViolations.values()],
       nextStateReplacements: [...nextStateReplacements.values()],
       staleTargets: [...staleTargets.values()],

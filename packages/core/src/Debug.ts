@@ -255,8 +255,10 @@ export interface ScheduleDescription {
  * `stale-target` lists `despawn` / `remove` commands given a `SpawnedId`
  * kept from an earlier run (skipped), `stream-loss-unread` lists stream
  * readers that never check `lagged()` and lost entries (or are paused), so
- * describe after the game has run for a while. `scope-trigger-never-applied`
- * also reads which machines the runtime provides.
+ * describe after the game has run for a while. `service-consumed-twice`
+ * checks the named schedules and also the placements where consuming
+ * systems ran, named or not. `scope-trigger-never-applied` also reads which
+ * machines the runtime provides.
  */
 export interface Lint {
   readonly severity: "warning" | "info"

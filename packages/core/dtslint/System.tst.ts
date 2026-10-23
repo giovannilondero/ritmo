@@ -223,12 +223,30 @@ describe("redundant resource and event slots", () => {
 describe("Game.System.consumeService", () => {
   it("gives the same typed access as service", () => {
     const Bound = Schema.bind(Schema.fragment({}))
-    expect(Bound.System.consumeService(Logger)).type.toBe<System.ServiceRead<typeof Logger>>()
+    expect(Bound.System.consumeService(Logger)).type.toBe<System.ServiceRead<typeof Logger, true>>()
+    expect(Bound.System.service(Logger)).type.toBe<System.ServiceRead<typeof Logger, false>>()
     Bound.System("Consume/Drain", { services: { logger: Bound.System.consumeService(Logger) } }, ({ services }) => {
       expect(services.logger.log).type.toBe<(message: string) => void>()
     })
     // @ts-expect-error Argument of type 'DecodableDescriptor<"resource"
     Bound.System.consumeService(Viewport)
+  })
+
+  it("is the only access that calls the methods a Consumes mark names", () => {
+    interface Queue extends System.Consumes<"take"> {
+      take(): ReadonlyArray<string>
+      size(): number
+    }
+    const Messages = Descriptor.Service<Queue>()("Messages")
+    const Bound = Schema.bind(Schema.fragment({}))
+    Bound.System("Consume/Take", { services: { queue: Bound.System.consumeService(Messages) } }, ({ services }) => {
+      expect(services.queue.take()).type.toBe<ReadonlyArray<string>>()
+    })
+    Bound.System("Consume/Peek", { services: { queue: Bound.System.service(Messages) } }, ({ services }) => {
+      expect(services.queue.size()).type.toBe<number>()
+      // @ts-expect-error take() drains Messages: declare it with Game.System.consumeService, or read the resource its capture writes
+      services.queue.take()
+    })
   })
 })
 

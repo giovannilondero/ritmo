@@ -50,6 +50,7 @@
  * `recording(...)` wraps live actions to capture the timeline a session
  * produced. `parseTimeline(...)` validates a timeline loaded from JSON.
  */
+import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
 import type * as BrowserTickSource from "./BrowserTickSource.ts"
@@ -160,7 +161,7 @@ export type OnlyActionsOf<R, B extends Bindings> = {
   readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
 }
 
-export interface Actions<B extends Bindings> {
+export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
   /** Returns the input state and starts a new press/release window. */
   snapshot(): Snapshot<B>
   /**

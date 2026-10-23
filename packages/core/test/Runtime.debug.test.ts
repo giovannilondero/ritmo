@@ -505,6 +505,32 @@ describe("Runtime debug handle: population and ordering lints", () => {
     }])
   })
 
+  it("warns when consumers ran at more than one placement, in unnamed schedules too", () => {
+    const runtime = makeRuntime()
+    const Drain = Game.System("Debug/DrainRan", { services: { clock: Game.System.consumeService(Clock) } }, () => {})
+    const fixed = Game.Schedule(Drain)
+    const render = Game.Schedule(Drain)
+    runtime.tick(fixed)
+    runtime.tick(fixed)
+    expect(runtime.debug.describe().lints.filter((lint) => lint.code === "service-consumed-twice")).toEqual([])
+
+    runtime.tick(render)
+    expect(runtime.debug.describe().lints.filter((lint) => lint.code === "service-consumed-twice")).toEqual([{
+      severity: "warning",
+      code: "service-consumed-twice",
+      subject: "Debug/Clock",
+      message: "Debug/Clock was consumed by Debug/DrainRan (schedule#1, step 0, unnamed) and Debug/DrainRan (schedule#2, step 0, unnamed) in this session: each run takes what arrived since the previous one, so each sees only what the others left (an input press reaches one of them)",
+      fix: "consume Debug/Clock in one system placed once (InputCapture.system for an input source), write what it takes to a resource, and read the resource everywhere else"
+    }])
+
+    // Named, the placements read as the static lint's; it reports once.
+    runtime.debug.nameSchedules({ fixed, render })
+    const lints = runtime.debug.describe().lints.filter((lint) => lint.code === "service-consumed-twice")
+    expect(lints.map((lint) => lint.message)).toEqual([
+      "Debug/Clock is consumed by Debug/DrainRan (fixed#0) and Debug/DrainRan (render#0): each run takes what arrived since the previous one, so each sees only what the others left (an input press reaches one of them)"
+    ])
+  })
+
   it("adds the findings a provided service reports", () => {
     const Reporting = Descriptor.Service<Debug.ReportsLints>()("Debug/Reporting")
     const runtime = Game.Runtime.make({
