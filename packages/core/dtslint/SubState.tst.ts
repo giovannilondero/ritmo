@@ -23,13 +23,26 @@ describe("sub-states", () => {
       nextMachines: { phase: Game.System.nextState(Phase), session: Game.System.nextState(Session) },
       transitionEvents: { phase: Game.System.readTransitionEvent(Phase), session: Game.System.readTransitionEvent(Session) }
     }, ({ machines, nextMachines, transitionEvents }) => {
-      expect(machines.phase.get()).type.toBe<"Setup" | "Battle" | undefined>()
-      expect(machines.session.get()).type.toBe<"Menu" | "Playing">()
+      expect(machines.phase.get()).type.toBe<{ readonly _tag: "Setup" } | { readonly _tag: "Battle" } | undefined>()
+      expect(machines.session.get()).type.toBe<{ readonly _tag: "Menu" } | { readonly _tag: "Playing" }>()
       expect(nextMachines.phase.set({ _tag: "Battle" })).type.toBe<Result.Result<void, Machine.SubStateInactive>>()
       expect(nextMachines.phase.setIfChanged({ _tag: "Battle" })).type.toBe<Result.Result<void, Machine.SubStateInactive>>()
       expect(nextMachines.session.set({ _tag: "Menu" })).type.toBe<void>()
       expect(transitionEvents.phase.all()[0]!.to).type.toBe<"Setup" | "Battle" | undefined>()
       expect(transitionEvents.session.all()[0]!.to).type.toBe<"Menu" | "Playing">()
+    })
+  })
+
+  it("updates as a Result that also fails while the parent is elsewhere", () => {
+    Game.System("SubStateTypes/Update", {
+      machines: { phase: Game.System.updateMachine(Phase), session: Game.System.updateMachine(Session) }
+    }, ({ machines }) => {
+      expect(machines.phase.update({ state: "Battle", data: (battle) => battle })).type.toBe<
+        Result.Result<void, Machine.MachineStateMismatch<"Setup" | "Battle"> | Machine.SubStateInactive>
+      >()
+      expect(machines.session.update({ state: "Menu", data: (menu) => menu })).type.toBe<
+        Result.Result<void, Machine.MachineStateMismatch<"Menu" | "Playing">>
+      >()
     })
   })
 

@@ -1,5 +1,6 @@
-import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
 import type * as Machine from "@typeonce/ritmo/Machine"
+import type * as Result from "@typeonce/ritmo/Result"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 import type * as SchemaTypes from "@typeonce/ritmo/Schema"
 import * as System from "@typeonce/ritmo/System"
@@ -28,6 +29,14 @@ const OtherGame = Schema.bind(otherSchema)
 const AppState = Game.StateMachine("AppState", { Menu: {}, Playing: {}, Paused: {} })
 const RoundState = Game.StateMachine("RoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
 const OtherState = OtherGame.StateMachine("OtherState", { Idle: {}, Running: {} })
+const Mode = Game.StateMachine("StateMachine/Mode", {
+  Exploring: {},
+  Talking: { speaker: Decode.string, pages: Decode.array(Decode.string), page: Decode.integer }
+})
+
+type AppValue = { readonly _tag: "Menu" } | { readonly _tag: "Playing" } | { readonly _tag: "Paused" }
+type Talking = { readonly _tag: "Talking"; readonly speaker: string; readonly pages: ReadonlyArray<string>; readonly page: number }
+type ModeValue = { readonly _tag: "Exploring" } | Talking
 
 const ReaderSystem = Game.System(
   "StateMachine/Reader",
@@ -38,7 +47,10 @@ const ReaderSystem = Game.System(
   },
   ({ machines }) =>
     {
-      expect(machines.app.get()).type.toBe<"Menu" | "Playing" | "Paused">()
+      expect(machines.app.get()).type.toBe<AppValue>()
+      expect(machines.app.is("Playing")).type.toBe<boolean>()
+      // @ts-expect-error Argument of type '"GameOver"' is not assignable to parameter of type
+      machines.app.is("GameOver")
     }
 )
 
@@ -53,7 +65,7 @@ const WriterSystem = Game.System(
     {
       nextMachines.app.set({ _tag: "Playing" })
       nextMachines.app.setIfChanged({ _tag: "Paused" })
-      expect(nextMachines.app.getPending()).type.toBe<"Menu" | "Playing" | "Paused" | undefined>()
+      expect(nextMachines.app.getPending()).type.toBe<AppValue | undefined>()
     }
 )
 
@@ -126,10 +138,10 @@ describe("StateMachine", () => {
       },
       ({ machines, nextMachines }) =>
         {
-          expect(machines.app.get()).type.toBe<"Menu" | "Playing" | "Paused">()
-          expect(machines.round.get()).type.toBe<"Warmup" | "Live" | "SuddenDeath">()
+          expect(machines.app.get()).type.toBe<AppValue>()
+          expect(machines.round.get()).type.toBe<{ readonly _tag: "Warmup" } | { readonly _tag: "Live" } | { readonly _tag: "SuddenDeath" }>()
           nextMachines.round.set({ _tag: "Live" })
-          // @ts-expect-error Argument of type '"Paused"' is not assignable to parameter of type
+          // @ts-expect-error Type '"Paused"' is not assignable to type '"Warmup" | "Live" | "SuddenDeath"'
           nextMachines.round.set({ _tag: "Paused" })
         }
     )
@@ -151,7 +163,7 @@ describe("StateMachine", () => {
       },
       ({ nextMachines }) =>
         {
-          // @ts-expect-error Argument of type '"GameOver"' is not assignable to parameter of type
+          // @ts-expect-error Type '"GameOver"' is not assignable to type '"Menu" | "Playing" | "Paused"'
           nextMachines.app.set({ _tag: "GameOver" })
         }
     )
@@ -261,8 +273,8 @@ describe("StateMachine", () => {
         Runtime.machine(AppState, { _tag: "Menu" }),
         Runtime.machine(
           RoundState,
-          // @ts-expect-error Argument of type '"Playing"' is not assignable to parameter of type
-          "Playing"
+          // @ts-expect-error Type '"Playing"' is not assignable to type '"Warmup" | "Live" | "SuddenDeath"'
+          { _tag: "Playing" }
         )
       )
     }).value
@@ -402,5 +414,101 @@ describe("StateMachine", () => {
     Game.Schedule.when([], Increment)
 
     expect(gated).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+  })
+})
+
+describe("per-state data", () => {
+  it("is a tagged union of each state with its own fields", () => {
+    expect<Machine.StateOf<typeof Mode>>().type.toBe<ModeValue>()
+    expect<Machine.StateOf<typeof Mode, "Talking">>().type.toBe<Talking>()
+    expect<Machine.StateOf<typeof AppState, "Menu">>().type.toBe<{ readonly _tag: "Menu" }>()
+    expect<Machine.StateMachine.State<typeof Mode>>().type.toBe<"Exploring" | "Talking">()
+    // @ts-expect-error Type '"Asleep"' does not satisfy the constraint 'State<
+    type Asleep = Machine.StateOf<typeof Mode, "Asleep">
+  })
+
+  it("rejects a machine without states, and a field named _tag", () => {
+    // @ts-expect-error a state machine needs at least one state
+    Game.StateMachine("StateMachine/Empty", {})
+    // @ts-expect-error `_tag` holds the state's name: give this field another name
+    Game.StateMachine("StateMachine/Tagged", { Idle: { _tag: Decode.string } })
+    // @ts-expect-error Type 'string' is not assignable to type 'Readonly<Record<string, Codec<any>>>
+    Game.StateMachine("StateMachine/Array", ["Menu"])
+  })
+
+  it("reads the committed value, narrowed on _tag", () => {
+    Game.System("StateMachine/ReadMode", { machines: { mode: System.machine(Mode) } }, ({ machines }) => {
+      const mode = machines.mode.get()
+      expect(mode).type.toBe<{ readonly _tag: "Exploring" } | { readonly _tag: "Talking"; readonly speaker: string; readonly pages: ReadonlyArray<string>; readonly page: number }>()
+      if (mode._tag === "Talking") expect(mode.speaker).type.toBe<string>()
+      // @ts-expect-error Property 'speaker' does not exist on type '{ readonly _tag: "Exploring"; }'
+      mode.speaker
+      // @ts-expect-error Property 'update' does not exist on type 'MachineReadView
+      machines.mode.update
+    })
+  })
+
+  it("queues a move with all of the target's fields and only them", () => {
+    Game.System("StateMachine/MoveMode", { nextMachines: { mode: System.nextState(Mode) } }, ({ nextMachines }) => {
+      expect(nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", pages: ["Hi"], page: 0 })).type.toBe<void>()
+      nextMachines.mode.set({ _tag: "Exploring" })
+      nextMachines.mode.setIfChanged({ _tag: "Talking", speaker: "Mira", pages: ["Hi"], page: 0 })
+      // @ts-expect-error Property 'pages' is missing in type
+      nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
+      // @ts-expect-error Object literal may only specify known properties, and 'speaker' does not exist in type '{ readonly _tag: "Exploring"; }'
+      nextMachines.mode.set({ _tag: "Exploring", speaker: "Mira" })
+      // @ts-expect-error Type 'string' is not assignable to type 'number'
+      nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", pages: [], page: "0" })
+    })
+  })
+
+  it("updates the current state's fields with a compare-and-set", () => {
+    Game.System("StateMachine/UpdateMode", { machines: { mode: System.updateMachine(Mode) } }, ({ machines }) => {
+      expect(machines.mode.get()._tag).type.toBe<"Exploring" | "Talking">()
+      const updated = machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
+      expect(updated).type.toBe<Result.Result<void, Machine.MachineStateMismatch<"Exploring" | "Talking">>>()
+      machines.mode.update({ state: "Talking", data: (talking) => {
+        expect(talking).type.toBe<{ readonly _tag: "Talking"; readonly speaker: string; readonly pages: ReadonlyArray<string>; readonly page: number }>()
+        return { speaker: talking.speaker, pages: talking.pages, page: 0 }
+      } })
+      // @ts-expect-error Talking has no field typo: write only this state's fields, or move with nextMachines.x.set(...)
+      machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, typo: 1 }) })
+      // @ts-expect-error Property 'pages' is missing in type
+      machines.mode.update({ state: "Talking", data: (talking) => ({ speaker: talking.speaker, page: 0 }) })
+      // @ts-expect-error Type '"Exploring"' is not assignable to type '"Talking"'
+      machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, _tag: "Exploring" as const }) })
+      // @ts-expect-error Type '"Asleep"' is not assignable to type 'State<
+      machines.mode.update({ state: "Asleep", data: (current) => current })
+    })
+  })
+
+  it("keeps updates out of read-only access, and one slot per machine", () => {
+    // @ts-expect-error Type '"update"' is not assignable to type '"read"'
+    Game.Condition.check("StateMachine/CheckUpdate", { machines: { mode: System.updateMachine(Mode) } }, () => true)
+    // @ts-expect-error Type '"update"' is not assignable to type '"read"'
+    Game.Inspector("StateMachine/InspectUpdate", { machines: { mode: System.updateMachine(Mode) } }, () => 0)
+    Game.System("StateMachine/TwoSlots", {
+      // @ts-expect-error read repeats a machine another slot of this system declares: keep one slot (an update view reads too)
+      machines: { read: System.machine(Mode), update: System.updateMachine(Mode) }
+    }, () => {})
+  })
+
+  it("starts a runtime with a full value", () => {
+    Game.Runtime.make({
+      services: Runtime.services(),
+      resources: { Counter: 0 },
+      machines: Runtime.machines(Runtime.machine(Mode, { _tag: "Talking", speaker: "Mira", pages: [], page: 0 }))
+    })
+    // @ts-expect-error Property 'pages' is missing in type
+    Runtime.machine(Mode, { _tag: "Talking", speaker: "Mira", page: 0 })
+  })
+
+  it("names states in transitions, conditions and schedules", () => {
+    Game.System("StateMachine/ModeEvents", { transitionEvents: { mode: Game.System.readTransitionEvent(Mode) } }, ({ transitionEvents }) => {
+      expect(transitionEvents.mode.all()).type.toBe<ReadonlyArray<{ readonly from: "Exploring" | "Talking"; readonly to: "Exploring" | "Talking" }>>()
+    })
+    Game.Condition.inState(Mode, "Talking")
+    Game.Schedule.onEnter(Mode, "Talking", [])
+    Game.Schedule.onTransition(Mode, ["Exploring", "Talking"], [])
   })
 })

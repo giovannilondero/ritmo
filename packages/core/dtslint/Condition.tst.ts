@@ -25,7 +25,7 @@ describe("Game.Condition.check", () => {
       queries: { enemies: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] }) }
     }, (context) => {
       expect(context.resources.freeze.get().remaining).type.toBe<number>()
-      expect(context.machines.flow.get()).type.toBe<"Playing" | "Over">()
+      expect(context.machines.flow.get()).type.toBe<{ readonly _tag: "Playing" } | { readonly _tag: "Over" }>()
       expect(context.queries.enemies.each()[0]?.data.health.get()).type.toBe<number | undefined>()
       // @ts-expect-error Property 'set' does not exist on type 'ResourceReadView<{ readonly remaining: number; }>'.
       context.resources.freeze.set({ remaining: 0 })

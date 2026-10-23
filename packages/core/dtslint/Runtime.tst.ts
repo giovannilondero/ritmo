@@ -409,7 +409,7 @@ describe("Runtime.services and Runtime.machines", () => {
     expect(Runtime.services(Runtime.service(Logger, silent), Runtime.service(PrefixedLogger, silent))).type.toBe<
       Runtime.RuntimeServices<{ readonly Logger: { readonly log: (message: string) => void }; readonly "RuntimeTypes/Logger": { readonly log: (message: string) => void } }>
     >()
-    expect(Runtime.machines(Runtime.machine(Flow, { _tag: "Menu" }))).type.toBe<Runtime.RuntimeMachines<{ readonly "RuntimeTypes/Flow": "Menu" | "Playing" }>>()
+    expect(Runtime.machines(Runtime.machine(Flow, { _tag: "Menu" }))).type.toBe<Runtime.RuntimeMachines<{ readonly "RuntimeTypes/Flow": { readonly _tag: "Menu" } | { readonly _tag: "Playing" } }>>()
   })
 
   it("rejects a service or machine provided twice", () => {
