@@ -1,5 +1,6 @@
 // The world read as plain data, for the page, the renderer, and the check.
-import { Dialogue, Facing, Game, Mode, Player, Position, Stride, Tile } from "./schema.ts"
+import { Dialogue, Facing, Game, Mode, Player, Position, Seat, Stride, Tile } from "./schema.ts"
+import type { SeatValue } from "./schema.ts"
 
 /** The dialogue box: who speaks, the letters typed so far, and whether more follows. */
 export interface DialogueView {
@@ -11,11 +12,12 @@ export interface DialogueView {
   readonly more: boolean
 }
 
-/** What the screen shows besides the map: the mode, and the dialogue box while talking. */
+/** What the screen shows besides the map: the mode, the dialogue box while talking, and who plays. */
 export const ReadScreen = Game.Inspector("Town/ReadScreen", {
   machines: { mode: Game.System.machine(Mode) },
-  resources: { dialogue: Game.System.readResource(Dialogue) }
-}, ({ machines, resources }) => {
+  resources: { dialogue: Game.System.readResource(Dialogue) },
+  queries: { players: Game.Query({ selection: { seat: Game.Query.read(Seat) }, with: [Player] }) }
+}, ({ machines, resources, queries }) => {
   const dialogue = resources.dialogue.get()
   const page = dialogue?.pages[dialogue.page]
   const box: DialogueView | null = dialogue === null || page === undefined
@@ -26,14 +28,16 @@ export const ReadScreen = Game.Inspector("Town/ReadScreen", {
       complete: dialogue.typed >= page.length,
       more: dialogue.page + 1 < dialogue.pages.length
     }
-  return { mode: machines.mode.get(), dialogue: box }
+  const seats: ReadonlyArray<SeatValue> = queries.players.each().map(({ data }) => data.seat.get())
+  return { mode: machines.mode.get(), dialogue: box, seats }
 })
 
-/** The player's tile, pixel position, facing, and stride, or `undefined` before setup. */
-export const ReadPlayer = Game.Inspector("Town/ReadPlayer", {
+/** Each player's tile, pixel position, facing, and stride, by seat; a seat nobody holds is absent. */
+export const ReadPlayers = Game.Inspector("Town/ReadPlayers", {
   queries: {
-    player: Game.Query({
+    players: Game.Query({
       selection: {
+        seat: Game.Query.read(Seat),
         tile: Game.Query.read(Tile),
         position: Game.Query.read(Position),
         facing: Game.Query.read(Facing),
@@ -43,8 +47,9 @@ export const ReadPlayer = Game.Inspector("Town/ReadPlayer", {
     })
   }
 }, ({ queries }) => {
-  const player = queries.player.single()
-  if (!player.ok) return undefined
-  const { data } = player.value
-  return { tile: data.tile.get(), position: data.position.get(), facing: data.facing.get(), stride: data.stride.get().kind }
+  const players: Partial<Record<SeatValue, { tile: { col: number; row: number }; position: { x: number; y: number }; facing: string; stride: string }>> = {}
+  for (const { data } of queries.players.each()) {
+    players[data.seat.get()] = { tile: data.tile.get(), position: data.position.get(), facing: data.facing.get(), stride: data.stride.get().kind }
+  }
+  return players
 })

@@ -122,6 +122,55 @@ const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump", "move.righ
 
 `Pointer` and `Touch` work the same way.
 
+### Local multiplayer
+
+Players are slots. No device belongs to a player until someone presses
+join on it: the first device to join is `p1`, the next `p2`. Two
+`Keyboard.actions` over different keys are two keyboard players, and
+`Gamepad.pads` lets every pad join on its own.
+
+```ts twoslash title="players.ts"
+import { Descriptor } from "@typeonce/ritmo"
+import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+// ---cut---
+const Actions = Controls.actions({ buttons: ["join", "back", "jump"], vectors: ["move"] })
+// Any button joins (that press does nothing else); back leaves while joining is open
+const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" }) // [!code highlight]
+
+const wasd = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), join: [" "], back: ["q"], jump: [" "] } as const
+const arrows = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), join: ["Enter"], back: ["Backspace"], jump: ["Enter"] } as const
+const pad = { move: Gamepad.vector({ stick: "left" }), join: ["south"], back: ["east"], jump: ["south"] } as const
+
+const makePlayers = (devices: {
+  readonly left: Keyboard.Actions<typeof wasd>
+  readonly right: Keyboard.Actions<typeof arrows>
+  readonly pads: Gamepad.Pads<typeof pad>
+}) => Players.pool(devices)
+
+const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()("Example/Players")
+const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("Example/Input")
+
+// In a system: input = resources.input.get()
+declare const input: InputCapture.SnapshotOf<typeof PlayersInput>
+if (input.p2.event === "joined") {
+  // spawn the second player
+}
+const move = input.p2.vectors.move
+if (input.p2.device === "pads") {
+  const stick = input.p2.devices.pads.left
+  //                             ^?
+}
+```
+
+A system opens joining with `setJoining(true)` (once for drop-in play, or
+on a join screen) and frees a slot with `leave("p2")` (a pause menu). A
+player who is in from the start is seated without a press, from a setup
+system: `seat("p1", "right")` (a pool name), or `seat("p1", { pads: 0 })` for the first
+pad; it returns `{ ok: false, reason }` when the slot or device is taken. A
+pad that disconnects keeps its slot (`connected: false`) and returns to it.
+The town on the home page plays this way: player 1 is seated on the
+arrows, and WASD or a gamepad joins player 2.
+
 ## Rendering
 
 One node per entity: created when it appears, updated when it moves,

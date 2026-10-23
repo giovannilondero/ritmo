@@ -2,15 +2,15 @@
 import { Clock } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
 
-import { ControlsInput, Game, Input, Mode, Time } from "./schema.ts"
-import { AdvanceDialogue, LookAround, PaceVillagers, SpawnTown, StartTalk, TypeDialogue, WalkPlayer } from "./systems.ts"
+import { Game, Input, Mode, PlayersInput, Time } from "./schema.ts"
+import { AdvanceDialogue, JoinPlayers, JoinWhileExploring, LookAround, PaceVillagers, SeatFirstPlayer, SpawnTown, StartTalk, TypeDialogue, WalkPlayer } from "./systems.ts"
 
 const AdvanceTime = Clock.system(Game, { name: "Town/AdvanceTime", resource: Time })
 
-const CaptureInput = InputCapture.system(Game, { name: "Town/CaptureInput", source: ControlsInput, resource: Input })
+const CaptureInput = InputCapture.system(Game, { name: "Town/CaptureInput", source: PlayersInput, resource: Input })
 
-/** Puts everyone on the map; ticked once before the first update. */
-export const setupSchedule = Game.Schedule(SpawnTown, Game.Schedule.applyDeferred())
+/** Puts the villagers on the map, seats the first player, and opens joining; ticked once before the first update. */
+export const setupSchedule = Game.Schedule(SpawnTown, SeatFirstPlayer, Game.Schedule.applyDeferred())
 
 /**
  * One fixed update. The mode chosen this step takes effect at the closing
@@ -20,6 +20,9 @@ export const setupSchedule = Game.Schedule(SpawnTown, Game.Schedule.applyDeferre
 export const updateSchedule = Game.Schedule(
   AdvanceTime,
   CaptureInput,
+  // A player who joins this update stands on the map before anyone walks.
+  JoinPlayers,
+  Game.Schedule.applyDeferred(),
   Game.Schedule.when(
     [Game.Condition.inState(Mode, "Exploring")],
     WalkPlayer,
@@ -32,5 +35,6 @@ export const updateSchedule = Game.Schedule(
     AdvanceDialogue,
     TypeDialogue
   ),
-  Game.Schedule.applyStateTransitions()
+  Game.Schedule.applyStateTransitions(),
+  JoinWhileExploring
 )

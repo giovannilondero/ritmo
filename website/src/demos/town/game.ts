@@ -1,5 +1,6 @@
-// The browser host for the town: loads the art, reads the keyboard, a
-// gamepad, and on-screen touch buttons, runs the fixed-step loop on
+// The browser host for the town: loads the art, seats the first player on
+// the arrows (the on-screen buttons on a touch screen), pools WASD and every
+// gamepad for a second player to drop in, runs the fixed-step loop on
 // animation frames, and draws with Pixi at a whole-number pixel scale. The
 // rules are the headless ones `check.ts` drives.
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
@@ -21,9 +22,9 @@ import tilesetHouse from "./assets/TilesetHouse.png"
 import tilesetNature from "./assets/TilesetNature.png"
 import tilesetWater from "./assets/TilesetWater.png"
 import type { Images } from "./render.ts"
-import { ActorNode, ActorNodes, Art, Camera, drawMap, FONT_FAMILY, makeArt, makeCamera, makeDialogBox, PropNodes, renderSchedule, VIEW_HEIGHT, VIEW_WIDTH } from "./render.ts"
+import { ActorNode, ActorNodes, Art, Camera, drawMap, FONT_FAMILY, makeArt, makeCamera, makeDialogBox, makeHint, PropNodes, renderSchedule, VIEW_HEIGHT, VIEW_WIDTH } from "./render.ts"
 import { initialMachines, initialResources } from "./runtime.ts"
-import { ControlsInput, Game, keyBindings, makeControls, padBindings, step, touchButtons } from "./schema.ts"
+import { Game, leftKeys, makePlayers, padBindings, PlayersInput, rightKeys, step, touchButtons } from "./schema.ts"
 import { setupSchedule, updateSchedule } from "./schedules.ts"
 import { ReadScreen } from "./view.ts"
 
@@ -82,6 +83,14 @@ const drawTouch = (graphics: Graphics, view: Touch.View<(typeof touchButtons)[nu
 }
 
 /**
+ * The corner note: how a second player joins while nobody holds p2, and how
+ * they leave once they do. The pixel font draws Q like G, so the key is
+ * named in lowercase.
+ */
+const hintFor = (seats: ReadonlyArray<string>): string =>
+  seats.includes("p2") ? "P2: press q (B on a pad) to leave" : "P2: press WASD or a pad to join"
+
+/**
  * Starts the town in `host` and returns the function that stops it. The
  * 240 x 160 screen is scaled by the largest whole number that fits the host.
  */
@@ -106,8 +115,9 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
   const actors = world.addChild(new Container<ActorNode>())
   view.addChild(world)
   const dialog = makeDialogBox(art)
+  const hint = makeHint()
   screen.addChild(view, dialog.node)
-  app.stage.addChild(screen, dialog.text)
+  app.stage.addChild(screen, dialog.text, hint.node)
 
   const showTouch = window.matchMedia("(pointer: coarse)").matches
   const touchGraphics = app.stage.addChild(new Graphics())
@@ -122,6 +132,7 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
       Math.round((app.screen.height * ratio - VIEW_HEIGHT * scale) / 2) / ratio
     )
     dialog.layout(scale, ratio, screen.position)
+    hint.layout(scale, ratio, screen.position)
   }
   fit()
   app.renderer.on("resize", fit)
@@ -136,21 +147,22 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
   observer.observe(host)
 
   const touch = Touch.actions(app.canvas, window, touchLayout)
-  const controls = makeControls({
-    keyboard: Keyboard.actions(window, keyBindings),
-    gamepad: Gamepad.actions(window, padBindings),
+  const controls = makePlayers({
+    left: Keyboard.actions(window, leftKeys),
+    right: Keyboard.actions(window, rightKeys),
+    pads: Gamepad.pads(window, padBindings, 2),
     touch
   })
 
   const made = Game.Runtime.make({
     services: Game.Runtime.services(
-      Game.Runtime.service(ControlsInput, controls),
+      Game.Runtime.service(PlayersInput, controls),
       Game.Runtime.service(Art, art),
       Game.Runtime.service(ActorNodes, PixiNodeRegistry.make(actors)),
       Game.Runtime.service(PropNodes, PixiNodeRegistry.make(props)),
       Game.Runtime.service(Camera, makeCamera(world))
     ),
-    resources: initialResources(),
+    resources: initialResources(showTouch ? "touch" : "right"),
     machines: initialMachines()
   })
 
@@ -178,7 +190,9 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
     render: () => {
       const drawn = runtime.tick(renderSchedule)
       if (!drawn.ok) console.error(drawn.error)
-      dialog.show(runtime.inspect(ReadScreen).dialogue)
+      const shown = runtime.inspect(ReadScreen)
+      dialog.show(shown.dialogue)
+      hint.show(shown.dialogue === null ? hintFor(shown.seats) : null)
       if (showTouch) drawTouch(touchGraphics, touch.view())
     },
     onFailure: (failure) => console.error(failure)

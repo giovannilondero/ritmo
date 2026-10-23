@@ -66,6 +66,8 @@
 import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
+import { boundKeys } from "./internal/introspect.ts"
+import type { ReportsBoundKeys } from "./internal/introspect.ts"
 import { anyUsed } from "./internal/used.ts"
 import { digital, directionName, directions, isVectorBinding, zero } from "./internal/vectors.ts"
 import type { Direction, Vector } from "./internal/vectors.ts"
@@ -292,6 +294,12 @@ const keyToken = (key: string): string => `key:${normalize(key)}`
 const codeToken = (code: string): string => `code:${code}`
 const bindingToken = (binding: KeyBinding): string => typeof binding === "string" ? keyToken(binding) : codeToken(binding.code)
 
+/** How a binding reads in a lint: the character quoted, a physical key by its code. */
+const bindingLabel = (binding: KeyBinding): string => typeof binding === "string" ? JSON.stringify(normalize(binding)) : binding.code
+
+const labelsOf = (flat: Readonly<Record<string, Keys>>): ReadonlyArray<string> =>
+  [...new Set(Object.values(flat).flatMap((keys) => keys.map(bindingLabel)))]
+
 /**
  * Starts tracking bound keys on `host`.
  */
@@ -388,7 +396,8 @@ export const actions = <const B extends Bindings>(
   }
 
   let last: Readonly<Record<string, ActionState>> = {}
-  const live: Actions<B> & WithFlatStates = {
+  const live: Actions<B> & WithFlatStates & ReportsBoundKeys = {
+    [boundKeys]: () => labelsOf(bindings),
     snapshot() {
       const states: Record<string, ActionState> = {}
       for (const name of names) {
@@ -525,7 +534,8 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
   const held = new Set<string>()
   let frame = 0
   let last: Readonly<Record<string, ActionState>> = {}
-  const played: Scripted<B> & WithFlatStates = {
+  const played: Scripted<B> & WithFlatStates & ReportsBoundKeys = {
+    [boundKeys]: () => labelsOf(flatten(bindings)),
     snapshot() {
       const pressed = new Set<string>()
       const released = new Set<string>()
@@ -582,7 +592,8 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
   const entries: Array<TimelineEntry<B>> = []
   let wasHeld = new Set<TimelineName<B>>()
   let frame = 0
-  const recorded: Recording<B> & WithFlatStates = {
+  const recorded: Recording<B> & WithFlatStates & ReportsBoundKeys = {
+    [boundKeys]: () => (actions as ReportsBoundKeys)[boundKeys]?.() ?? [],
     snapshot() {
       const snapshot = actions.snapshot()
       // Each direction of a vector action, from the keyboard this wraps.
