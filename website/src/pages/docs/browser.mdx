@@ -122,6 +122,12 @@ const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump", "move.righ
 
 `Pointer` and `Touch` work the same way.
 
+Only the capture takes snapshots: each `snapshot()` starts a new press
+window, so a second caller would steal presses. Calling it through
+`Game.System.service` does not compile; a system that drains a source itself
+declares it with `Game.System.consumeService`, and `describe()` warns
+(`service-consumed-twice`) when one source is drained in two places.
+
 ### Local multiplayer
 
 Players are slots. No device belongs to a player until someone presses

@@ -7,7 +7,8 @@
  *
  * In game code this is the natural helper for collision volumes, trigger
  * regions, camera bounds, and spatial authored data that should stay validated
- * and immutable after construction.
+ * and immutable after construction. For the per-frame collision tests of
+ * `Collide2` and `FlowField`, build a plain `Box2` (edge form) from it once.
  *
  * @example
  * ```ts

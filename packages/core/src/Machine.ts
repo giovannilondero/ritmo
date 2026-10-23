@@ -163,6 +163,7 @@ export type Condition<Root = unknown> =
   | OrCondition<ReadonlyArray<Condition<Root>>, Requirement.Requirement>
   | CheckCondition<Root>
 
+/** Made by `inState(machine, value)`. */
 export interface InStateCondition<M extends StateMachineDefinition = StateMachineDefinition> {
   readonly kind: "inState"
   readonly machine: M
@@ -171,6 +172,7 @@ export interface InStateCondition<M extends StateMachineDefinition = StateMachin
   readonly __conditionNeeds?: M | undefined
 }
 
+/** Made by `stateChanged(machine)`. */
 export interface StateChangedCondition<M extends StateMachineDefinition = StateMachineDefinition> {
   readonly kind: "stateChanged"
   readonly machine: M
@@ -178,6 +180,7 @@ export interface StateChangedCondition<M extends StateMachineDefinition = StateM
   readonly __conditionNeeds?: M | undefined
 }
 
+/** Made by `not(condition)`. */
 export interface NotCondition<
   C extends Condition = Condition,
   Needs extends Requirement.Requirement = Requirement.Requirement
@@ -188,6 +191,7 @@ export interface NotCondition<
   readonly __conditionNeeds?: Needs | undefined
 }
 
+/** Made by `and(...conditions)`. */
 export interface AndCondition<
   C extends ReadonlyArray<Condition> = ReadonlyArray<Condition>,
   Needs extends Requirement.Requirement = Requirement.Requirement
@@ -198,6 +202,7 @@ export interface AndCondition<
   readonly __conditionNeeds?: Needs | undefined
 }
 
+/** Made by `or(...conditions)`. */
 export interface OrCondition<
   C extends ReadonlyArray<Condition> = ReadonlyArray<Condition>,
   Needs extends Requirement.Requirement = Requirement.Requirement

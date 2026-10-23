@@ -9,6 +9,9 @@
  * Reach for it in the gap between host input sampling and ECS simulation:
  * capture raw button state in the host, normalize it here, then write the
  * resulting axes or vectors into resources/components for systems to consume.
+ * With `@typeonce/ritmo-browser`, bind movement as a vector action instead
+ * (`Keyboard.vector`, `Gamepad.vector`), which already reports the merged
+ * vector; use this module for booleans from another source.
  *
  * @example
  * ```ts
@@ -50,7 +53,9 @@ export type Axis = -1 | 0 | 1
  */
 export const axis: (negativePressed: boolean, positivePressed: boolean) => Axis = internal.axis
 /**
- * Builds a normalized movement vector from four directional booleans.
+ * Builds a normalized movement vector from four directional booleans, in
+ * screen coordinates: `up` is negative `y`, `right` positive `x`. Opposite
+ * presses cancel, and diagonals have length 1.
  *
  * @example
  * ```ts
@@ -68,7 +73,8 @@ export const vectorFromAxes: (
   input: { readonly left: boolean; readonly right: boolean; readonly up: boolean; readonly down: boolean }
 ) => Vector2.Vector2 = internal.vectorFromAxes
 /**
- * Builds a normalized movement vector from two explicit axis values.
+ * Builds a normalized movement vector from two explicit axis values
+ * (diagonals have length 1).
  *
  * @category Vector Helpers
  */

@@ -9,4 +9,5 @@
  */
 export * as PixiNodeRegistry from "./PixiNodeRegistry.ts"
 
+/** The package's name tag (`"pixi"`), for tests and tools that check which package they loaded. Games do not need it. */
 export const packageTag = "pixi" as const

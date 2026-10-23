@@ -24,6 +24,7 @@ export interface NodeSink extends Replay.Sink {
 export const fileName = (file: Replay.ReplayFile): string =>
   `${new Date(file.savedAt).toISOString().replaceAll(":", "-")}-tick-${file.ticks.at(-1)?.tick ?? file.start.tick}.json`
 
+/** A sink writing each replay as a JSON file in `directory` (created if missing), named by {@link fileName}. */
 export const make = (options: { readonly directory: string }): NodeSink => {
   const written: Array<string> = []
   return {

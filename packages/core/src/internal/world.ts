@@ -376,9 +376,6 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   /**
-   * Writes an existing component value in place and records the change.
-   */
-  /**
    * Writes a component the entity holds. Returns `false`, writing nothing,
    * when it does not (despawned records hold nothing): only a stale query
    * cell gets here, and it reports the misuse.

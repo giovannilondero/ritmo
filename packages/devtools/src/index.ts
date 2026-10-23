@@ -8,4 +8,5 @@ export * as Replay from "./Replay.ts"
 export * as Rendered from "./Rendered.ts"
 export * as Session from "./Session.ts"
 
+/** The package's identifier. */
 export const packageTag = "devtools" as const

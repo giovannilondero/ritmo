@@ -62,6 +62,7 @@ export interface Vector {
   readonly y: number
 }
 
+/** A rectangle in CSS pixels relative to the element's top-left corner. */
 export interface Rect {
   readonly left: number
   readonly top: number
@@ -69,6 +70,7 @@ export interface Rect {
   readonly height: number
 }
 
+/** The floating stick of a {@link Layout}. */
 export interface StickZone<V extends string = never> {
   /** Where a touch starts the stick. The stick is centered where the thumb lands. */
   readonly region: Rect
@@ -80,6 +82,7 @@ export interface StickZone<V extends string = never> {
   readonly vector?: V
 }
 
+/** A round on-screen button of a {@link Layout}; it reports the action named like its key. */
 export interface ButtonZone {
   readonly center: Position
   /** Touch radius in CSS pixels. */
@@ -90,11 +93,16 @@ export interface ButtonZone {
   readonly aimDeadZone?: number
 }
 
+/** The swipe area of a {@link Layout}. */
 export interface SwipeZone {
   /** Where a touch that is not on a button or the stick starts a swipe. */
   readonly region: Rect
 }
 
+/**
+ * The touch controls, returned by the layout function {@link actions} calls
+ * with the element's size. The button names are fixed by the first layout.
+ */
 export interface Layout<B extends string, V extends string = never> {
   readonly stick: StickZone<V>
   readonly buttons: { readonly [K in B]: ButtonZone }
@@ -108,6 +116,7 @@ export interface Size {
   readonly height: number
 }
 
+/** The stick's state in a snapshot. */
 export interface Stick {
   /** Whether a thumb is on the stick. */
   readonly active: boolean
@@ -115,6 +124,7 @@ export interface Stick {
   readonly vector: Vector
 }
 
+/** One button's state: its action's edges, plus the drag aim and whether the release was cancelled. */
 export interface ButtonState extends ActionState {
   /**
    * The drag from the button's center as a fraction of `aimRadius` (length at
@@ -126,6 +136,7 @@ export interface ButtonState extends ActionState {
   readonly cancelled: boolean
 }
 
+/** The swipe area's state in a snapshot. */
 export interface Swipe {
   /** Whether a finger is on the swipe area. */
   readonly active: boolean
@@ -134,9 +145,10 @@ export interface Swipe {
 }
 
 /**
- * The controls' state. Each button is an action named like it, so the
- * snapshot has the same core as the other devices' (`actions` and `used`)
- * and `Controls` can merge it.
+ * The controls' state. Each button is an action named like it, and the
+ * stick drives the vector action its layout names, so the snapshot has the
+ * same core as the other devices' (`actions`, `vectors`, and `used`) and
+ * `Controls` can merge it.
  */
 export interface Snapshot<B extends string, V extends string = never> {
   readonly stick: Stick
@@ -172,6 +184,12 @@ export interface View<B extends string, V extends string = never> {
   readonly buttons: { readonly [K in B]: { readonly held: boolean; readonly aim: Vector | null } }
 }
 
+/**
+ * Touch controls, built with {@link actions} (live) or {@link scripted}.
+ * Capture them with `InputCapture.system(...)`, or merge them with
+ * `Controls` (through `lacking(...)` for actions with no on-screen
+ * control). There is no `rebind`: the layout is the binding.
+ */
 export interface Actions<B extends string, V extends string = never> extends System.Consumes<"snapshot"> {
   /** Returns the controls' state and starts a new press/release window. */
   snapshot(): Snapshot<B, V>
@@ -205,6 +223,7 @@ export interface BlurHost {
   removeEventListener(type: "blur", listener: () => void): void
 }
 
+/** Options for {@link actions}. */
 export interface ActionsOptions {
   /** `PointerEvent.pointerType`s that drive the controls. Defaults to `["touch"]`. */
   readonly pointerTypes?: ReadonlyArray<string>
@@ -221,7 +240,11 @@ export interface Names<B extends string, V extends string = never> {
   readonly vector?: V
 }
 
-/** A snapshot with nothing held, for initializing an input resource before the first capture. */
+/**
+ * A snapshot with nothing held, for initializing an input resource before
+ * the first capture: pass the layout's button names and stick vector, as
+ * `Touch.idle({ buttons: ["attack", "dash"], vector: "move" })`.
+ */
 export const idle = <const B extends string, const V extends string = never>(names: Names<B, V>): Snapshot<B, V> =>
   snapshotOf<B, V>(
     names.vector,
@@ -297,7 +320,8 @@ const lift = (track: ButtonTrack, cancelled: boolean): void => {
  * Starts tracking touches over `target` with the controls `layout` returns
  * for the element's current size (it is read again on every new touch, so a
  * resize takes effect at the next touch). `blurHost` (usually `window`)
- * cancels held controls when the page loses focus.
+ * cancels held controls when the page loses focus. Use `Pointer.actions`
+ * for mouse and pen input.
  */
 export const actions = <const B extends string, const V extends string = never>(
   target: TouchTarget,

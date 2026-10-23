@@ -33,8 +33,9 @@ export interface ScheduleWindow {
   readonly maxMs: number
 }
 
+/** One closed sample window, from `Collector.sample`. */
 export interface Sample {
-  /** `performance.now()` when the window closed. */
+  /** The `now` passed to `sample` when the window closed. */
   readonly at: number
   readonly seconds: number
   readonly systems: ReadonlyMap<string, SystemWindow>
@@ -44,6 +45,7 @@ export interface Sample {
   readonly overheadMs: number
 }
 
+/** A problem the panel flags, counted by kind and subject (a subset of the session `Warning` codes). */
 export interface Alert {
   readonly code: "system-failed" | "non-finite-value" | "discarded-messages" | "ignored-failure"
   readonly message: string

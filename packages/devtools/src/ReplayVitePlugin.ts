@@ -1,7 +1,7 @@
 /**
  * A Vite plugin (Node side) that receives the replays `ReplayViteSink`
  * posts from the page and writes them into the game's repository as
- * `.replays/<time>.json`, logging the path, the tick count, and the reason.
+ * `.replays/<time>-tick-<tick>.json`, logging the path, the tick count, and the reason.
  * Development only: it does nothing in a build.
  *
  * Add `.replays/` to the game's `.gitignore`.
@@ -37,6 +37,10 @@ export interface Plugin {
   readonly configureServer: (server: DevServer) => void
 }
 
+/**
+ * The plugin. `directory` is relative to the Vite root and defaults to
+ * `.replays`. A post that is not a replay is answered with status 400.
+ */
 export const plugin = (options: { readonly directory?: string } = {}): Plugin => ({
   name: "ritmo-replays",
   apply: "serve",

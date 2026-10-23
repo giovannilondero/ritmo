@@ -185,6 +185,33 @@ services: Game.Runtime.services() // [!code --]
 services: Game.Runtime.services(Game.Runtime.service(Logger, console)) // [!code ++]
 ```
 
+## Input is drained once
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Keyboard } from "@typeonce/ritmo-browser"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const keys = { jump: [" "] } as const
+// ---cut---
+// @errors: 2684
+const KeyboardInput = Descriptor.Service<Keyboard.Actions<typeof keys>>()("Arena/Keyboard")
+
+const Jump = Game.System(
+  "Arena/Jump",
+  { services: { keyboard: Game.System.service(KeyboardInput) } },
+  ({ services }) => services.keyboard.snapshot() // [!code highlight]
+)
+```
+
+```ts title="fix"
+{ services: { keyboard: Game.System.service(KeyboardInput) } } // [!code --]
+{ resources: { input: Game.System.readResource(Input) } } // [!code ++]
+```
+
+Each `snapshot()` starts a new press window, so two readers would split the
+presses. Systems read the resource `InputCapture.system` writes.
+
 ## Names are unique
 
 ```ts twoslash

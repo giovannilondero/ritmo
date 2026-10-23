@@ -35,9 +35,16 @@
  */
 export type EntityKey = number
 
+/**
+ * One renderer node per entity, made with `make` (or a renderer adapter such
+ * as `PixiNodeRegistry.make`). Provide it as a runtime service and hand that
+ * service to `RenderSync.system`, which fills and empties it; host code reads
+ * it with `get`.
+ */
 export interface NodeRegistry<Node> {
   /** Number of live nodes. */
   readonly size: number
+  /** The entity's node, or `undefined` when it has none. Use `ensure` to create one. */
   get(entity: EntityKey): Node | undefined
   /**
    * Returns the entity's node, creating and attaching it first when missing.
@@ -51,9 +58,11 @@ export interface NodeRegistry<Node> {
    * Detaches and destroys every node.
    */
   clear(): void
+  /** The live nodes with their entity keys. */
   entries(): IterableIterator<readonly [number, Node]>
 }
 
+/** What attaching and detaching a node mean for one renderer; see `make`. */
 export interface RegistryOptions<Node> {
   /** Adds a newly created node to the scene. */
   readonly attach: (node: Node) => void

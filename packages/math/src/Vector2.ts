@@ -7,7 +7,8 @@
  * This is the common math value that game code threads through position,
  * velocity, input direction, camera motion, and collision helpers. Use it when
  * vectors should stay explicitly validated and reusable across ECS and helper
- * modules.
+ * modules. For per-frame arithmetic on numbers already known to be sane, use
+ * `Vec2` (a `Vector2` is a `Vec2`, so it passes without conversion).
  *
  * @example
  * ```ts

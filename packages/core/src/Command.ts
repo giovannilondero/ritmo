@@ -285,7 +285,9 @@ export interface InternalWorld<S extends Schema.Any> {
 const unspawnedId = Entity.makeEntityId<any, any>(-1)
 
 /**
- * Creates a typed component entry.
+ * Creates a typed component entry, the same as a `[Descriptor, value]`
+ * tuple. Use {@link entryRaw} for unvalidated input to a constructed
+ * descriptor.
  */
 export const entry = <D extends Descriptor<"component", string, any>>(
   descriptor: D,
@@ -441,6 +443,7 @@ export interface Permission<out Kind extends PermissionKind, out Value> {
   readonly values: ReadonlyArray<Value>
 }
 
+/** The command kinds a {@link Permission} can allow, named like the `Game.System.*` helper that makes it. */
 export type PermissionKind = "spawns" | "inserts" | "removes" | "despawns" | "despawnsScope" | "relates"
 
 type ComponentDescriptor = Descriptor<"component", string, any>

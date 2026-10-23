@@ -178,14 +178,15 @@ export const vector = (keys: { readonly up: Keys; readonly down: Keys; readonly 
 export const code = <const Code extends string>(code: Code): PhysicalKey & { readonly code: Code } => ({ code })
 
 /**
- * One action's state in a snapshot.
+ * One action's state in a snapshot, the same on every device (`Gamepad`,
+ * `Pointer`, and `Touch` buttons too).
  */
 export interface ActionState {
-  /** At least one bound key is down now. */
+  /** At least one bound key or button is down now. */
   readonly held: boolean
-  /** A bound key went down since the previous snapshot, even if already released. */
+  /** A bound key or button went down since the previous snapshot, even if already released. */
   readonly pressed: boolean
-  /** A bound key went up since the previous snapshot and none is held now. */
+  /** A bound key or button went up since the previous snapshot and none is held now. */
   readonly released: boolean
 }
 
@@ -216,6 +217,11 @@ export type OnlyActionsOf<R, B extends Bindings> = {
   readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
 }
 
+/**
+ * A keyboard bound to actions, built with {@link actions} (live),
+ * {@link scripted}, or {@link recording}. Capture it with
+ * `InputCapture.system(...)`, or merge it with `Controls`.
+ */
 export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
   /**
    * Returns every action's state and starts a new press/release window.
@@ -236,6 +242,7 @@ export interface Actions<B extends Bindings> extends System.Consumes<"snapshot">
   dispose(): void
 }
 
+/** Options for {@link actions}. */
 export interface ActionsOptions {
   /**
    * Call `preventDefault()` for bound keys, so arrows and space do not scroll
@@ -301,7 +308,11 @@ const labelsOf = (flat: Readonly<Record<string, Keys>>): ReadonlyArray<string> =
   [...new Set(Object.values(flat).flatMap((keys) => keys.map(bindingLabel)))]
 
 /**
- * Starts tracking bound keys on `host`.
+ * Starts tracking bound keys on `host`, usually `window`, until `dispose()`.
+ * When the window loses focus every held action is released. Each call is
+ * its own device: build one per source (one `Controls` merge, one player
+ * of a pool). Use {@link scripted} for tests and headless runs, and
+ * {@link presses} to capture an unbound key on a settings screen.
  */
 export const actions = <const B extends Bindings>(
   host: KeyboardHost,
@@ -511,7 +522,8 @@ export type TimelineName<B extends Bindings> = ButtonNames<B> | `${VectorNames<B
 export type Timeline<B extends Bindings> = ReadonlyArray<TimelineEntry<B>>
 
 /**
- * Actions driven by a timeline instead of a host.
+ * Actions driven by a timeline instead of a host. The timeline names
+ * actions, not keys, so `rebind` changes nothing.
  */
 export interface Scripted<B extends Bindings> extends Actions<B> {
   /** Number of snapshots taken so far, which is the next frame index. */

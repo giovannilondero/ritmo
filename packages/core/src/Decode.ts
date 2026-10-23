@@ -98,8 +98,10 @@ export const number: Codec<number> = primitive("finite number", (raw): raw is nu
 /** A safe integer. */
 export const integer: Codec<number> = primitive("integer", (raw): raw is number => Number.isSafeInteger(raw))
 
+/** Any string. Use `literal(...)` for a fixed set of values. */
 export const string: Codec<string> = primitive("string", (raw): raw is string => typeof raw === "string")
 
+/** `true` or `false`. */
 export const boolean: Codec<boolean> = primitive("boolean", (raw): raw is boolean => typeof raw === "boolean")
 
 /**

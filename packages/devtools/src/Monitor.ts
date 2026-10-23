@@ -52,6 +52,7 @@ export interface Target<S extends Schema.Any, Root> {
   readonly debug: Debug.Handle<S, Root>
 }
 
+/** What `attach` shows, where, and how the panel is opened. */
 export interface Options<S extends Schema.Any, Root> {
   /**
    * The schedules the game ticks, by name. They name the schedules in the
@@ -84,6 +85,7 @@ export interface Options<S extends Schema.Any, Root> {
   readonly replay?: { readonly save: (reason: string) => unknown }
 }
 
+/** An attached monitor panel, from `attach`. */
 export interface Monitor {
   readonly open: () => void
   readonly close: () => void

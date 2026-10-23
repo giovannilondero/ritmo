@@ -183,6 +183,7 @@ export const requires = <
 
 const schemaRootTypeId = "~ritmo/SchemaRoot" as const
 
+/** A named schema root made by `defineRoot`, passed last to `bind` to brand the game. */
 export type RootToken<Name extends string = string> = {
   readonly kind: "SchemaRoot"
   readonly name: Name
@@ -197,6 +198,7 @@ const isRootToken = (value: unknown): value is RootToken =>
   && "kind" in value
   && value.kind === "SchemaRoot"
 
+/** The schema `bind` builds from two fragments: their components, resources, events, relations, and requirements together. */
 export type MergeSchemaDefinitions<
   A extends Schema.Any,
   B extends Schema.Any
@@ -673,6 +675,11 @@ export namespace Schema {
       id: (handle: Entity.Handle<Root, ComponentDescriptor<S> | undefined>) => Entity.EntityId<S, Root>
     }
     readonly Query: {
+      /**
+       * Builds a query for a system's `queries`: named `selection` slots
+       * (`read`, `write`, `optional`, relation reads), `with` / `without`
+       * components, change `filters`, and relation filters.
+       */
       <
         const Selection extends Record<string, QuerySelectionAccess<S, Root>>,
         const With extends ReadonlyArray<ComponentDescriptor<S>> = [],
@@ -693,11 +700,17 @@ export namespace Schema {
         readonly withoutRelated?: WithoutRelated
         // Uninferred: an omitted list is `[]`, never inferred from the spec it is written in (`queries: { ... }`).
       }): QueryModule.QuerySpec<Selection, QueryModule.Uninferred<With, ReadonlyArray<ComponentDescriptor<S>>>, QueryModule.Uninferred<Without, ReadonlyArray<ComponentDescriptor<S>>>, QueryModule.Uninferred<Filters, ReadonlyArray<QueryModule.Filter<ComponentDescriptor<S>>>>, QueryModule.Uninferred<WithRelations, ReadonlyArray<Relation.Relation.Any>>, QueryModule.Uninferred<WithoutRelations, ReadonlyArray<Relation.Relation.Any>>, QueryModule.Uninferred<WithRelated, ReadonlyArray<Relation.Relation.Any>>, QueryModule.Uninferred<WithoutRelated, ReadonlyArray<Relation.Relation.Any>>, Root>
+      /** A required read-only slot: matched entities have the component. */
       read: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.ReadAccess<D>
+      /** A required writable slot; immutable components cannot be written (replace them with `commands.insert`). */
       write: <D extends ComponentDescriptor<S>>(descriptor: D & QueryModule.Writable<D>) => QueryModule.WriteAccess<D>
+      /** A read-only slot that does not constrain matching: check `present` before reading. */
       optional: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.OptionalReadAccess<D>
+      /** A `filters` entry: entities whose component was added since this system's previous run. */
       added: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.AddedFilter<D>
+      /** A `filters` entry: entities whose component was added or written since this system's previous run. */
       changed: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.ChangedFilter<D>
+      /** A `filters` entry passing when at least one of its `added` / `changed` filters does (filters listed side by side must all pass). */
       anyOf: <
         const Filters extends readonly [
           QueryModule.LifecycleFilter<ComponentDescriptor<S>>,
@@ -705,9 +718,13 @@ export namespace Schema {
           ...ReadonlyArray<QueryModule.LifecycleFilter<ComponentDescriptor<S>>>
         ]
       >(...filters: Filters) => QueryModule.AnyOfFilter<Filters[number]["descriptor"]>
+      /** The entity's target in the relation; matches only entities that have one. See `Relation.read`. */
       readRelation: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.RelationReadAccess<R, S, Root>
+      /** Like `readRelation`, as an optional cell: entities without a target still match. */
       optionalRelation: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.OptionalRelationReadAccess<R, S, Root>
+      /** The ids of the entities related to this one (`ChildOf` gives the children); matches only entities with at least one. */
       readRelated: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.RelatedReadAccess<R, S, Root>
+      /** Like `readRelated`, as an optional cell: entities with none still match. */
       optionalRelated: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.OptionalRelatedReadAccess<R, S, Root>
     }
     readonly Command: {
@@ -723,7 +740,9 @@ export namespace Schema {
         draft: Entity.EntityDraft<S, P, Root, Relates>,
         ...entries: Entries
       ) => Command.DraftFor<S, Entries, P, Root, Relates>
+      /** A typed `[Descriptor, value]` entry for an already valid value. */
       entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: QueryModule.ReadonlyValue<Descriptor.Value<D>>) => Command.Entry<D>
+      /** Validates raw input through a constructed descriptor's validator; check the result before spawning. See `Command.entryRaw`. */
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>
@@ -811,6 +830,11 @@ export namespace Schema {
       ) => Machine.CheckCondition<Root, System.SystemAccessNeeds<Access>>
     }
     readonly System: {
+      /**
+       * Defines a system: `spec` declares everything it may touch, and `run`
+       * receives exactly that. Return `Result.failure(error)` for an expected
+       * failure (its writes roll back); see the `System` module.
+       */
       <
         const Name extends string,
         const Access extends BoundSystemAccess<S, Root>,
@@ -820,10 +844,15 @@ export namespace Schema {
         spec: System.ExactAccess<Access>,
         run: System.SystemRun<System.SystemSpec<S, Access, Root>, E>
       ): BoundSystem<S, Root, System.SystemSpec<S, Access, Root>, E, Name, System.SystemAccessNeeds<Access>>
+      /** A read-only resource slot (`resources`). Use `changedResource` to skip work when it did not change. */
       readResource: <D extends ResourceDescriptor<S>>(descriptor: D) => System.ResourceRead<D>
+      /** A writable resource slot (`resources`); writes roll back when the system fails. */
       writeResource: <D extends ResourceDescriptor<S>>(descriptor: D) => System.ResourceWrite<D>
+      /** A read-only resource slot that also reports `changed()` since this system's previous run (`resources`). */
       changedResource: <D extends ResourceDescriptor<S>>(descriptor: D) => System.ResourceChanged<D>
+      /** An event stream slot (`events`): each run sees the events published since its previous run, once. */
       readEvent: <D extends EventDescriptor<S>>(descriptor: D) => System.EventRead<D>
+      /** An event emit slot (`events`): published when the run succeeds, dropped when it fails. */
       writeEvent: <D extends EventDescriptor<S>>(descriptor: D) => System.EventWrite<D>
       /**
        * Requires every writer of this event or resource to run earlier in the
@@ -835,12 +864,27 @@ export namespace Schema {
       ) => Read & System.ThisTick
       service: typeof System.service
       consumeService: typeof System.consumeService
+      /** The committed value of a machine (`machines`); queued values stay hidden until `applyStateTransitions(...)`. */
       machine: <M extends BoundStateMachine<Root>>(machine: M) => Machine.MachineRead<M>
+      /** Queues a machine's next value (`nextMachines`), committed at the next `applyStateTransitions(...)`. */
       nextState: <M extends BoundStateMachine<Root>>(machine: M) => Machine.NextMachineWrite<M>
+      /**
+       * A stream of a machine's committed transitions (`transitionEvents`),
+       * read in any schedule like events. Use `transition` inside the
+       * machine's own transition schedules.
+       */
       readTransitionEvent: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionEventRead<M>
+      /**
+       * The `{ from, to }` of the transition being applied (`transitions`),
+       * for systems in that machine's `onEnter` / `onExit` / `onTransition`
+       * schedules. Use `readTransitionEvent` anywhere else.
+       */
       transition: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionRead<M>
+      /** The entities whose component was removed since this system's previous run (`removed`); despawns included. */
       readRemoved: <D extends ComponentDescriptor<S>>(descriptor: D) => System.RemovedRead<D>
+      /** The entities despawned since this system's previous run (`despawned`). Use `readRemoved` to react to one component. */
       readDespawned: () => System.DespawnedRead
+      /** The failed `relate` / `reorderChildren` commands of a relation since this system's previous run (`relationFailures`). */
       readRelationFailures: <R extends RelationDescriptor<S>>(relation: R) => System.RelationFailureRead<R>
       /**
        * Declares the commands a system may queue, for its spec's `commands`:
@@ -871,9 +915,20 @@ export namespace Schema {
       <const Entries extends ReadonlyArray<BoundScheduleEntry<S, Root>>>(
         ...entries: Entries
       ): Schedule.AnonymousScheduleBuildFor<S, Entries, Root>
+      /**
+       * Groups `onEnter` / `onExit` / `onTransition` schedules (and other
+       * bundles) into one bundle for `applyStateTransitions(bundle)`. A
+       * transition schedule runs only through the marker it is passed to.
+       */
       transitions: <const Entries extends ReadonlyArray<BoundTransitionBundleInput<S, Root>>>(
         ...entries: Entries
       ) => BoundTransitionBundleResult<S, Root, Entries>
+      /**
+       * Systems run when `machine` enters `state`, after the new value is
+       * committed. When one fails, the transition stays committed (traced as
+       * `enterFailed`). Pass it to `applyStateTransitions` through
+       * `transitions(...)`; see `onExit` for the exit phase.
+       */
       onEnter: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,
         state: Machine.StateMachine.Value<M>,
@@ -929,6 +984,12 @@ export namespace Schema {
         ...entries: Entries
       ) => Schedule.ConditionalScheduleBuildFor<S, Conditions, Entries, Root>
       applyDeferred: typeof Schedule.applyDeferred
+      /**
+       * The marker that applies queued commands (as `applyDeferred()` does),
+       * then commits every queued `nextState`, running the bundle's
+       * `onExit` / `onTransition` / `onEnter` schedules for each transition.
+       * Without a bundle, states change and no transition schedule runs.
+       */
       applyStateTransitions: <Bundle extends BoundTransitionBundle<S, Root, any, any, any> | undefined = undefined>(
         bundle?: Bundle
       ) => Schedule.ApplyStateTransitionsStep<Bundle, Root>

@@ -13,7 +13,7 @@ export const demos = {
   "top-down": {
     title: "Top-down",
     description: "Walk the rooms and pick up the five parts.",
-    controls: "WASD or arrows to walk, E or Space to pick up. A gamepad works too.",
+    controls: "WASD or arrows to walk, E, Space, or a click to pick up. A gamepad works too.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/integration/top-down",
     load: () => import("./top-down/game.ts")
   }

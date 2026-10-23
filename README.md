@@ -105,7 +105,7 @@ All packages are released together with the same version.
 |---|---|
 | `@typeonce/ritmo` | ECS runtime and fixed-step loop |
 | `@typeonce/ritmo-math` | Vectors, collision, spatial grid, flow field, seeded random, same-bits trig |
-| `@typeonce/ritmo-browser` | Animation-frame ticks, keyboard, pointer, and touch input |
+| `@typeonce/ritmo-browser` | Animation-frame ticks; keyboard, gamepad, pointer, and touch actions, merged into one input or split across local players |
 | `@typeonce/ritmo-render` | Entity-to-node sync for any renderer |
 | `@typeonce/ritmo-pixi` | Pixi adapter for the render node registry |
 | `@typeonce/ritmo-devtools` | Headless debug sessions, reports, and `ritmo-devtools lint` |
@@ -132,6 +132,9 @@ every change: where the docs are and how to structure the game.
   simulation in isometric line art, rendered with Three.js.
 - [Spirit Call](https://github.com/SandroMaglione/spirit-call): a
   top-down action game for the phone, with teams of elemental spirits.
+- [Grand Theft Auto: Lunigiana](https://github.com/mastro993/gta-lunigiana):
+  an open-world car-theft game in isometric pixel art, set in the real valleys
+  of Lunigiana.
 
 ## Guarantees
 

@@ -152,11 +152,13 @@ export interface OptionalReadAccess<D extends ComponentDescriptor> {
   readonly descriptor: D
 }
 
+/** A component slot of a selection: `read`, `write`, or `optional`. */
 export type Access<D extends ComponentDescriptor> =
   | ReadAccess<D>
   | WriteAccess<D>
   | OptionalReadAccess<D>
 
+/** Anything a query `selection` slot accepts: a component slot or a relation read. */
 export type SelectionAccess<
   S extends Schema.Any = Schema.Any,
   Root = unknown
@@ -194,6 +196,7 @@ export interface AnyOfFilter<D extends ComponentDescriptor> {
   readonly filters: ReadonlyArray<LifecycleFilter<D>>
 }
 
+/** An entry of a query's `filters`: `added`, `changed`, or `anyOf`. */
 export type Filter<D extends ComponentDescriptor> =
   | LifecycleFilter<D>
   | AnyOfFilter<D>
@@ -757,30 +760,6 @@ export const multipleEntitiesError = (count: number): Query.MultipleEntitiesErro
 })
 
 /**
- * Creates an explicit query specification.
- *
- * Use this inside system specs instead of relying on callback parameter
- * inference. The resulting value drives both runtime execution and the derived
- * query result type.
- *
- * A query spec is purely declarative. It does not access the world by itself;
- * systems receive `QueryHandle`s derived from the spec. In practice this is
- * where you encode the exact shape of one gameplay iteration pass.
- *
- * @example
- * ```ts
- * // Define one reusable iteration contract for a movement system.
- * const Moving = Game.Query({
- *   selection: {
- *     position: Game.Query.write(Position),
- *     velocity: Game.Query.read(Velocity)
- *   },
- *   with: [Position, Velocity],
- *   without: [Sleeping]
- * })
- * ```
- */
-/**
  * `T` itself, but not a place inference reads from: a list a query omits
  * stays `[]` even when the call sits where a wider query type is expected
  * (`queries: { ... }` in a spec). Unlike `NoInfer`, it prints as `T`.
@@ -807,6 +786,32 @@ export type ExclusionsPossible<Selection, With extends ReadonlyArray<unknown>, W
       readonly __fixQuery__: `${Extract<DescriptorName<Without[number]>, RequiredNames<Selection, With, Filters>>} is both required and excluded (without): this query can never match; remove it from one side`
     }
 
+/**
+ * Creates an explicit query specification.
+ *
+ * Use this inside system specs instead of relying on callback parameter
+ * inference. The resulting value drives both runtime execution and the derived
+ * query result type.
+ *
+ * A query spec is purely declarative. It does not access the world by itself;
+ * systems receive `QueryHandle`s derived from the spec. In practice this is
+ * where you encode the exact shape of one gameplay iteration pass. Game
+ * code uses `Game.Query(...)`, which checks the descriptors against the
+ * bound game.
+ *
+ * @example
+ * ```ts
+ * // Define one reusable iteration contract for a movement system.
+ * const Moving = Game.Query({
+ *   selection: {
+ *     position: Game.Query.write(Position),
+ *     velocity: Game.Query.read(Velocity)
+ *   },
+ *   with: [Position, Velocity],
+ *   without: [Sleeping]
+ * })
+ * ```
+ */
 export const Query = <
   const Selection extends Record<string, SelectionAccess<any, Root>>,
   const With extends ReadonlyArray<ComponentDescriptor> = [],

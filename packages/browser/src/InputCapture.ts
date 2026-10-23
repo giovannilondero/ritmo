@@ -9,7 +9,8 @@
  * observed exactly once per run.
  *
  * The source is any service with `snapshot()`: one device such as
- * `Keyboard.actions(...)`, or `Controls` merging several. The resource's
+ * `Keyboard.actions(...)`, a `Controls` merge of several, or a
+ * `Controls.players(...)` pool. The resource's
  * value type must be exactly the snapshot type (declare it as
  * `InputCapture.SnapshotOf<typeof Source>`): not a wider type, and not one
  * with extra optional fields.
@@ -76,6 +77,7 @@ type MatchingResource<Resource extends ResourceDescriptor, Service extends Servi
     ? Resource
     : "The resource's value type must be exactly the source's snapshot type: declare it with InputCapture.SnapshotOf<typeof Source>"
 
+/** Options for {@link system}. */
 export interface Options<
   S extends Schema.Any,
   Service extends ServiceDescriptor,
