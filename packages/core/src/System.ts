@@ -60,7 +60,7 @@ import type * as Entity from "./Entity.ts"
 import * as Machine from "./Machine.ts"
 import type * as Relation from "./Relation.ts"
 import type { Query, QueryMatch } from "./Query.ts"
-import type { ConstructedWriteCell, ReadCell, ReadonlyValue, WriteCell } from "./Query.ts"
+import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateUpdateResult, WriteCell } from "./Query.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
 import type { Schema } from "./Schema.ts"
@@ -433,6 +433,19 @@ export const machine = <M extends Machine.StateMachine.Any>(
 ): Machine.MachineRead<M> => Machine.read(stateMachine)
 
 /**
+ * Declares access that reads a machine and changes the fields of its current
+ * state immediately (`machines.x.update(...)`), for per-frame data such as a
+ * dialogue's typed letters or a countdown's frames left.
+ *
+ * The state name changes only at the commit; the current state's fields
+ * change immediately. Use {@link nextState} to move to another state, which
+ * takes the target's fields and commits at `applyStateTransitions(...)`.
+ */
+export const updateMachine = <M extends Machine.StateMachine.Any>(
+  stateMachine: M
+): Machine.MachineUpdate<M> => Machine.update(stateMachine)
+
+/**
  * Declares queued write access to the next value of a finite-state machine.
  *
  * This is the system-side request channel for a future phase change. It does
@@ -531,18 +544,57 @@ export interface EventWriteView<T> {
  * A read-only view over one committed finite-state-machine value.
  */
 export interface MachineReadView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
-  /** The committed value; `undefined` only for a sub-state whose parent is in another state. */
-  get(): Machine.CurrentValue<M>
-  is(value: Machine.StateMachine.Value<M>): boolean
+  /**
+   * The committed value: the state's name in `_tag`, next to its fields
+   * (narrow on `_tag` to read them); `undefined` only for a sub-state whose
+   * parent is in another state.
+   */
+  get(): ReadonlyValue<Machine.CurrentValue<M>>
+  /** Whether the committed state is `state`, whatever its fields. */
+  is(state: Machine.StateMachine.State<M>): boolean
+}
+
+/**
+ * A view that reads a machine and changes the fields of its current state at
+ * once, given to systems that declare `machines: { x: Game.System.updateMachine(M) }`.
+ */
+export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> extends MachineReadView<M> {
+  /**
+   * Changes the fields of `state` if the machine is in it, without leaving
+   * it: `data` maps the current value to the new fields. Otherwise it
+   * returns `MachineStateMismatch` (or, for a sub-state without a value,
+   * `SubStateInactive`) and writes nothing.
+   *
+   * The state name changes only at the commit; the current state's fields
+   * change immediately. The write is visible to later systems in the same
+   * run, rolled back with a failed system, and runs no enter or exit
+   * schedules and publishes no transition event. Move to another state with
+   * `nextMachines.x.set(...)`; a move queued before the commit replaces
+   * these fields with the target's.
+   *
+   * @example
+   * ```ts
+   * machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, typed: talking.typed + 1 }) })
+   * ```
+   */
+  update<const State extends Machine.StateMachine.State<M>, Next extends StateUpdateResult<M["states"], State>>(
+    change: {
+      readonly state: State
+      readonly data: (current: ReadonlyValue<Machine.StateOf<M, State>>) => Next
+    } & StateExactFields<M["states"], State, Next, "nextMachines.x.set(...)">
+  ): Machine.UpdateResult<M>
 }
 
 /**
  * A queued write view over one finite-state-machine transition target.
  */
 export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
-  getPending(): Machine.StateMachine.Value<M> | undefined
+  /** The value queued for the next `applyStateTransitions(...)`, if any. */
+  getPending(): ReadonlyValue<Machine.StateOf<M>> | undefined
   /**
-   * Queues `value`, committed at the next `applyStateTransitions(...)`. For a
+   * Queues `value`: the target state's name in `_tag` and all of its fields
+   * (nothing carries over from the current state). The state and its fields
+   * commit together at the next `applyStateTransitions(...)`. For a
    * sub-state it returns a `Result` that fails with `SubStateInactive` (and
    * queues nothing) while the parent is in another state.
    *
@@ -556,9 +608,13 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * Setting the current state again re-runs its exit and enter schedules, so
    * its sub-states restart. Use `setIfChanged` when that is not wanted.
    */
-  set(value: Machine.StateMachine.Value<M>): Machine.SetResult<M>
-  /** Like `set`, but committing the current value again is skipped (no exit or enter schedules). */
-  setIfChanged(value: Machine.StateMachine.Value<M>): Machine.SetResult<M>
+  set(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
+  /**
+   * Like `set`, but committing a value equal to the current one (the same
+   * state with equal fields) is skipped: no exit or enter schedules. The
+   * same state with other fields re-enters, like `set`.
+   */
+  setIfChanged(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
   reset(): void
 }
 
@@ -899,7 +955,7 @@ export interface SystemAccessInput {
   readonly resources?: Record<string, ResourceAccess>
   readonly events?: Record<string, EventAccess>
   readonly services?: Record<string, ServiceRead<Descriptor<"service", string, any>>>
-  readonly machines?: Record<string, Machine.MachineRead<Machine.StateMachine.Any>>
+  readonly machines?: Record<string, Machine.MachineRead<Machine.StateMachine.Any> | Machine.MachineUpdate<Machine.StateMachine.Any>>
   readonly nextMachines?: Record<string, Machine.NextMachineWrite<Machine.StateMachine.Any>>
   readonly transitionEvents?: Record<string, Machine.TransitionEventRead<Machine.StateMachine.Any>>
   readonly removed?: Record<string, RemovedRead<Descriptor<"component", string, any>>>
@@ -961,9 +1017,12 @@ export type SystemAccessSpec = SystemAccessInput
 /** Rejects unknown system access categories, and redundant resource and event slots, at a bound constructor. */
 export type ExactAccess<Access extends SystemAccessInput> = Access & {
   readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: never
-} & RedundantSlotsFix<Access, "resources", "read"> & RedundantSlotsFix<Access, "events", never>
+} & RedundantSlotsFix<Access, "resources", "read"> & RedundantSlotsFix<Access, "events", never> & RedundantSlotsFix<Access, "machines", "read">
 
-type SlotOf<A> = A extends { readonly mode: infer Mode extends string; readonly descriptor: { readonly name: infer Name extends string } } ? readonly [Mode, Name] : never
+type SlotOf<A> =
+  A extends { readonly mode: infer Mode extends string; readonly descriptor: { readonly name: infer Name extends string } } ? readonly [Mode, Name]
+  : A extends { readonly mode: infer Mode extends string; readonly machine: { readonly name: infer Name extends string } } ? readonly [Mode, Name]
+  : never
 
 /**
  * Slots of `Record` that repeat another slot: the same descriptor in the same
@@ -976,14 +1035,16 @@ type RedundantSlots<Record, ReadMode extends string> = {
     : never
 }[keyof Record]
 
-type RedundantSlotsFix<Access, Category extends "resources" | "events", ReadMode extends string> =
+type RedundantSlotsFix<Access, Category extends "resources" | "events" | "machines", ReadMode extends string> =
   Access extends { readonly [C in Category]?: infer Record }
     ? [RedundantSlots<Record, ReadMode>] extends [never]
       ? unknown
       : {
         readonly [C in Category]: {
           readonly [K in RedundantSlots<Record, ReadMode>]: {
-            readonly __fixSystem__: `${K & string} repeats ${Category extends "resources" ? "a resource" : "an event"} another slot of this system declares: keep one slot (a write or changed view reads too)`
+            readonly __fixSystem__: Category extends "machines"
+              ? `${K & string} repeats a machine another slot of this system declares: keep one slot (an update view reads too)`
+              : `${K & string} repeats ${Category extends "resources" ? "a resource" : "an event"} another slot of this system declares: keep one slot (a write or changed view reads too)`
           }
         }
       }
@@ -1070,7 +1131,9 @@ type ServiceContext<Spec extends AnySystemSpec> = {
  */
 type MachineContext<Spec extends AnySystemSpec> = {
   readonly [K in keyof Spec["machines"]]:
-    Spec["machines"][K] extends Machine.MachineRead<infer M> ? MachineReadView<M> : never
+    Spec["machines"][K] extends Machine.MachineUpdate<infer M> ? MachineUpdateView<M>
+    : Spec["machines"][K] extends Machine.MachineRead<infer M> ? MachineReadView<M>
+    : never
 }
 
 /**

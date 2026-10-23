@@ -145,12 +145,13 @@ export interface RelationDescription {
 /** One state machine of the game, in `Description.machines`. */
 export interface MachineDescription {
   readonly name: string
-  readonly states: ReadonlyArray<Machine.StateValue>
+  /** The names of its states. */
+  readonly states: ReadonlyArray<string>
   /**
    * The committed value, or `undefined` when the runtime does not provide the
    * machine, or when it is a sub-state whose parent is in another state.
    */
-  readonly current: Machine.StateValue | undefined
+  readonly current: Machine.AnyValue | undefined
   /** Whether the runtime was given an initial value for the machine. */
   readonly provided: boolean
   /** For a sub-state, where it exists, as `Parent=state`. */
@@ -197,6 +198,8 @@ export interface SystemDescription {
   readonly events: { readonly reads: ReadonlyArray<string>; readonly writes: ReadonlyArray<string> }
   readonly machines: {
     readonly reads: ReadonlyArray<string>
+    /** Machines whose current state's fields it changes (`Game.System.updateMachine`); they are read too. */
+    readonly updates: ReadonlyArray<string>
     readonly next: ReadonlyArray<string>
     readonly transitions: ReadonlyArray<string>
     readonly transitionEvents: ReadonlyArray<string>
@@ -398,10 +401,10 @@ export interface EntityDump {
 
 /** One provided machine's value in a {@link WorldDump}. */
 export interface MachineDump {
-  readonly current: Machine.StateValue
+  readonly current: Machine.AnyValue
   /** The queued next value, applied at the next `applyStateTransitions`. */
-  readonly pending?: Machine.StateValue
-  readonly previous?: Machine.StateValue
+  readonly pending?: Machine.AnyValue
+  readonly previous?: Machine.AnyValue
 }
 
 /** A command queued and not yet applied, in `WorldDump.pendingCommands`. */
@@ -477,7 +480,14 @@ export interface EventEmit {
 export interface NextStateWrite {
   readonly machine: string
   /** `undefined` when the system cleared the queued value. */
-  readonly value: Machine.StateValue | undefined
+  readonly value: Machine.AnyValue | undefined
+}
+
+/** The fields of a machine's current state, changed by a system with `machines.x.update(...)`, in `SystemEvent.machines`. */
+export interface MachineWrite {
+  readonly machine: string
+  readonly before: Machine.AnyValue
+  readonly after: Machine.AnyValue
 }
 
 /**
@@ -517,8 +527,8 @@ export type Effect =
  */
 export interface NextStateReplacement {
   readonly machine: string
-  readonly replaced: { readonly system: string; readonly value: Machine.StateValue }
-  readonly by: { readonly system: string; readonly value: Machine.StateValue }
+  readonly replaced: { readonly system: string; readonly value: Machine.AnyValue }
+  readonly by: { readonly system: string; readonly value: Machine.AnyValue }
   /** How many times it happened. */
   readonly count: number
 }
@@ -621,6 +631,8 @@ export interface SystemEvent {
   readonly writes: ReadonlyArray<ComponentWrite>
   readonly resources: ReadonlyArray<ResourceWrite>
   readonly events: ReadonlyArray<EventEmit>
+  /** Immediate changes to the current state's fields (`machines.x.update(...)`). */
+  readonly machines: ReadonlyArray<MachineWrite>
   readonly nextStates: ReadonlyArray<NextStateWrite>
   /** Tags of the commands queued (dropped on failure). */
   readonly commands: ReadonlyArray<string>
@@ -672,10 +684,10 @@ export interface TransitionEvent {
   readonly tick: number
   readonly schedule: string
   readonly machine: string
-  /** `undefined` when a sub-state starts existing (its parent entered its state). */
-  readonly from: Machine.StateValue | undefined
-  /** `undefined` when a sub-state stops existing (its parent left its state). */
-  readonly to: Machine.StateValue | undefined
+  /** The state left; `undefined` when a sub-state starts existing (its parent entered its state). */
+  readonly from: string | undefined
+  /** The state entered; `undefined` when a sub-state stops existing (its parent left its state). */
+  readonly to: string | undefined
   /**
    * `applied` committed the new value; `unchanged` was a `setIfChanged` to the
    * current value; `failed` stopped in an exit or transition schedule and was

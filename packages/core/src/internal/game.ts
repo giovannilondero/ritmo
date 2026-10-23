@@ -7,7 +7,7 @@
 import * as Command from "../Command.ts"
 import type * as Debug from "../Debug.ts"
 import type * as Snapshot from "../Snapshot.ts"
-import type { Descriptor } from "../Descriptor.ts"
+import type { Descriptor, StateDefinitions } from "../Descriptor.ts"
 import * as Condition from "../Condition.ts"
 import * as Entity from "../Entity.ts"
 import * as EntityScope from "../EntityScope.ts"
@@ -33,15 +33,15 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
 
   const defineMachine = (
     name: string,
-    values: readonly [Machine.StateValue, ...Machine.StateValue[]],
-    options?: { readonly within: readonly [Machine.StateMachine.Any, Machine.StateValue] }
+    states: StateDefinitions,
+    options?: { readonly within: readonly [Machine.StateMachine.Any, string] }
   ) => {
     if (definedMachineNames.has(name)) {
       throw new Error(`Duplicate state machine name: ${name}`)
     }
     const machine = Machine.StateMachine(
       name,
-      values,
+      states,
       options === undefined ? undefined : { machine: options.within[0], state: options.within[1] }
     )
     definedMachines.push(machine)
@@ -60,8 +60,8 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
   const defineScope = (
     name: string,
     options?: {
-      readonly despawnOnEnter?: readonly [Machine.StateMachine.Any, Machine.StateValue]
-      readonly despawnOnExit?: readonly [Machine.StateMachine.Any, Machine.StateValue]
+      readonly despawnOnEnter?: readonly [Machine.StateMachine.Any, string]
+      readonly despawnOnExit?: readonly [Machine.StateMachine.Any, string]
     }
   ) => {
     if (definedScopeNames.has(name)) {
@@ -153,6 +153,7 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         service: System.service,
         consumeService: System.consumeService,
         machine: System.machine,
+        updateMachine: System.updateMachine,
         nextState: System.nextState,
         readTransitionEvent: System.readTransitionEvent,
         transition: System.transition,
@@ -165,13 +166,13 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
       (...entries: ReadonlyArray<Schedule.ScheduleEntry>) => Schedule.make(schema, entries),
       {
         transitions: Schedule.transitions,
-        onEnter: (machine: Machine.StateMachine.Any, state: Machine.StateValue, plan: ReadonlyArray<Schedule.ScheduleEntry>) =>
+        onEnter: (machine: Machine.StateMachine.Any, state: string, plan: ReadonlyArray<Schedule.ScheduleEntry>) =>
           transitionSchedule({ machine, phase: "enter", state }, plan),
-        onExit: (machine: Machine.StateMachine.Any, state: Machine.StateValue, plan: ReadonlyArray<Schedule.ScheduleEntry>) =>
+        onExit: (machine: Machine.StateMachine.Any, state: string, plan: ReadonlyArray<Schedule.ScheduleEntry>) =>
           transitionSchedule({ machine, phase: "exit", state }, plan),
         onTransition: (
           machine: Machine.StateMachine.Any,
-          [from, to]: readonly [Machine.StateValue, Machine.StateValue],
+          [from, to]: readonly [string, string],
           plan: ReadonlyArray<Schedule.ScheduleEntry>
         ) => transitionSchedule({ machine, phase: "transition", from, to }, plan),
         when: (conditions: ReadonlyArray<Machine.Condition>, ...entries: ReadonlyArray<Schedule.ScheduleEntry>) =>

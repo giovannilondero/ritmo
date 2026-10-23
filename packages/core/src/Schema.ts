@@ -50,7 +50,7 @@
  * ```
  */
 import type * as Command from "./Command.ts"
-import type { ConstructedDescriptor, Descriptor } from "./Descriptor.ts"
+import type { CheckedStates, ConstructedDescriptor, Descriptor, StateDefinitions } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import { buildSchema, emptySchema, mergeSchemas } from "./internal/fragments.ts"
@@ -428,7 +428,7 @@ interface BoundSystemAccess<S extends Schema.Any, Root> extends System.SystemAcc
   readonly queries?: Record<string, Query.Any<Root>>
   readonly resources?: Record<string, System.ResourceRead<ResourceDescriptor<S>> | System.ResourceChanged<ResourceDescriptor<S>> | System.ResourceWrite<ResourceDescriptor<S>>>
   readonly events?: Record<string, System.EventRead<EventDescriptor<S>> | System.EventWrite<EventDescriptor<S>>>
-  readonly machines?: Record<string, Machine.MachineRead<Schema.BoundStateMachine<Root>>>
+  readonly machines?: Record<string, Machine.MachineRead<Schema.BoundStateMachine<Root>> | Machine.MachineUpdate<Schema.BoundStateMachine<Root>>>
   readonly nextMachines?: Record<string, Machine.NextMachineWrite<Schema.BoundStateMachine<Root>>>
   readonly transitionEvents?: Record<string, Machine.TransitionEventRead<Schema.BoundStateMachine<Root>>>
   readonly removed?: Record<string, System.RemovedRead<ComponentDescriptor<S>>>
@@ -575,9 +575,9 @@ export namespace Schema {
   export type BoundStateMachine<
     Root,
     Name extends string = string,
-    Values extends readonly [Machine.StateValue, ...Machine.StateValue[]] = readonly [Machine.StateValue, ...Machine.StateValue[]],
+    States extends StateDefinitions = StateDefinitions,
     Parent = unknown
-  > = Machine.StateMachineDefinition<Name, Values, Root, Parent>
+  > = Machine.StateMachineDefinition<Name, States, Root, Parent>
 
   export type BoundTransitionSchedule<
     S extends Any,
@@ -642,9 +642,9 @@ export namespace Schema {
       name: Name,
       options?: {
         /** Despawns every member when the machine enters this state, before its `onEnter` schedules run. */
-        readonly despawnOnEnter?: readonly [Enter & Machine.SameGame<Enter, Root>, Machine.StateMachine.Value<Enter>]
+        readonly despawnOnEnter?: readonly [Enter & Machine.SameGame<Enter, Root>, Machine.StateMachine.State<Enter>]
         /** Despawns every member when the machine leaves this state, after its `onExit` schedules run. */
-        readonly despawnOnExit?: readonly [Exit & Machine.SameGame<Exit, Root>, Machine.StateMachine.Value<Exit>]
+        readonly despawnOnExit?: readonly [Exit & Machine.SameGame<Exit, Root>, Machine.StateMachine.State<Exit>]
       }
     ) => EntityScope.EntityScope<Name, Root>
     /** Declares a reusable, requirement-checked read-only world projection. */
@@ -759,16 +759,42 @@ export namespace Schema {
       ) => Entity.EntityDraft<S, P, Root, Relates | R>
     }
     /**
-     * Declares one game-wide mode (menu, playing, paused): queued with
-     * `nextState`, committed at `applyStateTransitions(...)`, gating systems
-     * with `Game.Condition.inState(...)`. Use `Descriptor.EntityState(...)`
-     * instead for a state each entity has on its own.
+     * Declares one game-wide mode (menu, playing, paused, game over): queued
+     * with `nextState`, committed at `applyStateTransitions(...)`, gating
+     * systems with `Game.Condition.inState(...)`. Use
+     * `Descriptor.EntityState(...)` instead for a state each entity has on
+     * its own.
+     *
+     * Each state has its own fields, as codecs (`{}` for a state without
+     * data), so a mode and the data only it has are one value: a dialogue
+     * with its speaker, a game over with its winner. Never keep a machine
+     * next to a resource that must agree with it. The value is a tagged
+     * union: `_tag` is the state's name, next to that state's fields
+     * (`Machine.StateOf<typeof M, "State">` is one state's value).
+     *
+     * The state name changes only at the commit; the current state's fields
+     * change immediately. `nextMachines.x.set(...)` queues a move with all of
+     * the target's fields (nothing carries over), committed at the next
+     * `applyStateTransitions(...)`. `machines.x.update(...)`
+     * (`Game.System.updateMachine`) changes the current state's fields at
+     * once, for per-frame data, without enter or exit schedules or a
+     * transition event.
+     *
+     * @example
+     * ```ts
+     * const Mode = Game.StateMachine("Town/Mode", {
+     *   Exploring: {},
+     *   Talking: { speaker: Decode.string, page: Decode.integer }
+     * })
+     * nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
+     * machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
+     * ```
      */
     readonly StateMachine: {
       <
         const Name extends string,
-        const Values extends readonly [Machine.StateValue, ...Machine.StateValue[]]
-      >(name: Name, values: Values): Schema.BoundStateMachine<Root, Name, Values>
+        const States extends StateDefinitions
+      >(name: Name, states: States & CheckedStates<States, "a state machine needs at least one state">): Schema.BoundStateMachine<Root, Name, States>
       /**
        * Declares a sub-state: a machine that exists only while `within[0]` is
        * in state `within[1]` (a battle phase that only means something while
@@ -776,8 +802,8 @@ export namespace Schema {
        * the value given to `Game.Runtime.machine(...)`; when the parent leaves
        * it, the sub-state exits and has no value: `get()` is `undefined`,
        * `Game.Condition.inState(Sub, x)` is false, and `nextMachines.sub.set(...)`
-       * returns a `SubStateInactive` failure. So `inState(Sub, x)` alone
-       * implies the parent's state.
+       * and `machines.sub.update(...)` return a `SubStateInactive` failure.
+       * So `inState(Sub, x)` alone implies the parent's state.
        *
        * The sub-state enters together with the parent's commit, before any
        * `onEnter` schedule runs: the parent's `onEnter` systems already see its
@@ -790,28 +816,29 @@ export namespace Schema {
        *
        * @example
        * ```ts
-       * const Phase = Game.StateMachine("Game/Phase", ["Setup", "Battle"], { within: [Session, "Playing"] })
+       * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: { round: Decode.integer } }, { within: [Session, "Playing"] })
        * ```
        */
       <
         const Name extends string,
-        const Values extends readonly [Machine.StateValue, ...Machine.StateValue[]],
+        const States extends StateDefinitions,
         Parent extends Machine.StateMachine.Any
       >(
         name: Name,
-        values: Values,
-        options: { readonly within: readonly [Parent & Machine.SameGame<Parent, Root>, Machine.StateMachine.Value<Parent>] }
-      ): Schema.BoundStateMachine<Root, Name, Values, Parent>
+        states: States & CheckedStates<States, "a state machine needs at least one state">,
+        options: { readonly within: readonly [Parent & Machine.SameGame<Parent, Root>, Machine.StateMachine.State<Parent>] }
+      ): Schema.BoundStateMachine<Root, Name, States, Parent>
     }
     readonly Condition: {
       /**
-       * Passes while the machine's committed value is `value`. For a
-       * sub-state it fails while the parent is in another state. A machine
-       * of another game fails to compile with a message naming the fix.
+       * Passes while the machine's committed state is `state`, whatever its
+       * fields. For a sub-state it fails while the parent is in another
+       * state. A machine of another game fails to compile with a message
+       * naming the fix.
        */
       inState: <M extends Machine.StateMachine.Any>(
         machine: M & Machine.SameGame<M, Root>,
-        value: Machine.StateMachine.Value<M>
+        state: Machine.StateMachine.State<M>
       ) => Machine.InStateCondition<M>
       /** Passes in the schedule run where `applyStateTransitions(...)` changed the machine. */
       stateChanged: <M extends Machine.StateMachine.Any>(machine: M & Machine.SameGame<M, Root>) => Machine.StateChangedCondition<M>
@@ -866,6 +893,13 @@ export namespace Schema {
       consumeService: typeof System.consumeService
       /** The committed value of a machine (`machines`); queued values stay hidden until `applyStateTransitions(...)`. */
       machine: <M extends BoundStateMachine<Root>>(machine: M) => Machine.MachineRead<M>
+      /**
+       * Reads a machine and changes the fields of its current state at once
+       * (`machines`, `machines.x.update(...)`): the state name changes only at
+       * the commit; the current state's fields change immediately. Use
+       * `nextState` to move to another state.
+       */
+      updateMachine: <M extends BoundStateMachine<Root>>(machine: M) => Machine.MachineUpdate<M>
       /** Queues a machine's next value (`nextMachines`), committed at the next `applyStateTransitions(...)`. */
       nextState: <M extends BoundStateMachine<Root>>(machine: M) => Machine.NextMachineWrite<M>
       /**
@@ -931,7 +965,7 @@ export namespace Schema {
        */
       onEnter: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,
-        state: Machine.StateMachine.Value<M>,
+        state: Machine.StateMachine.State<M>,
         plan: readonly [...Entries]
       ) => BoundTransitionScheduleResult<S, Root, M, Entries>
       /**
@@ -945,13 +979,13 @@ export namespace Schema {
        */
       onExit: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,
-        state: Machine.StateMachine.Value<M>,
+        state: Machine.StateMachine.State<M>,
         plan: readonly [...Entries] & NoApplyDeferredInExit<Entries>
       ) => BoundTransitionScheduleResult<S, Root, M, Entries>
       /** Systems run on one `[from, to]` transition, last in its exit phase (see `onExit`). */
       onTransition: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,
-        transition: readonly [Machine.StateMachine.Value<M>, Machine.StateMachine.Value<M>],
+        transition: readonly [Machine.StateMachine.State<M>, Machine.StateMachine.State<M>],
         plan: readonly [...Entries] & NoApplyDeferredInExit<Entries>
       ) => BoundTransitionScheduleResult<S, Root, M, Entries>
       /**

@@ -34,7 +34,7 @@
  *     rng: Random.seed(0x5eed)
  *   },
  *   machines: Game.Runtime.machines(
- *     Game.Runtime.machine(GameFlow, "Boot")
+ *     Game.Runtime.machine(GameFlow, { _tag: "Boot" })
  *   )
  * })
  *
@@ -68,6 +68,7 @@ import type * as Entity from "./Entity.ts"
 import type * as Inspector from "./Inspector.ts"
 import * as Cells from "./internal/cells.ts"
 import { sameValue } from "./internal/equal.ts"
+import { emptyStates, stateCodec } from "./internal/states.ts"
 import * as DebugInternal from "./internal/debug.ts"
 import { makeQueryEngine } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
@@ -98,6 +99,7 @@ import type {
   RemovedReadView,
   TransitionEventReadView,
   MachineReadView,
+  MachineUpdateView,
   NextMachineWriteView,
   SystemContext,
   SystemDefinition,
@@ -227,12 +229,15 @@ export type MakeRuntimeResult<
       RuntimeConstructionError<S, Provided>
     >
 
+/** The state name of a machine value; `undefined` for a sub-state without one. */
+const stateOf = (value: unknown): string | undefined => (value as { readonly _tag: string } | undefined)?._tag
+
 /**
  * One machine-backed runtime state provision.
  */
 export interface MachineProvision<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
   readonly machine: M
-  readonly initial: Machine.StateMachine.Value<M>
+  readonly initial: ReadonlyValue<Machine.StateOf<M>>
 }
 
 /**
@@ -245,7 +250,7 @@ type MachineEntriesToRecord<
   ? Head extends MachineProvision<infer M>
     ? Tail extends ReadonlyArray<MachineProvision>
       ? MachineEntriesToRecord<Tail, Simplify<Omit<Acc, M["name"]> & {
-          readonly [K in M["name"]]: Machine.StateMachine.Value<M>
+          readonly [K in M["name"]]: Machine.StateOf<M>
         }>>
       : never
     : never
@@ -369,9 +374,9 @@ type RequirementErrorFor<
       }
   : Need extends Descriptor<"resource", string, any>
     ? DescriptorProvisionError<"resource", Schema.Resources<S>, Resources, Need>
-  : Need extends Machine.StateMachineDefinition<infer Name, infer Values, any>
+  : Need extends Machine.StateMachineDefinition<infer Name, infer States, any>
     ? Name extends keyof Machines
-      ? [Machines[Name]] extends [Values[number]] ? never : {
+      ? [Machines[Name]] extends [DescriptorModule.StateValueOf<States, keyof States & string>] ? never : {
           readonly __runtimeRequirementError__: "Incompatible machine"
           readonly __requirement__: Name
         }
@@ -747,6 +752,17 @@ const makeValidatedRuntime = <
   /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
   const discardedPending = new WeakSet<object>()
   const previousMachines = new Map<symbol, unknown>()
+  /** The shared value of each state without fields, by machine key. */
+  const emptyMachineStates = new Map<symbol, ReadonlyMap<string, { readonly _tag: string }>>()
+  /** `value`, or the one shared value of its state when that state has no fields. */
+  const sharedValue = (machine: Machine.StateMachine.Any, value: unknown): unknown => {
+    let empty = emptyMachineStates.get(machine.key)
+    if (empty === undefined) {
+      empty = emptyStates(machine.states)
+      emptyMachineStates.set(machine.key, empty)
+    }
+    return empty.get(stateOf(value)!) ?? value
+  }
   /**
    * Machine keys changed by transitions applied during the current schedule run.
    */
@@ -829,7 +845,7 @@ const makeValidatedRuntime = <
   /** Machines the runtime was given an initial value for. */
   const providedMachineKeys = new Set<symbol>()
   for (const provision of machineEntries) {
-    currentMachines.set(provision.machine.key, provision.initial)
+    currentMachines.set(provision.machine.key, sharedValue(provision.machine, provision.initial))
     providedMachineKeys.add(provision.machine.key)
   }
 
@@ -852,7 +868,7 @@ const makeValidatedRuntime = <
   // Definition order puts a parent before its sub-states, so a sub-state of
   // an inactive sub-state is cleared too.
   for (const machine of options.machineDefinitions) {
-    if (machine.within !== undefined && currentMachines.get(machine.within.machine.key) !== machine.within.state) {
+    if (machine.within !== undefined && stateOf(currentMachines.get(machine.within.machine.key)) !== machine.within.state) {
       currentMachines.delete(machine.key)
     }
   }
@@ -1277,8 +1293,8 @@ const makeValidatedRuntime = <
   }
 
   /**
-   * Journal for the running system's resource, state, event, and queued
-   * machine writes. Component writes are journaled by the world. On an
+   * Journal for the running system's resource, state, event, machine field,
+   * and queued machine writes. Component writes are journaled by the world. On an
    * expected failure everything is restored and the system's commands are
    * discarded; on success, buffered events are published at a fresh tick,
    * so every reader (including the emitter's next run) sees them.
@@ -1286,6 +1302,8 @@ const makeValidatedRuntime = <
   const absentValue = Symbol("ritmo/absent-value")
   const resourceOriginals = new Map<symbol, unknown>()
   const machineOriginals = new Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>()
+  /** Committed machine values before the running system's `update`s. */
+  const committedMachineOriginals = new Map<symbol, unknown>()
   const emittedEvents = new Map<symbol, Array<unknown>>()
 
   /**
@@ -1303,6 +1321,7 @@ const makeValidatedRuntime = <
     readonly resources: Map<symbol, unknown>
     readonly resourceChangedAt: Map<symbol, number | undefined>
     readonly machines: Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>
+    readonly committedMachines: Map<symbol, unknown>
     readonly readers: Map<ReaderState, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number]>
   }
   let phase: Phase | undefined
@@ -1322,6 +1341,7 @@ const makeValidatedRuntime = <
       store.set(key, value)
     }
   const writeResource = journalStoreWrite(resources, resourceOriginals)
+  const writeCommittedMachine = journalStoreWrite(currentMachines, committedMachineOriginals)
 
   /**
    * Resource change ticks for `changedResource` readers. Only resources some
@@ -1351,6 +1371,9 @@ const makeValidatedRuntime = <
       for (const [key, before] of machineOriginals) {
         if (!phase.machines.has(key)) phase.machines.set(key, before)
       }
+      for (const [key, before] of committedMachineOriginals) {
+        if (!phase.committedMachines.has(key)) phase.committedMachines.set(key, before)
+      }
     }
     if (watchedResources.size > 0) {
       for (const [key, before] of resourceOriginals) {
@@ -1370,6 +1393,7 @@ const makeValidatedRuntime = <
     }
     resourceOriginals.clear()
     machineOriginals.clear()
+    committedMachineOriginals.clear()
   }
 
   const restoreStore = (store: Map<symbol, unknown>, originals: Map<symbol, unknown>): void => {
@@ -1394,6 +1418,7 @@ const makeValidatedRuntime = <
       }
     }
     machineOriginals.clear()
+    restoreStore(currentMachines, committedMachineOriginals)
     emittedEvents.clear()
   }
 
@@ -1409,6 +1434,7 @@ const makeValidatedRuntime = <
       resources: new Map(),
       resourceChangedAt: new Map(),
       machines: new Map(),
+      committedMachines: new Map(),
       readers: new Map()
     }
     phase = opened
@@ -1427,6 +1453,7 @@ const makeValidatedRuntime = <
           if (value === absentValue) pendingMachines.delete(key)
           else pendingMachines.set(key, value)
         }
+        restoreStore(currentMachines, opened.committedMachines)
         for (const [key, tick] of opened.resourceChangedAt) {
           if (tick === undefined) resourceChangedAt.delete(key)
           else resourceChangedAt.set(key, tick)
@@ -1528,32 +1555,50 @@ const makeValidatedRuntime = <
   })
 
   const makeMachineReadView = <M extends Machine.StateMachine.Any>(stateMachine: M): MachineReadView<M> => ({
-    get: () => currentMachines.get(stateMachine.key) as Machine.CurrentValue<M>,
-    is: (value) => currentMachines.get(stateMachine.key) === value
+    get: () => currentMachines.get(stateMachine.key) as ReadonlyValue<Machine.CurrentValue<M>>,
+    is: (state) => stateOf(currentMachines.get(stateMachine.key)) === state
   })
+
+  const makeMachineUpdateView = <M extends Machine.StateMachine.Any>(stateMachine: M): MachineUpdateView<M> => ({
+    ...makeMachineReadView(stateMachine),
+    update(change: { readonly state: string; readonly data: (current: never) => object }) {
+      const current = currentMachines.get(stateMachine.key) as { readonly _tag: string } | undefined
+      if (current === undefined) return subStateInactive(stateMachine)
+      if (current._tag !== change.state) {
+        return Result.failure({ _tag: "MachineStateMismatch", machine: stateMachine.name, expected: change.state, actual: current._tag })
+      }
+      writeCommittedMachine(stateMachine.key, { _tag: current._tag, ...change.data(current as never) })
+      return succeeded
+    }
+  } as MachineUpdateView<M>)
+
+  /** The failure of a write to a sub-state while its parent is in another state. */
+  const subStateInactive = (stateMachine: Machine.StateMachine.Any): Result.Result<never, Machine.SubStateInactive> =>
+    Result.failure({
+      _tag: "SubStateInactive",
+      machine: stateMachine.name,
+      parent: stateMachine.within!.machine.name,
+      requires: stateMachine.within!.state
+    })
 
   /** Queues a next value; a sub-state whose parent is in another state queues nothing and fails. */
   const queueMachine = <M extends Machine.StateMachine.Any>(stateMachine: M, value: unknown, skipIfSame: boolean): Machine.SetResult<M> => {
     const within = stateMachine.within
     if (within !== undefined && !currentMachines.has(stateMachine.key)) {
-      return Result.failure({
-        _tag: "SubStateInactive",
-        machine: stateMachine.name,
-        parent: within.machine.name,
-        requires: within.state
-      } satisfies Machine.SubStateInactive) as Machine.SetResult<M>
+      return subStateInactive(stateMachine) as Machine.SetResult<M>
     }
     journalMachine(stateMachine.key)
+    value = sharedValue(stateMachine, value)
     if (debugEnabled) {
       const previous = pendingMachines.get(stateMachine.key)
       // A set from a transition schedule waits for the next marker: it replaces nothing queued for this one.
-      if (previous?.by !== undefined && previous.by !== runningSystem && previous.value !== value && activeTransitions.size === 0) {
-        const key = `${stateMachine.name}/${previous.by}/${runningSystem}/${String(previous.value)}/${String(value)}`
+      if (previous?.by !== undefined && previous.by !== runningSystem && !sameValue(previous.value, value) && activeTransitions.size === 0) {
+        const key = `${stateMachine.name}/${previous.by}/${runningSystem}/${JSON.stringify(previous.value)}/${JSON.stringify(value)}`
         const seen = nextStateReplacements.get(key)
         nextStateReplacements.set(key, {
           machine: stateMachine.name,
-          replaced: { system: previous.by, value: previous.value as Machine.StateValue },
-          by: { system: runningSystem, value: value as Machine.StateValue },
+          replaced: { system: previous.by, value: previous.value as Machine.AnyValue },
+          by: { system: runningSystem, value: value as Machine.AnyValue },
           count: (seen?.count ?? 0) + 1
         })
       }
@@ -1565,7 +1610,7 @@ const makeValidatedRuntime = <
   }
 
   const makeNextMachineWriteView = <M extends Machine.StateMachine.Any>(stateMachine: M): NextMachineWriteView<M> => ({
-    getPending: () => pendingMachines.get(stateMachine.key)?.value as Machine.StateMachine.Value<M> | undefined,
+    getPending: () => pendingMachines.get(stateMachine.key)?.value as ReadonlyValue<Machine.StateOf<M>> | undefined,
     set(value) {
       return queueMachine(stateMachine, value, false)
     },
@@ -1585,7 +1630,7 @@ const makeValidatedRuntime = <
   const evaluateCondition = (condition: Machine.Condition): boolean => {
     switch (condition.kind) {
       case "inState":
-        return currentMachines.get(condition.machine.key) === condition.value
+        return stateOf(currentMachines.get(condition.machine.key)) === condition.state
       case "stateChanged":
         return changedMachines.has(condition.machine.key)
       case "not":
@@ -1641,7 +1686,8 @@ const makeValidatedRuntime = <
         access.mode === "read"
           ? watch(makeEventReadView(access.descriptor.key, reader), `events ${access.descriptor.name}`)
           : makeEventWriteView(access.descriptor.key)),
-      machines: mapRecord(spec.machines as Record<string, any>, (access) => makeMachineReadView(access.machine)),
+      machines: mapRecord(spec.machines as Record<string, any>, (access) =>
+        access.mode === "update" ? makeMachineUpdateView(access.machine) : makeMachineReadView(access.machine)),
       nextMachines: mapRecord(spec.nextMachines as Record<string, any>, (access) => makeNextMachineWriteView(access.machine)),
       transitionEvents: mapRecord(spec.transitionEvents as Record<string, any>, (access) => watch(makeTransitionEventReadView(access.machine, reader), `transition events ${access.machine.name}`)),
       transitions: mapRecord(spec.transitions as Record<string, any>, (access) => makeTransitionReadView(access.machine)),
@@ -1737,7 +1783,11 @@ const makeValidatedRuntime = <
     }
     const nextStates: Array<Debug.NextStateWrite> = []
     for (const key of machineOriginals.keys()) {
-      nextStates.push({ machine: names.machines.get(key) ?? "?", value: pendingMachines.get(key)?.value as Machine.StateValue | undefined })
+      nextStates.push({ machine: names.machines.get(key) ?? "?", value: pendingMachines.get(key)?.value as Machine.AnyValue | undefined })
+    }
+    const machineWrites: Array<Debug.MachineWrite> = []
+    for (const [key, before] of committedMachineOriginals) {
+      machineWrites.push({ machine: names.machines.get(key) ?? "?", before: before as Machine.AnyValue, after: currentMachines.get(key) as Machine.AnyValue })
     }
     return {
       type: "system",
@@ -1751,6 +1801,7 @@ const makeValidatedRuntime = <
       writes,
       resources: resourceWrites,
       events: emitted,
+      machines: machineWrites,
       nextStates,
       commands: commands.map((command) => command.tag),
       missed: missedReads(system, reader)
@@ -2048,14 +2099,14 @@ const makeValidatedRuntime = <
       if (current === undefined) {
         continue
       }
-      if (pending.skipIfSame && current === pending.value) {
-        if (tracing) traceTransition(machineKey, { from: current as Machine.StateValue, to: current as Machine.StateValue }, "unchanged")
+      if (pending.skipIfSame && sameValue(current, pending.value)) {
+        if (tracing) traceTransition(machineKey, { from: stateOf(current)!, to: stateOf(current)! }, "unchanged")
         continue
       }
 
-      const snapshot = {
-        from: current as Machine.StateValue,
-        to: pending.value as Machine.StateValue
+      const snapshot: Machine.TransitionSnapshot = {
+        from: stateOf(current)!,
+        to: stateOf(pending.value)!
       }
 
       // Sub-states that exist in the state being left exit first, deepest
@@ -2066,8 +2117,8 @@ const makeValidatedRuntime = <
       const leaving = activeSubStatesIn(machineKey, snapshot.from)
       const exited = runAsPhase(() => {
         for (const sub of leaving) {
-          const value = currentMachines.get(sub.key)
-          const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
+          const state = stateOf(currentMachines.get(sub.key))
+          const result = runPhase(sub.key, "exit", state, { from: state, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
           if (!result.ok) return result
         }
         const left = runPhase(machineKey, "exit", snapshot.from, snapshot, schedules)
@@ -2122,7 +2173,7 @@ const makeValidatedRuntime = <
    * despawns the scopes it triggers.
    */
   const commitMachine = (machineKey: symbol, from: unknown, to: unknown): void => {
-    const snapshot = { from, to } as unknown as Machine.TransitionSnapshot
+    const snapshot = { from: stateOf(from), to: stateOf(to) } as unknown as Machine.TransitionSnapshot
     if (from !== undefined) previousMachines.set(machineKey, from)
     if (to === undefined) {
       currentMachines.delete(machineKey)
@@ -2144,7 +2195,7 @@ const makeValidatedRuntime = <
   const runPhase = (
     machineKey: symbol,
     phase: "enter" | "exit",
-    state: unknown,
+    state: string | undefined,
     snapshot: Machine.TransitionSnapshot,
     schedules: TransitionSchedules
   ): Result.Result<void, SystemFailure> => {
@@ -2159,12 +2210,12 @@ const makeValidatedRuntime = <
   }
 
   /** The sub-states with a value that exist in `state` of `parentKey`, and theirs, deepest first. */
-  const activeSubStatesIn = (parentKey: symbol, state: unknown): Array<Machine.StateMachine.Any> => {
+  const activeSubStatesIn = (parentKey: symbol, state: string): Array<Machine.StateMachine.Any> => {
     const result: Array<Machine.StateMachine.Any> = []
     for (const sub of subStates.get(parentKey) ?? []) {
       const value = currentMachines.get(sub.key)
       if (sub.within!.state !== state || value === undefined) continue
-      result.push(...activeSubStatesIn(sub.key, value), sub)
+      result.push(...activeSubStatesIn(sub.key, stateOf(value)!), sub)
     }
     return result
   }
@@ -2173,13 +2224,13 @@ const makeValidatedRuntime = <
    * Gives the sub-states of `parentKey` that exist in `state` their entry
    * value, and theirs, parents first. Returns what it entered, in that order.
    */
-  const commitSubStates = (parentKey: symbol, state: unknown): Array<readonly [symbol, unknown]> => {
+  const commitSubStates = (parentKey: symbol, state: string): Array<readonly [symbol, unknown]> => {
     const entered: Array<readonly [symbol, unknown]> = []
     for (const sub of subStates.get(parentKey) ?? []) {
       if (sub.within!.state !== state || currentMachines.has(sub.key) || !subStateEntry.has(sub.key)) continue
       const value = subStateEntry.get(sub.key)
       commitMachine(sub.key, undefined, value)
-      entered.push([sub.key, value], ...commitSubStates(sub.key, value))
+      entered.push([sub.key, value], ...commitSubStates(sub.key, stateOf(value)!))
     }
     return entered
   }
@@ -2187,8 +2238,8 @@ const makeValidatedRuntime = <
   /** Runs the onEnter schedules of sub-states entered by {@link commitSubStates}, in that order. */
   const runSubStateEnters = (entered: ReadonlyArray<readonly [symbol, unknown]>, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
     for (const [key, value] of entered) {
-      const snapshot = { from: undefined, to: value } as unknown as Machine.TransitionSnapshot
-      const result = runPhase(key, "enter", value, snapshot, schedules)
+      const snapshot = { from: undefined, to: stateOf(value) } as unknown as Machine.TransitionSnapshot
+      const result = runPhase(key, "enter", stateOf(value), snapshot, schedules)
       if (!result.ok) {
         if (tracing) traceTransition(key, snapshot, "enterFailed")
         return result
@@ -2446,6 +2497,16 @@ const makeValidatedRuntime = <
   const machinesByName = new Map<string, Machine.StateMachine.Any>()
   for (const machine of options.machineDefinitions) machinesByName.set(machine.name, machine)
   for (const provision of machineEntries) machinesByName.set(provision.machine.name, provision.machine)
+  /** Each machine's value codec, made on its first restore. */
+  const machineCodecs = new Map<symbol, ReturnType<typeof stateCodec>>()
+  const machineCodec = (machine: Machine.StateMachine.Any): ReturnType<typeof stateCodec> => {
+    let codec = machineCodecs.get(machine.key)
+    if (codec === undefined) {
+      codec = stateCodec(machine.states)
+      machineCodecs.set(machine.key, codec)
+    }
+    return codec
+  }
 
   const snapshot = (): Snapshot.WorldSnapshot => {
     if (inTick) throw new Error("runtime.snapshot was called while a schedule is running: it would capture writes a failing system rolls back; take it between ticks")
@@ -2455,10 +2516,10 @@ const makeValidatedRuntime = <
         savedResources[name] = resources.get(descriptor.key)
       }
     }
-    const savedMachines: Record<string, Machine.StateValue> = {}
+    const savedMachines: Record<string, Machine.AnyValue> = {}
     for (const [name, machine] of machinesByName) {
       const value = currentMachines.get(machine.key)
-      if (value !== undefined) savedMachines[name] = value as Machine.StateValue
+      if (value !== undefined) savedMachines[name] = value as Machine.AnyValue
     }
     const savedScopes: Record<string, ReadonlyArray<number>> = {}
     for (const [key, members] of world.exportScopes()) {
@@ -2548,11 +2609,12 @@ const makeValidatedRuntime = <
       }
     }
     const restoredMachines = new Map(currentMachines)
-    for (const [name, value] of Object.entries(saved.machines)) {
+    for (const [name, raw] of Object.entries(saved.machines)) {
       const machine = machinesByName.get(name)
       if (!machine) return Result.failure({ _tag: "UnknownMachine", name })
-      if (!machine.values.includes(value)) return Result.failure({ _tag: "InvalidMachineState", name, value })
-      restoredMachines.set(machine.key, value)
+      const value = machineCodec(machine).decode(raw)
+      if (!value.ok) return Result.failure({ _tag: "InvalidMachineState", name, error: value.error })
+      restoredMachines.set(machine.key, sharedValue(machine, value.value))
     }
     // A save has no value for a sub-state whose parent is elsewhere; one that
     // has a value must have its parent in the state it exists in. A sub-state
@@ -2560,7 +2622,7 @@ const makeValidatedRuntime = <
     for (const machine of options.machineDefinitions) {
       const within = machine.within
       if (within === undefined) continue
-      const active = restoredMachines.get(within.machine.key) === within.state
+      const active = stateOf(restoredMachines.get(within.machine.key)) === within.state
       if (Object.hasOwn(saved.machines, machine.name)) {
         if (!active) {
           return Result.failure({ _tag: "InactiveSubState", name: machine.name, parent: within.machine.name, requires: within.state })
@@ -2692,9 +2754,9 @@ const makeValidatedRuntime = <
       const pending = pendingMachines.get(machine.key)
       const previous = previousMachines.get(machine.key)
       dumpedMachines[name] = {
-        current: current as Machine.StateValue,
-        ...(pending === undefined ? {} : { pending: pending.value as Machine.StateValue }),
-        ...(previous === undefined ? {} : { previous: previous as Machine.StateValue })
+        current: current as Machine.AnyValue,
+        ...(pending === undefined ? {} : { pending: pending.value as Machine.AnyValue }),
+        ...(previous === undefined ? {} : { previous: previous as Machine.AnyValue })
       }
     }
     return {
@@ -2758,7 +2820,7 @@ const makeValidatedRuntime = <
     describe: () => DebugInternal.describe({
       schema: options.schema,
       machines: [...new Set(machinesByName.values())],
-      currentMachine: (machine) => currentMachines.get(machine.key) as Machine.StateValue | undefined,
+      currentMachine: (machine) => currentMachines.get(machine.key) as Machine.AnyValue | undefined,
       providesMachine: (machine) => providedMachineKeys.has(machine.key),
       scopes: options.scopeDefinitions,
       providedServices: Object.keys(providedServices),
@@ -2835,7 +2897,7 @@ const makeValidatedRuntime = <
  *     Game.Runtime.service(Logger, { log: console.log })
  *   ),
  *   resources: { Score: 0 },
- *   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
+ *   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
  * }).value
  * ```
  */
@@ -2995,7 +3057,7 @@ export const machines = <
  * ```ts
  * // Start the game in a known committed phase.
  * const machines = Game.Runtime.machines(
- *   Game.Runtime.machine(GameFlow, "Menu")
+ *   Game.Runtime.machine(GameFlow, { _tag: "Menu" })
  * )
  * ```
  */
@@ -3003,7 +3065,7 @@ export const machine = <
   M extends Machine.StateMachine.Any
 >(
   stateMachine: M,
-  initial: Machine.StateMachine.Value<M>
+  initial: ReadonlyValue<Machine.StateOf<M>>
 ): MachineProvision<M> => ({
   machine: stateMachine,
   initial

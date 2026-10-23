@@ -9,7 +9,7 @@
  * const playing = Game.Condition.check("playing", {
  *   resources: { stop: Game.System.readResource(HitStop) },
  *   machines: { flow: Game.System.machine(Flow) }
- * }, ({ resources, machines }) => machines.flow.get() === "Playing" && resources.stop.get().remaining <= 0)
+ * }, ({ resources, machines }) => machines.flow.is("Playing") && resources.stop.get().remaining <= 0)
  *
  * Game.Schedule.when([playing], Move, Attack)
  * ```

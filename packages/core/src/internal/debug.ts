@@ -25,10 +25,16 @@ export const storageOf = (descriptor: Descriptor.Any): Debug.Storage =>
   : DescriptorModule.hasConstructor(descriptor) ? "constructed"
   : "plain"
 
+/** A machine value as text: its state's name, then its fields when it has any (`Talking {"page":2}`). */
+export const renderState = (value: Machine.AnyValue): string => {
+  const { _tag, ...fields } = value
+  return Object.keys(fields).length === 0 ? _tag : `${_tag} ${JSON.stringify(fields)}`
+}
+
 export const renderCondition = (condition: Machine.Condition): string => {
   switch (condition.kind) {
     case "inState":
-      return `inState(${condition.machine.name}=${String(condition.value)})`
+      return `inState(${condition.machine.name}=${condition.state})`
     case "stateChanged":
       return `stateChanged(${condition.machine.name})`
     case "not":
@@ -152,6 +158,8 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
   const byMode = (record: Record<string, Mode>, mode: Mode["mode"]) =>
     Object.values(record).filter((access) => access.mode === mode).map((access) => access.descriptor.name)
   const machineName = (access: { readonly machine: Machine.StateMachine.Any }) => access.machine.name
+  const machinesByMode = (record: Record<string, { readonly machine: Machine.StateMachine.Any; readonly mode: "read" | "update" }>, mode: "read" | "update") =>
+    Object.values(record).filter((access) => access.mode === mode).map(machineName)
   // A system also reads whatever its `check` conditions read.
   const checks = checksOf([...(spec.when as ReadonlyArray<Machine.Condition>), ...(spec.pauseWhen as ReadonlyArray<Machine.Condition>)]).map((check) => ({
     name: check.name,
@@ -173,7 +181,8 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
     },
     events: { reads: byMode(spec.events, "read"), writes: byMode(spec.events, "write") },
     machines: {
-      reads: unique([...names(spec.machines, machineName), ...checks.flatMap((check) => names(check.spec.machines, machineName))]),
+      reads: unique([...machinesByMode(spec.machines, "read"), ...checks.flatMap((check) => machinesByMode(check.spec.machines, "read"))]),
+      updates: machinesByMode(spec.machines, "update"),
       next: names(spec.nextMachines, machineName),
       transitions: names(spec.transitions, machineName),
       transitionEvents: names(spec.transitionEvents, machineName)
@@ -270,7 +279,7 @@ class Index {
 export interface DescribeInput {
   readonly schema: Schema.Any
   readonly machines: ReadonlyArray<Machine.StateMachine.Any>
-  readonly currentMachine: (machine: Machine.StateMachine.Any) => Machine.StateValue | undefined
+  readonly currentMachine: (machine: Machine.StateMachine.Any) => Machine.AnyValue | undefined
   /** Whether the runtime was given an initial value for the machine. */
   readonly providesMachine: (machine: Machine.StateMachine.Any) => boolean
   /** Every scope defined through the game, with its despawn triggers. */
@@ -535,7 +544,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
       severity: "warning",
       code: "next-state-replaced",
       subject: replacement.machine,
-      message: `${replacement.by.system} queued ${replacement.machine}=${String(replacement.by.value)}, replacing ${String(replacement.replaced.value)} queued by ${replacement.replaced.system} before the same applyStateTransitions()${times}: the last value wins`
+      message: `${replacement.by.system} queued ${replacement.machine}=${renderState(replacement.by.value)}, replacing ${renderState(replacement.replaced.value)} queued by ${replacement.replaced.system} before the same applyStateTransitions()${times}: the last value wins`
     })
   }
   for (const stale of input.staleTargets) {
@@ -591,7 +600,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
     })),
     machines: input.machines.map((machine) => ({
       name: machine.name,
-      states: machine.values,
+      states: Object.keys(machine.states),
       current: input.currentMachine(machine),
       provided: input.providesMachine(machine),
       within: machine.within === undefined ? undefined : `${machine.within.machine.name}=${String(machine.within.state)}`

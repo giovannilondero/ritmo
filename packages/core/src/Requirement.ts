@@ -18,7 +18,7 @@ interface StateMachineRequirement {
   readonly kind: "stateMachine"
   readonly name: string
   readonly key: symbol
-  readonly values: readonly [string | number, ...(string | number)[]]
+  readonly states: Readonly<Record<string, object>>
 }
 
 /** A value that must be provisioned before a system can run. */
