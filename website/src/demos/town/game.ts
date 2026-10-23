@@ -82,9 +82,13 @@ const drawTouch = (graphics: Graphics, view: Touch.View<(typeof touchButtons)[nu
   graphics.circle(a.x, a.y, 9).fill({ color: 0xf3f1ec, alpha: 0.6 })
 }
 
-/** The corner note: how a second player joins while nobody holds p2, and how they leave once they do. */
+/**
+ * The corner note: how a second player joins while nobody holds p2, and how
+ * they leave once they do. The pixel font draws Q like G, so the key is
+ * named in lowercase.
+ */
 const hintFor = (seats: ReadonlyArray<string>): string =>
-  seats.includes("p2") ? "P2: Q (B on a pad) to leave" : "P2: press WASD or a pad to join"
+  seats.includes("p2") ? "P2: press q (B on a pad) to leave" : "P2: press WASD or a pad to join"
 
 /**
  * Starts the town in `host` and returns the function that stops it. The
