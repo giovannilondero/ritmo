@@ -56,7 +56,7 @@ describe("Touch.actions", () => {
   it("floats the stick where the thumb lands and reports tilt with the dead zone removed", () => {
     const fake = makeTarget()
     const touch = Touch.actions(fake.target, fake.blurHost, layout)
-    expect(touch.snapshot()).toEqual(Touch.idle(["attack", "dash"]))
+    expect(touch.snapshot()).toEqual(Touch.idle({ buttons: ["attack", "dash"] }))
 
     fake.down(1, 100, 200)
     expect(touch.snapshot().stick).toEqual({ active: true, vector: { x: 0, y: 0 } })
@@ -227,7 +227,7 @@ describe("Touch.actions swipe", () => {
 
 describe("Touch.scripted", () => {
   it("plays stick vectors, presses, aims, releases, and cancels by frame", () => {
-    const touch = Touch.scripted(["attack", "skill"], [
+    const touch = Touch.scripted({ buttons: ["attack", "skill"] }, [
       { frame: 0, stick: { x: 3, y: 4 } },
       { frame: 1, press: ["attack"], aim: { attack: { x: 0, y: -1 } } },
       { frame: 2, release: ["attack"] },
@@ -244,9 +244,22 @@ describe("Touch.scripted", () => {
   })
 
   it("reports a scripted swipe on its frame only", () => {
-    const touch = Touch.scripted(["attack"], [{ frame: 1, swipe: { x: 30, y: 0 } }, { frame: 1, swipe: { x: 5, y: 1 } }])
+    const touch = Touch.scripted({ buttons: ["attack"] }, [{ frame: 1, swipe: { x: 30, y: 0 } }, { frame: 1, swipe: { x: 5, y: 1 } }])
     expect(touch.snapshot().swipe).toEqual({ active: false, delta: { x: 0, y: 0 } })
     expect(touch.snapshot().swipe).toEqual({ active: true, delta: { x: 35, y: 1 } })
     expect(touch.snapshot().swipe.active).toBe(false)
+  })
+})
+
+describe("Touch vector actions", () => {
+  it("reports the stick as the vector its layout names", () => {
+    const scripted = Touch.scripted({ buttons: ["attack"], vector: "move" }, [{ frame: 0, stick: { x: 0, y: -0.5 } }])
+    expect(scripted.snapshot().vectors).toEqual({ move: { x: 0, y: -0.5 } })
+    expect(Touch.idle({ buttons: ["attack"], vector: "move" }).vectors).toEqual({ move: { x: 0, y: 0 } })
+    expect(Touch.idle({ buttons: ["attack"] }).vectors).toEqual({})
+
+    const fake = makeTarget()
+    const touch = Touch.actions(fake.target, fake.blurHost, (size) => ({ ...layout(size), stick: { ...layout(size).stick, vector: "move" } }))
+    expect(touch.snapshot().vectors).toEqual({ move: { x: 0, y: 0 } })
   })
 })

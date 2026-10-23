@@ -1,6 +1,8 @@
 import * as Result from "@typeonce/ritmo/Result"
 
 import type { ActionState } from "../Keyboard.ts"
+import { directionName, directions, isVectorBinding, zero } from "./vectors.ts"
+import type { Direction, Vector } from "./vectors.ts"
 
 const idleState: ActionState = { held: false, pressed: false, released: false }
 
@@ -103,11 +105,56 @@ export const idleButtons = <Button extends string>(buttonNames: ReadonlyArray<Bu
   return buttons
 }
 
-/** Every action of `bindings` idle. */
+/** Every button action of `bindings` idle (vector actions are in {@link idleVectors}). */
 export const idleActions = <B extends object>(bindings: B): Record<keyof B, ActionState> => {
   const actions = {} as Record<keyof B, ActionState>
-  for (const name of Object.keys(bindings) as Array<keyof B>) actions[name] = idleState
+  for (const [name, entry] of Object.entries(bindings)) if (!isVectorBinding(entry)) actions[name as keyof B] = idleState
   return actions
+}
+
+/** Every vector action of `bindings` at rest. */
+export const idleVectors = (bindings: object): Record<string, Vector> => {
+  const vectors: Record<string, Vector> = {}
+  for (const [name, entry] of Object.entries(bindings)) if (isVectorBinding(entry)) vectors[name] = zero
+  return vectors
+}
+
+/** A vector binding's digital part: buttons for the four directions, or none. */
+interface DigitalVector<Button extends string> {
+  readonly _tag: "Vector"
+  readonly up?: ReadonlyArray<Button>
+  readonly down?: ReadonlyArray<Button>
+  readonly left?: ReadonlyArray<Button>
+  readonly right?: ReadonlyArray<Button>
+}
+
+/**
+ * Each action's buttons for the button tracker, with the digital part of
+ * every vector action split into its four directions (`move.up`, ...).
+ */
+export const flattenButtons = <Button extends string>(bindings: object): Record<string, readonly [Button, ...Array<Button>]> => {
+  const flat: Record<string, readonly [Button, ...Array<Button>]> = {}
+  for (const [name, entry] of Object.entries(bindings)) {
+    if (isVectorBinding(entry)) {
+      const vector = entry as DigitalVector<Button>
+      // All four, empty when unbound (a stick-only vector), so the tracker's
+      // names stay the same whichever way a rebind binds the vector.
+      for (const direction of directions) {
+        flat[directionName(name, direction)] = (vector[direction] ?? []) as unknown as readonly [Button, ...Array<Button>]
+      }
+    } else flat[name] = entry as readonly [Button, ...Array<Button>]
+  }
+  return flat
+}
+
+/** Splits taken flat actions into the button actions of `bindings`, and whether each vector direction is held. */
+export const splitActions = (
+  bindings: object,
+  taken: Readonly<Record<string, ActionState>>
+): { readonly actions: Record<string, ActionState>; readonly held: (vector: string, direction: Direction) => boolean } => {
+  const actions: Record<string, ActionState> = {}
+  for (const [name, entry] of Object.entries(bindings)) if (!isVectorBinding(entry)) actions[name] = taken[name]!
+  return { actions, held: (vector, direction) => taken[directionName(vector, direction)]?.held === true }
 }
 
 /** Why loaded data is not a rebinding; the devices export it under their own name. */
@@ -125,8 +172,9 @@ export interface InvalidRebinding {
 export const parseButtonRebinding = <Button extends string>(
   buttonNames: ReadonlyArray<Button>,
   bindings: object,
-  data: unknown
-): Result.Result<Readonly<Record<string, ReadonlyArray<Button>>>, InvalidRebinding> => {
+  data: unknown,
+  sticks: ReadonlyArray<string> = []
+): Result.Result<Readonly<Record<string, unknown>>, InvalidRebinding> => {
   const invalid = (path: string, message: string) => Result.failure<InvalidRebinding>({ _tag: "InvalidRebinding", path, message })
   if (typeof data !== "object" || data === null || Array.isArray(data)) return invalid("", "expected an object of action names")
   const fields = data as Readonly<Record<string, unknown>>
@@ -135,14 +183,40 @@ export const parseButtonRebinding = <Button extends string>(
     if (!names.includes(name)) return invalid(name, `unknown action, expected one of ${names.join(", ")}`)
   }
   const known: ReadonlySet<string> = new Set(buttonNames)
-  const rebinding: Record<string, ReadonlyArray<Button>> = {}
+  const buttonsAt = (value: unknown, path: string): Result.Result<ReadonlyArray<Button>, InvalidRebinding> => {
+    if (!Array.isArray(value) || value.length === 0) return invalid(path, "expected a non-empty array of button names")
+    for (let offset = 0; offset < value.length; offset++) {
+      if (!known.has(value[offset])) return invalid(`${path}[${offset}]`, `expected one of ${buttonNames.join(", ")}`)
+    }
+    return Result.success([...value])
+  }
+  const rebinding: Record<string, unknown> = {}
   for (const name of names) {
     const value = fields[name]
-    if (!Array.isArray(value) || value.length === 0) return invalid(name, "expected a non-empty array of button names")
-    for (let offset = 0; offset < value.length; offset++) {
-      if (!known.has(value[offset])) return invalid(`${name}[${offset}]`, `expected one of ${buttonNames.join(", ")}`)
+    if (isVectorBinding((bindings as Readonly<Record<string, unknown>>)[name])) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return invalid(name, "expected { stick } and/or { up, down, left, right } buttons for a vector action")
+      }
+      const parts = value as Readonly<Record<string, unknown>>
+      const vector: Record<string, unknown> = { _tag: "Vector" }
+      if (parts["stick"] !== undefined) {
+        if (typeof parts["stick"] !== "string" || !sticks.includes(parts["stick"])) return invalid(`${name}.stick`, `expected one of ${sticks.join(", ")}`)
+        vector["stick"] = parts["stick"]
+      }
+      const given = directions.filter((direction) => parts[direction] !== undefined)
+      if (given.length > 0) {
+        for (const direction of directions) {
+          const buttons = buttonsAt(parts[direction], `${name}.${direction}`)
+          if (!buttons.ok) return buttons
+          vector[direction] = buttons.value
+        }
+      } else if (vector["stick"] === undefined) return invalid(name, "expected a stick or buttons for up, down, left, and right")
+      rebinding[name] = vector
+      continue
     }
-    rebinding[name] = [...value]
+    const buttons = buttonsAt(value, name)
+    if (!buttons.ok) return buttons
+    rebinding[name] = buttons.value
   }
   return Result.success(rebinding)
 }

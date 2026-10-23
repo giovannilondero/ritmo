@@ -32,7 +32,7 @@ const Collected = Game.Inspector("Test/Collected", { resources: { count: Game.Sy
 
 describe("top-down simulation", () => {
   it("runs headless and moves the player with scripted input", () => {
-    const { runtime, update } = start([{ frame: 0, press: ["right"] }, { frame: 30, release: ["right"] }])
+    const { runtime, update } = start([{ frame: 0, press: ["move.right"] }, { frame: 30, release: ["move.right"] }])
     for (let frame = 0; frame < 60; frame++) expect(runtime.tick(update).ok).toBe(true)
     const [position] = runtime.inspect(PlayerPosition)
     expect(position?.x).toBeCloseTo(640 + 280 * 30 / 60)
@@ -41,6 +41,14 @@ describe("top-down simulation", () => {
       "TopDown/Facing": { current: "Right", previous: "Down" },
       "TopDown/Locomotion": { current: "Idle", previous: "Walking" }
     })
+  })
+
+  it("walks diagonally at the same speed as straight", () => {
+    const { runtime, update } = start([{ frame: 0, press: ["move.right", "move.down"] }, { frame: 30, release: ["move.right", "move.down"] }])
+    for (let frame = 0; frame < 60; frame++) expect(runtime.tick(update).ok).toBe(true)
+    const [position] = runtime.inspect(PlayerPosition)
+    // Each axis moves 1/√2 of the straight distance (down ends at a wall, so x tells it).
+    expect((position?.x ?? 0) - 640).toBeCloseTo(280 * 30 / 60 * Math.SQRT1_2)
   })
 
   it("moves the player with the left stick, at its analog length", () => {
@@ -70,7 +78,7 @@ describe("top-down simulation", () => {
 
   it("collects a pickup with a click while walking, keyboard and mouse as one device", () => {
     const { runtime, update } = start(
-      [{ frame: 0, press: ["left"] }, { frame: 85, release: ["left"] }],
+      [{ frame: 0, press: ["move.left"] }, { frame: 85, release: ["move.left"] }],
       [],
       [{ frame: 40, move: { x: 100, y: 100 } }, { frame: 88, press: ["primary"], release: ["primary"] }]
     )
@@ -94,8 +102,8 @@ describe("top-down simulation", () => {
 describe("top-down debug session", () => {
   it("walks to the first pickup and collects it", () => {
     const keyboard = Keyboard.scripted(inputBindings, [
-      { frame: 0, press: ["left"] },
-      { frame: 85, release: ["left"] },
+      { frame: 0, press: ["move.left"] },
+      { frame: 85, release: ["move.left"] },
       { frame: 88, press: ["interact"], release: ["interact"] }
     ])
     const hostClock = HostClock.test()

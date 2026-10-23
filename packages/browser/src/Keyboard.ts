@@ -36,6 +36,11 @@
  * input.dispose()
  * ```
  *
+ * Movement is one vector action: `move: Keyboard.vector({ up, down, left,
+ * right })` reports `vectors.move` with length at most 1 (opposite keys
+ * cancel, diagonals are not faster). Timelines name it by direction,
+ * `"move.right"`.
+ *
  * For a controls settings screen, `presses(...)` reports every key that
  * goes down (bound or not) so the screen can wait for the key to bind,
  * `rebind(...)` swaps the keys of the same actions, and `parseRebinding(...)`
@@ -62,6 +67,10 @@ import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
 import { anyUsed } from "./internal/used.ts"
+import { digital, directionName, directions, isVectorBinding, zero } from "./internal/vectors.ts"
+import type { Direction, Vector } from "./internal/vectors.ts"
+
+export type { Direction, Vector }
 
 /**
  * The subset of `KeyboardEvent` the module reads. `code` (the physical key)
@@ -105,11 +114,53 @@ export interface PhysicalKey {
  */
 export type KeyBinding = string | PhysicalKey
 
+/** The keys of one action: at least one. */
+export type Keys = readonly [KeyBinding, ...Array<KeyBinding>]
+
 /**
- * Action name to the keys that trigger it. Every action needs at least one
- * key.
+ * Keys for the four directions of a vector action (movement), built with
+ * {@link vector}.
  */
-export type Bindings = Readonly<Record<string, readonly [KeyBinding, ...Array<KeyBinding>]>>
+export interface VectorBinding {
+  readonly _tag: "Vector"
+  readonly up: Keys
+  readonly down: Keys
+  readonly left: Keys
+  readonly right: Keys
+}
+
+/**
+ * Action name to the keys that trigger it (at least one), or to a
+ * {@link vector} binding for a direction such as movement.
+ */
+export type Bindings = Readonly<Record<string, Keys | VectorBinding>>
+
+/** The bound button actions: the names bound to keys. */
+export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? never : K }[keyof B] & string
+
+/** The bound vector actions: the names bound with {@link vector}. */
+export type VectorNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? K : never }[keyof B] & string
+
+/**
+ * Binds a vector action to keys for its four directions. The snapshot's
+ * `vectors` reports it with length at most 1: opposite keys cancel and a
+ * diagonal is not faster than a straight line.
+ *
+ * @example
+ * ```ts
+ * const bindings = {
+ *   move: Keyboard.vector({ up: ["w", "ArrowUp"], down: ["s", "ArrowDown"], left: ["a", "ArrowLeft"], right: ["d", "ArrowRight"] }),
+ *   jump: [" "]
+ * } as const
+ * ```
+ */
+export const vector = (keys: { readonly up: Keys; readonly down: Keys; readonly left: Keys; readonly right: Keys }): VectorBinding => ({
+  _tag: "Vector",
+  up: keys.up,
+  down: keys.down,
+  left: keys.left,
+  right: keys.right
+})
 
 /**
  * A binding to a physical key by its `KeyboardEvent.code`.
@@ -138,19 +189,22 @@ export interface ActionState {
 
 /**
  * Every action's state, with the same core as the other devices' snapshots
- * (`actions` and `used`) so `Controls` can merge them.
+ * (`actions`, `vectors`, and `used`) so `Controls` can merge them.
  */
 export interface Snapshot<B extends Bindings> {
-  readonly actions: { readonly [Action in keyof B]: ActionState }
-  /** Some action was pressed in this window or is held: the player is using the keyboard. */
+  readonly actions: { readonly [Action in ButtonNames<B>]: ActionState }
+  /** Each vector action's direction, length at most 1, `y` growing down. */
+  readonly vectors: { readonly [Action in VectorNames<B>]: Vector }
+  /** Some key bound to an action was pressed in this window or is held: the player is using the keyboard. */
   readonly used: boolean
 }
 
 /**
- * New keys for the same actions, for {@link Actions.rebind}. Load saved
- * ones with {@link parseRebinding}.
+ * New keys for the same actions, for {@link Actions.rebind}: keys for a
+ * button action, a {@link vector} for a vector action. Load saved ones with
+ * {@link parseRebinding}.
  */
-export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: readonly [KeyBinding, ...Array<KeyBinding>] }
+export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : Keys }
 
 /**
  * Rejects actions a rebinding names that the bindings do not have, so
@@ -193,11 +247,42 @@ export interface ActionsOptions {
  * before the first capture.
  */
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  const actions = {} as Record<keyof B, ActionState>
-  for (const name of Object.keys(bindings) as Array<keyof B>) {
-    actions[name] = { held: false, pressed: false, released: false }
+  const idleState: ActionState = { held: false, pressed: false, released: false }
+  return assemble(bindings, () => idleState, false) as Snapshot<B>
+}
+
+/** Each action's keys, with every vector action split into its four directions (`move.up`, ...). */
+const flatten = (bindings: Bindings): Readonly<Record<string, Keys>> => {
+  const flat: Record<string, Keys> = {}
+  for (const [name, entry] of Object.entries(bindings)) {
+    if (isVectorBinding(entry)) {
+      for (const direction of directions) flat[directionName(name, direction)] = (entry as VectorBinding)[direction]
+    } else flat[name] = entry as Keys
   }
-  return { actions, used: false }
+  return flat
+}
+
+/** The snapshot for `bindings` from the state of each flat action (button actions and vector directions). */
+const assemble = (bindings: Bindings, state: (name: string) => ActionState, used: boolean): Snapshot<Bindings> => {
+  const actions: Record<string, ActionState> = {}
+  const vectors: Record<string, Vector> = {}
+  for (const [name, entry] of Object.entries(bindings)) {
+    if (isVectorBinding(entry)) {
+      const held = (direction: Direction): boolean => state(directionName(name, direction)).held
+      vectors[name] = digital(held("up"), held("down"), held("left"), held("right"))
+    } else actions[name] = state(name)
+  }
+  return { actions, vectors, used } as Snapshot<Bindings>
+}
+
+/**
+ * The flat action states behind the last snapshot of a live or scripted
+ * keyboard, so `recording` sees each direction of a vector action.
+ */
+const flatStates = Symbol("Keyboard/flatStates")
+
+interface WithFlatStates {
+  readonly [flatStates]?: () => Readonly<Record<string, ActionState>>
 }
 
 const normalize = (key: string): string => key.length === 1 ? key.toLowerCase() : key
@@ -216,10 +301,11 @@ export const actions = <const B extends Bindings>(
   options: ActionsOptions = {}
 ): Actions<B> => {
   const preventDefault = options.preventDefault ?? true
-  // Fixed at creation: a rebind swaps keys, never the actions.
-  const names = Object.keys(initial) as Array<keyof B & string>
-  let bindings: Rebinding<B> = initial
-  const actionsByToken = new Map<string, Array<keyof B & string>>()
+  // Fixed at creation: a rebind swaps keys, never the actions. Vector
+  // actions are tracked as their four directions.
+  const names = Object.keys(flatten(initial))
+  let bindings = flatten(initial)
+  const actionsByToken = new Map<string, Array<string>>()
   const index = (): void => {
     actionsByToken.clear()
     for (const name of names) {
@@ -238,15 +324,15 @@ export const actions = <const B extends Bindings>(
    * down that are still bound to it. A token stays here while held even if a
    * rebind unbound it, so its release is still seen.
    */
-  const heldTokens = new Map<string, Set<keyof B & string>>()
+  const heldTokens = new Map<string, Set<string>>()
   /**
    * The character token each physical key produced when it went down, so its
    * release matches even if a modifier changed the character meanwhile
    * (W pressed, Option pressed, W released as "∑").
    */
   const keyTokenByCode = new Map<string, string>()
-  const pressed = new Set<keyof B>()
-  const released = new Set<keyof B>()
+  const pressed = new Set<string>()
+  const released = new Set<string>()
 
   const onKeyDown = (event: KeyEvent): void => {
     const tokens = [keyToken(event.key)]
@@ -294,19 +380,20 @@ export const actions = <const B extends Bindings>(
   host.addEventListener("keyup", onKeyUp)
   host.addEventListener("blur", onBlur)
 
-  const isHeld = (name: keyof B & string): boolean => {
+  const isHeld = (name: string): boolean => {
     for (const binding of bindings[name]!) {
       if (heldTokens.get(bindingToken(binding))?.has(name)) return true
     }
     return false
   }
 
-  return {
+  let last: Readonly<Record<string, ActionState>> = {}
+  const live: Actions<B> & WithFlatStates = {
     snapshot() {
-      const actions = {} as Record<keyof B, ActionState>
+      const states: Record<string, ActionState> = {}
       for (const name of names) {
         const held = isHeld(name)
-        actions[name] = {
+        states[name] = {
           held,
           pressed: pressed.has(name),
           released: released.has(name) && !held
@@ -314,11 +401,13 @@ export const actions = <const B extends Bindings>(
       }
       pressed.clear()
       released.clear()
-      return { actions, used: anyUsed(actions) }
+      last = states
+      return assemble(initial, (name) => states[name]!, anyUsed(states)) as Snapshot<B>
     },
+    [flatStates]: () => last,
     rebind(next) {
       const before = names.filter(isHeld)
-      bindings = next
+      bindings = flatten(next as Bindings)
       index()
       // A held key keeps only the actions still bound to it; new ones wait for a fresh press.
       for (const [token, holding] of heldTokens) {
@@ -333,6 +422,7 @@ export const actions = <const B extends Bindings>(
       host.removeEventListener("blur", onBlur)
     }
   }
+  return live
 }
 
 /** One key that went down, in the two forms a {@link KeyBinding} can name it. */
@@ -388,15 +478,22 @@ export const presses = (host: KeyboardHost): Presses => {
 
 /**
  * Input changes applied just before one snapshot. `frame` is the snapshot's
- * index, counting from 0 at the first `snapshot()` call. An action in both
+ * index, counting from 0 at the first `snapshot()` call. Entries name
+ * actions, and a vector action by direction (`"move.right"`). An action in both
  * `press` and `release` changed twice within the frame: a tap shorter than a
  * frame when it was up, a release and a new press when it was held.
  */
 export interface TimelineEntry<B extends Bindings> {
   readonly frame: number
-  readonly press?: ReadonlyArray<keyof B & string>
-  readonly release?: ReadonlyArray<keyof B & string>
+  readonly press?: ReadonlyArray<TimelineName<B>>
+  readonly release?: ReadonlyArray<TimelineName<B>>
 }
+
+/**
+ * What a timeline presses and releases: a button action, or one direction
+ * of a vector action (`"move.right"`).
+ */
+export type TimelineName<B extends Bindings> = ButtonNames<B> | `${VectorNames<B>}.${Direction}`
 
 /**
  * Input changes by snapshot index. Plain data, so it round-trips through
@@ -418,19 +515,20 @@ export interface Scripted<B extends Bindings> extends Actions<B> {
  * release, like keys; pressing an action already held is not a new press.
  */
 export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeline<B>): Scripted<B> => {
-  const names = Object.keys(bindings) as Array<keyof B & string>
+  const names = Object.keys(flatten(bindings))
   const byFrame = new Map<number, Array<TimelineEntry<B>>>()
   for (const entry of timeline) {
     const entries = byFrame.get(entry.frame)
     if (entries) entries.push(entry)
     else byFrame.set(entry.frame, [entry])
   }
-  const held = new Set<keyof B>()
+  const held = new Set<string>()
   let frame = 0
-  return {
+  let last: Readonly<Record<string, ActionState>> = {}
+  const played: Scripted<B> & WithFlatStates = {
     snapshot() {
-      const pressed = new Set<keyof B>()
-      const released = new Set<keyof B>()
+      const pressed = new Set<string>()
+      const released = new Set<string>()
       for (const entry of byFrame.get(frame) ?? []) {
         const releases = new Set(entry.release ?? [])
         for (const name of entry.press ?? []) {
@@ -451,18 +549,21 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
         }
       }
       frame += 1
-      const actions = {} as Record<keyof B, ActionState>
+      const states: Record<string, ActionState> = {}
       for (const name of names) {
         const isHeld = held.has(name)
-        actions[name] = { held: isHeld, pressed: pressed.has(name), released: released.has(name) && !isHeld }
+        states[name] = { held: isHeld, pressed: pressed.has(name), released: released.has(name) && !isHeld }
       }
-      return { actions, used: anyUsed(actions) }
+      last = states
+      return assemble(bindings, (name) => states[name]!, anyUsed(states)) as Snapshot<B>
     },
+    [flatStates]: () => last,
     // A timeline names actions, not keys, so new keys change nothing.
     rebind() {},
     dispose() {},
     frames: () => frame
   }
+  return played
 }
 
 /**
@@ -479,16 +580,18 @@ export interface Recording<B extends Bindings> extends Actions<B> {
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry<B>> = []
-  let wasHeld = new Set<keyof B & string>()
+  let wasHeld = new Set<TimelineName<B>>()
   let frame = 0
-  return {
+  const recorded: Recording<B> & WithFlatStates = {
     snapshot() {
       const snapshot = actions.snapshot()
-      const press: Array<keyof B & string> = []
-      const release: Array<keyof B & string> = []
-      const held = new Set<keyof B & string>()
-      for (const name of Object.keys(snapshot.actions) as Array<keyof B & string>) {
-        const state = snapshot.actions[name]!
+      // Each direction of a vector action, from the keyboard this wraps.
+      const states = (actions as WithFlatStates)[flatStates]?.() ?? (snapshot.actions as Readonly<Record<string, ActionState>>)
+      const press: Array<TimelineName<B>> = []
+      const release: Array<TimelineName<B>> = []
+      const held = new Set<TimelineName<B>>()
+      for (const name of Object.keys(states) as Array<TimelineName<B>>) {
+        const state = states[name]!
         if (state.held) held.add(name)
         if (state.pressed) press.push(name)
         // A press of an action held at the previous snapshot means it was released in between.
@@ -505,6 +608,7 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
       frame += 1
       return snapshot
     },
+    [flatStates]: () => (actions as WithFlatStates)[flatStates]?.() ?? {},
     rebind(bindings) {
       actions.rebind(bindings)
     },
@@ -513,6 +617,7 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
     },
     timeline: () => [...entries]
   }
+  return recorded
 }
 
 /**
@@ -528,7 +633,8 @@ export interface InvalidTimeline {
 /**
  * Validates untrusted data, such as a parsed JSON file, as a timeline for
  * `bindings`: an array of entries with a non-negative integer `frame` and
- * optional `press`/`release` arrays of bound action names.
+ * optional `press`/`release` arrays of bound action names (a vector action
+ * by direction, `"move.right"`).
  */
 export const parseTimeline = <const B extends Bindings>(
   bindings: B,
@@ -536,6 +642,7 @@ export const parseTimeline = <const B extends Bindings>(
 ): Result.Result<Timeline<B>, InvalidTimeline> => {
   const invalid = (path: string, message: string) => Result.failure<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
   if (!Array.isArray(data)) return invalid("", "expected an array of entries")
+  const flat = flatten(bindings)
   const entries: Array<TimelineEntry<B>> = []
   for (let index = 0; index < data.length; index++) {
     const entry: unknown = data[index]
@@ -545,16 +652,16 @@ export const parseTimeline = <const B extends Bindings>(
     if (typeof frame !== "number" || !Number.isInteger(frame) || frame < 0) {
       return invalid(`${path}.frame`, "expected a non-negative integer")
     }
-    const actionsAt = (value: unknown, field: string): Result.Result<Array<keyof B & string> | undefined, InvalidTimeline> => {
+    const actionsAt = (value: unknown, field: string): Result.Result<Array<TimelineName<B>> | undefined, InvalidTimeline> => {
       if (value === undefined) return Result.success(undefined)
       if (!Array.isArray(value)) return invalid(`${path}.${field}`, "expected an array of action names")
-      const names: Array<keyof B & string> = []
+      const names: Array<TimelineName<B>> = []
       for (let offset = 0; offset < value.length; offset++) {
         const name: unknown = value[offset]
-        if (typeof name !== "string" || !Object.prototype.hasOwnProperty.call(bindings, name)) {
-          return invalid(`${path}.${field}[${offset}]`, `expected one of ${Object.keys(bindings).join(", ")}`)
+        if (typeof name !== "string" || !Object.prototype.hasOwnProperty.call(flat, name)) {
+          return invalid(`${path}.${field}[${offset}]`, `expected one of ${Object.keys(flat).join(", ")}`)
         }
-        names.push(name)
+        names.push(name as TimelineName<B>)
       }
       return Result.success(names)
     }
@@ -584,7 +691,9 @@ export interface InvalidRebinding {
 /**
  * Validates untrusted data, such as saved settings parsed from JSON, as new
  * keys for `bindings`: an object with exactly the same action names, each
- * mapped to a non-empty array of characters or `{ code }` physical keys.
+ * mapped to a non-empty array of characters or `{ code }` physical keys
+ * (for a vector action, an object with such keys for `up`, `down`, `left`,
+ * and `right`, as `Keyboard.vector` saves).
  * Pass the result to {@link Actions.rebind}; on failure, keep the defaults.
  *
  * @example
@@ -604,19 +713,35 @@ export const parseRebinding = <const B extends Bindings>(
   for (const name of Object.keys(fields)) {
     if (!names.includes(name)) return invalid(name, `unknown action, expected one of ${names.join(", ")}`)
   }
-  const rebinding: Record<string, ReadonlyArray<KeyBinding>> = {}
-  for (const name of names) {
-    const value = fields[name]
-    if (!Array.isArray(value) || value.length === 0) return invalid(name, "expected a non-empty array of keys")
+  const keysAt = (value: unknown, path: string): Result.Result<Keys, InvalidRebinding> => {
+    if (!Array.isArray(value) || value.length === 0) return invalid(path, "expected a non-empty array of keys")
     const keys: Array<KeyBinding> = []
     for (let offset = 0; offset < value.length; offset++) {
       const key: unknown = value[offset]
       if (typeof key === "string" && key.length > 0) keys.push(key)
       else if (typeof key === "object" && key !== null && typeof (key as { readonly code?: unknown }).code === "string" && (key as PhysicalKey).code.length > 0) {
         keys.push({ code: (key as PhysicalKey).code })
-      } else return invalid(`${name}[${offset}]`, "expected a key character or { code }")
+      } else return invalid(`${path}[${offset}]`, "expected a key character or { code }")
     }
-    rebinding[name] = keys
+    return Result.success(keys as unknown as Keys)
+  }
+  const rebinding: Record<string, Keys | VectorBinding> = {}
+  for (const name of names) {
+    const value = fields[name]
+    if (isVectorBinding(bindings[name])) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(name, "expected { up, down, left, right } keys for a vector action")
+      const parts: Partial<Record<Direction, Keys>> = {}
+      for (const direction of directions) {
+        const keys = keysAt((value as Readonly<Record<string, unknown>>)[direction], `${name}.${direction}`)
+        if (!keys.ok) return keys
+        parts[direction] = keys.value
+      }
+      rebinding[name] = vector(parts as Record<Direction, Keys>)
+      continue
+    }
+    const keys = keysAt(value, name)
+    if (!keys.ok) return keys
+    rebinding[name] = keys.value
   }
   return Result.success(rebinding as unknown as Rebinding<B>)
 }

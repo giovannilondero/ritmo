@@ -326,3 +326,67 @@ describe("Keyboard.parseRebinding", () => {
     expect(fail({ jump: ["j"], left: ["a"], fly: ["f"] })).toBe("fly")
   })
 })
+
+describe("Keyboard vector actions", () => {
+  const bindings = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
+
+  it("reports a direction of length 1, cancelling opposite keys and normalizing diagonals", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    expect(keys.snapshot()).toEqual(Keyboard.idle(bindings))
+    fake.down("d")
+    const right = keys.snapshot()
+    expect(right.vectors.move).toEqual({ x: 1, y: 0 })
+    expect(right.actions).toEqual({ jump: { held: false, pressed: false, released: false } })
+    expect(right.used).toBe(true)
+    fake.down("s")
+    expect(keys.snapshot().vectors.move).toEqual({ x: Math.SQRT1_2, y: Math.SQRT1_2 })
+    fake.down("a")
+    expect(keys.snapshot().vectors.move).toEqual({ x: 0, y: 1 })
+    fake.up("s")
+    const cancelled = keys.snapshot()
+    expect(cancelled.vectors.move).toEqual({ x: 0, y: 0 })
+    expect(cancelled.used).toBe(true)
+  })
+
+  it("rebinds a vector's keys", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    keys.rebind({ move: Keyboard.vector({ up: ["i"], down: ["k"], left: ["j"], right: ["l"] }), jump: [" "] })
+    fake.down("d")
+    expect(keys.snapshot().vectors.move).toEqual({ x: 0, y: 0 })
+    fake.down("l")
+    expect(keys.snapshot().vectors.move).toEqual({ x: 1, y: 0 })
+  })
+
+  it("scripts and records a vector by direction, and replays it", () => {
+    const scripted = Keyboard.scripted(bindings, [{ frame: 0, press: ["move.up", "jump"] }, { frame: 1, release: ["move.up"] }])
+    expect(scripted.snapshot().vectors.move).toEqual({ x: 0, y: -1 })
+    expect(scripted.snapshot().vectors.move).toEqual({ x: 0, y: 0 })
+
+    const fake = makeHost()
+    const recorder = Keyboard.recording(Keyboard.actions(fake.host, bindings))
+    fake.down("a")
+    fake.down("d")
+    const live = [recorder.snapshot()]
+    fake.up("a")
+    live.push(recorder.snapshot())
+    expect(recorder.timeline()).toEqual([{ frame: 0, press: ["move.left", "move.right"] }, { frame: 1, release: ["move.left"] }])
+    const parsed = Keyboard.parseTimeline(bindings, JSON.parse(JSON.stringify(recorder.timeline())))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    const replay = Keyboard.scripted(bindings, parsed.value)
+    expect(live.map(() => replay.snapshot())).toEqual(live)
+    expect(Keyboard.parseTimeline(bindings, [{ frame: 0, press: ["move"] }])).toMatchObject({ ok: false, error: { path: "[0].press[0]" } })
+  })
+
+  it("parses a saved vector binding", () => {
+    const saved = JSON.parse(JSON.stringify({ move: Keyboard.vector({ up: ["i"], down: ["k"], left: ["j"], right: [Keyboard.code("KeyL")] }), jump: ["x"] }))
+    expect(Keyboard.parseRebinding(bindings, saved)).toEqual({
+      ok: true,
+      value: { move: { _tag: "Vector", up: ["i"], down: ["k"], left: ["j"], right: [{ code: "KeyL" }] }, jump: ["x"] }
+    })
+    expect(Keyboard.parseRebinding(bindings, { move: ["w"], jump: [" "] })).toMatchObject({ ok: false, error: { path: "move" } })
+    expect(Keyboard.parseRebinding(bindings, { move: { up: ["i"], down: ["k"], left: ["j"] }, jump: [" "] })).toMatchObject({ ok: false, error: { path: "move.right" } })
+  })
+})

@@ -22,9 +22,16 @@ describe("Touch", () => {
   })
 
   it("types scripted timelines by the button names", () => {
-    expect(Touch.scripted(["attack", "dash"], [{ frame: 0, press: ["attack"], aim: { attack: { x: 1, y: 0 } } }])).type.toBe<Touch.Scripted<"attack" | "dash">>()
+    expect(Touch.scripted({ buttons: ["attack", "dash"] }, [{ frame: 0, press: ["attack"], aim: { attack: { x: 1, y: 0 } } }])).type.toBe<Touch.Scripted<"attack" | "dash">>()
     // @ts-expect-error Type '"jump"' is not assignable to type '"attack" | "dash"'
-    Touch.scripted(["attack", "dash"], [{ frame: 0, press: ["jump"] }])
-    expect(Touch.idle(["attack"])).type.toBe<Touch.Snapshot<"attack">>()
+    Touch.scripted({ buttons: ["attack", "dash"] }, [{ frame: 0, press: ["jump"] }])
+    expect(Touch.idle({ buttons: ["attack"] })).type.toBe<Touch.Snapshot<"attack">>()
+  })
+
+  it("reports the stick as the vector the layout names", () => {
+    const touch = Touch.scripted({ buttons: ["attack"], vector: "move" }, [])
+    expect(touch.snapshot().vectors.move).type.toBe<Touch.Vector>()
+    // @ts-expect-error Property 'move' does not exist
+    Touch.scripted({ buttons: ["attack"] }, []).snapshot().vectors.move
   })
 })

@@ -27,7 +27,7 @@ export const PACE_REST = Clock.duration(step, 1)
 // ── Input ───────────────────────────────────────────────────────────────
 
 /** The town's actions, bound on every device below. */
-export const Actions = Controls.actions(["up", "down", "left", "right", "action"])
+export const Actions = Controls.actions({ buttons: ["up", "down", "left", "right", "action"] })
 
 export const keyBindings = {
   up: ["ArrowUp", "w"],

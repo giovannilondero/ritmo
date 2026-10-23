@@ -11,7 +11,7 @@ import { setupSchedule, updateSchedule } from "./schedules.ts"
 export const initialResources = () => ({
   Time: Clock.start(step),
   Rng: Random.seed(0x7017),
-  Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings), touch: Touch.idle(touchButtons) }),
+  Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings), touch: Touch.idle({ buttons: touchButtons }) }),
   Dialogue: null
 } as const)
 
@@ -30,7 +30,7 @@ export const createTownSimulation = (devices: {
     services: Game.Runtime.services(Game.Runtime.service(ControlsInput, makeControls({
       keyboard: devices.keyboard,
       gamepad: Gamepad.scripted(padBindings, []),
-      touch: Touch.scripted(touchButtons, [])
+      touch: Touch.scripted({ buttons: touchButtons }, [])
     }))),
     resources: initialResources(),
     machines: initialMachines(),

@@ -1,24 +1,18 @@
-import { Controls } from "@typeonce/ritmo-browser"
-import type { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+import type { Pointer } from "@typeonce/ritmo-browser"
 import type * as Vector2Value from "@typeonce/ritmo-math/Vector2"
 
 export type Vector2 = Vector2Value.Vector2
 /** The game's actions, bound on every device below. */
-export const Actions = Controls.actions(["up", "down", "left", "right", "interact"])
+export const Actions = Controls.actions({ buttons: ["interact"], vectors: ["move"] })
 export const inputBindings = {
-  up: ["ArrowUp", "w"],
-  down: ["ArrowDown", "s"],
-  left: ["ArrowLeft", "a"],
-  right: ["ArrowRight", "d"],
+  move: Keyboard.vector({ up: ["ArrowUp", "w"], down: ["ArrowDown", "s"], left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"] }),
   interact: ["e", " "]
 } as const
 export type KeyboardInput = Keyboard.Actions<typeof inputBindings>
-/** The same actions on a controller: the d-pad walks (the left stick too, see `normalizeMovement`), south interacts. */
+/** The same actions on a controller: the left stick or the d-pad walks, south interacts. */
 export const padBindings = {
-  up: ["dpadUp"],
-  down: ["dpadDown"],
-  left: ["dpadLeft"],
-  right: ["dpadRight"],
+  move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
   interact: ["south"]
 } as const
 export type GamepadInput = Gamepad.Actions<typeof padBindings>
