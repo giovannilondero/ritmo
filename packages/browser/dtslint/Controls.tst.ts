@@ -3,7 +3,7 @@ import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@type
 import { describe, expect, it } from "tstyche"
 
 declare const host: Keyboard.KeyboardHost & Gamepad.GamepadHost
-declare const touch: Touch.Touch<"jump">
+declare const touch: Touch.Actions<"jump">
 declare const canvas: Pointer.PointerTarget
 
 const keyBindings = { jump: [" "], pause: ["Escape"] } as const
@@ -58,7 +58,7 @@ describe("Controls", () => {
   })
 
   it("requires lacking to name exactly the missing actions", () => {
-    expect(Actions.lacking(touch, ["pause"])).type.toBe<Controls.Lacking<Touch.Touch<"jump">, "pause">>()
+    expect(Actions.lacking(touch, ["pause"])).type.toBe<Controls.Lacking<Touch.Actions<"jump">, "pause">>()
     // @ts-expect-error This device also lacks pause: bind it, or list it here
     Actions.lacking(touch, [])
     // @ts-expect-error Type '"paus"' is not assignable to type '"pause"'

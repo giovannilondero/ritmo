@@ -18,7 +18,7 @@ describe("Pointer", () => {
     expect(input.used).type.toBe<boolean>()
     // @ts-expect-error Property 'fier' does not exist
     input.actions.fier
-    expect(Pointer.buttonNames).type.toBe<readonly ["primary", "middle", "secondary", "back", "forward"]>()
+    expect(Pointer.buttonNames).type.toBe<readonly ["primary", "middle", "secondary", "back", "forward", "wheelUp", "wheelDown", "wheelLeft", "wheelRight"]>()
   })
 
   it("binds only pointer buttons, at least one per action", () => {
@@ -59,5 +59,25 @@ describe("Pointer", () => {
       // @ts-expect-error snapshot() drains PointerTypes/Mouse
       services.mouse.snapshot()
     })
+  })
+
+  it("reports the wheel, raw motion, and the lock, and binds wheel pulses", () => {
+    const mouse = Pointer.actions(canvas, blurHost, { next: ["wheelDown"], previous: ["wheelUp"] })
+    const input = mouse.snapshot()
+    expect(input.wheel).type.toBe<Pointer.Delta>()
+    expect(input.movement).type.toBe<Pointer.Delta>()
+    expect(input.locked).type.toBe<boolean>()
+    expect(input.buttons.wheelLeft).type.toBe<Pointer.ActionState>()
+  })
+
+  it("presses only physical buttons in a timeline", () => {
+    expect(Pointer.scripted(bindings, [{ frame: 0, wheel: { x: 0, y: 100 }, press: ["primary"] }])).type.toBe<Pointer.Scripted<typeof bindings>>()
+    // @ts-expect-error Type '"wheelUp"' is not assignable
+    Pointer.scripted(bindings, [{ frame: 0, press: ["wheelUp"] }])
+  })
+
+  it("takes a DOM element and the document as hosts", () => {
+    const element = {} as HTMLCanvasElement
+    expect(Pointer.actions(element, window, bindings, { lock: document })).type.toBe<Pointer.Actions<typeof bindings>>()
   })
 })

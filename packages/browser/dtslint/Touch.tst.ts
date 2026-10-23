@@ -4,7 +4,7 @@ import { describe, expect, it } from "tstyche"
 declare const target: Touch.TouchTarget
 declare const blurHost: Touch.BlurHost
 
-const touch = Touch.track(target, blurHost, ({ width, height }) => ({
+const touch = Touch.actions(target, blurHost, ({ width, height }) => ({
   stick: { region: { left: 0, top: 0, width: width / 2, height }, radius: 60 },
   buttons: {
     attack: { center: { x: width - 90, y: height - 90 }, radius: 55, aimRadius: 80 },
@@ -14,7 +14,7 @@ const touch = Touch.track(target, blurHost, ({ width, height }) => ({
 
 describe("Touch", () => {
   it("infers the button names from the layout", () => {
-    expect(touch).type.toBe<Touch.Touch<"attack" | "dash">>()
+    expect(touch).type.toBe<Touch.Actions<"attack" | "dash">>()
     expect(touch.snapshot().actions.attack).type.toBe<Touch.ButtonState>()
     expect(touch.snapshot().stick.vector).type.toBe<Touch.Vector>()
     // @ts-expect-error Property 'jump' does not exist on type

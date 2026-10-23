@@ -53,7 +53,7 @@ export const touchButtons = ["up", "down", "left", "right", "action"] as const
 export const makeControls = (devices: {
   readonly keyboard: Keyboard.Actions<typeof keyBindings>
   readonly gamepad: Gamepad.Actions<typeof padBindings>
-  readonly touch: Touch.Touch<(typeof touchButtons)[number]>
+  readonly touch: Touch.Actions<(typeof touchButtons)[number]>
 }) => Actions.merge(devices)
 
 export const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Town/Controls")

@@ -19,18 +19,29 @@
  * code. `rebind(...)` swaps the buttons of the same actions, and
  * `parseRebinding(...)` validates saved ones.
  *
+ * The wheel reports both ways games use it: `wheel` is how far it scrolled
+ * (zoom), and the `wheelUp`/`wheelDown`/`wheelLeft`/`wheelRight` buttons
+ * pulse once per notch, so a stepping action (next weapon) binds them and
+ * merges with a gamepad bumper. For mouse look, pass `lock: document`: a
+ * click locks the pointer to the element, `movement` keeps reporting raw
+ * motion, and `locked` turns `false` when the player presses Escape.
+ *
  * @module Pointer
  * @docGroup browser
  *
  * @example
  * ```ts
- * const bindings = { fire: ["primary"], aim: ["secondary"] } as const
- * const mouse = Pointer.actions(canvas, window, bindings)
+ * const bindings = { fire: ["primary"], aim: ["secondary"], nextWeapon: ["wheelDown"] } as const
+ * const mouse = Pointer.actions(canvas, window, bindings, { lock: document })
  *
  * // Once per update (through InputCapture in a game):
  * const input = mouse.snapshot()
  * aimAt(input.position)
  * if (input.actions.fire.pressed) fire()
+ *
+ * // Zoom with the wheel, look with a locked pointer:
+ * zoomBy(input.wheel.y)
+ * if (input.locked) turn(input.movement.x)
  *
  * // Settings screen: bind the button the player clicks.
  * const clicked = Pointer.buttonNames.find((button) => input.buttons[button].pressed)
@@ -55,17 +66,32 @@ import { anyUsed } from "./internal/used.ts"
 
 export type { ActionState }
 
+/** The physical buttons, in `PointerEvent.button` order 0 to 4. */
+const physicalButtons = ["primary", "middle", "secondary", "back", "forward"] as const
+
+/** A button that goes down and up, unlike the wheel's pulses: what a timeline presses and releases. */
+export type PhysicalButton = (typeof physicalButtons)[number]
+
+const isPhysical = (name: unknown): name is PhysicalButton => (physicalButtons as ReadonlyArray<unknown>).includes(name)
+
 /**
- * The buttons a snapshot reports, in `PointerEvent.button` order 0 to 4:
- * the main (usually left) button, the wheel button, the secondary (usually
- * right) button, and the side buttons.
+ * The buttons a snapshot reports: the main (usually left) button, the wheel
+ * button, the secondary (usually right) button, the side buttons, then the
+ * wheel's four directions. A wheel direction is a pulse, pressed and
+ * released in the same window, once per {@link wheelStep} pixels scrolled,
+ * so it binds actions that step (next weapon) and merges with a gamepad
+ * bumper in `Controls`; read the snapshot's `wheel` for how far it scrolled
+ * (zoom).
  */
-export const buttonNames = ["primary", "middle", "secondary", "back", "forward"] as const
+export const buttonNames = [...physicalButtons, "wheelUp", "wheelDown", "wheelLeft", "wheelRight"] as const
 
 /** One pointer button, see {@link buttonNames}. */
 export type Button = (typeof buttonNames)[number]
 
-const buttonOf = (code: number): Button | undefined => buttonNames[code]
+/** Pixels scrolled per wheel pulse: one notch of a typical mouse wheel. */
+export const wheelStep = 100
+
+const buttonOf = (code: number): Button | undefined => physicalButtons[code]
 
 const buttonSet: ReadonlySet<string> = new Set(buttonNames)
 
@@ -98,6 +124,12 @@ export interface Position {
   readonly y: number
 }
 
+/** A change in CSS pixels since the previous snapshot. */
+export interface Delta {
+  readonly x: number
+  readonly y: number
+}
+
 export interface Snapshot<B extends Bindings> {
   /** Every bound action's state. */
   readonly actions: { readonly [Action in keyof B]: ActionState }
@@ -105,11 +137,25 @@ export interface Snapshot<B extends Bindings> {
   readonly buttons: { readonly [Name in Button]: ActionState }
   /** The last position the pointer was seen at, or where it was last left. */
   readonly position: Position
+  /**
+   * How far the pointer moved since the previous snapshot, from the raw
+   * motion (`movementX`/`movementY`), which keeps coming while the pointer is
+   * locked and the position stands still: read it for mouse look.
+   */
+  readonly movement: Delta
+  /** How far the wheel scrolled since the previous snapshot, in CSS pixels (positive `y` scrolls down). */
+  readonly wheel: Delta
   /** Whether the pointer is currently over the element (or captured by it). */
   readonly over: boolean
   /**
+   * Whether the pointer is locked to the element (with the `lock` option).
+   * The player leaves the lock with Escape; show "click to resume" while it
+   * is `false`.
+   */
+  readonly locked: boolean
+  /**
    * Some button was pressed in this window or is held, or the pointer moved
-   * over the element: the player is using the pointer.
+   * or scrolled over the element: the player is using the pointer.
    */
   readonly used: boolean
 }
@@ -136,6 +182,9 @@ export interface Actions<B extends Bindings> extends System.Consumes<"snapshot">
 export interface PointerEventLike {
   readonly clientX: number
   readonly clientY: number
+  /** Raw motion since the previous event; events without it count as 0. */
+  readonly movementX?: number
+  readonly movementY?: number
   readonly button: number
   readonly pointerId: number
   /** `"mouse"`, `"pen"`, or `"touch"`; events without it count as mouse. */
@@ -157,9 +206,32 @@ export interface PointerTarget {
     listener: (event: PointerEventLike) => void
   ): void
   removeEventListener(type: "contextmenu", listener: (event: { preventDefault(): void }) => void): void
+  addEventListener(type: "wheel", listener: (event: WheelEventLike) => void, options: { readonly passive: false }): void
+  removeEventListener(type: "wheel", listener: (event: WheelEventLike) => void): void
   getBoundingClientRect(): { readonly left: number; readonly top: number }
   setPointerCapture?(pointerId: number): void
   releasePointerCapture?(pointerId: number): void
+  /** Called on a click with the `lock` option while the pointer is not locked. */
+  requestPointerLock?(): unknown
+}
+
+/** The subset of `WheelEvent` the module reads. */
+export interface WheelEventLike {
+  readonly deltaX: number
+  readonly deltaY: number
+  /** 0 for pixels, 1 for lines (16 px each), 2 for pages (800 px each). */
+  readonly deltaMode: number
+  preventDefault(): void
+}
+
+/**
+ * Where the pointer lock is observed, usually `document`, for the `lock`
+ * option.
+ */
+export interface LockHost {
+  readonly pointerLockElement: unknown
+  addEventListener(type: "pointerlockchange", listener: () => void): void
+  removeEventListener(type: "pointerlockchange", listener: () => void): void
 }
 
 /**
@@ -183,6 +255,19 @@ export interface ActionsOptions {
    * also a click.
    */
   readonly pointerTypes?: ReadonlyArray<string>
+  /**
+   * Keep the page from scrolling while the wheel turns over the element.
+   * Defaults to `true`.
+   */
+  readonly preventScroll?: boolean
+  /**
+   * Lock the pointer to the element on a click, for mouse look: pass where
+   * the lock is observed (usually `document`). Browsers grant a lock only
+   * inside a click, so the module requests it in its own listener; the
+   * click that locks is not reported as a press. Read `locked` and
+   * `movement`.
+   */
+  readonly lock?: LockHost
 }
 
 /**
@@ -193,15 +278,40 @@ export const idle = <const B extends Bindings>(bindings: B, position: Position =
   actions: idleActions(bindings),
   buttons: idleButtons(buttonNames),
   position: { x: position.x, y: position.y },
+  movement: { x: 0, y: 0 },
+  wheel: { x: 0, y: 0 },
   over: false,
+  locked: false,
   used: false
 })
 
-/** The button tracker with the position, shared by live and scripted pointers. */
+const pixelsPer = [1, 16, 800]
+
+/**
+ * The button tracker with the position, motion, and wheel, shared by live
+ * and scripted pointers.
+ */
 const tracker = <B extends Bindings>(initial: B, start: Position) => {
   const buttons = buttonTracker(buttonNames, initial)
   let position = start
   let moved = false
+  let movement = { x: 0, y: 0 }
+  let wheel = { x: 0, y: 0 }
+  // Scrolled toward the next pulse, per axis; reset when the direction turns.
+  const pending = { x: 0, y: 0 }
+  const pulse = (button: Button): void => {
+    buttons.down(button)
+    buttons.up(button)
+  }
+  const step = (axis: "x" | "y", delta: number, negative: Button, positive: Button): void => {
+    if (delta === 0) return
+    if (Math.sign(pending[axis]) !== Math.sign(delta)) pending[axis] = 0
+    pending[axis] += delta
+    while (Math.abs(pending[axis]) >= wheelStep) {
+      pulse(pending[axis] < 0 ? negative : positive)
+      pending[axis] -= Math.sign(pending[axis]) * wheelStep
+    }
+  }
   return {
     buttons,
     move(next: Position) {
@@ -209,11 +319,22 @@ const tracker = <B extends Bindings>(initial: B, start: Position) => {
       position = next
       moved = true
     },
-    snapshot(over: boolean): Snapshot<B> {
+    motion(delta: Delta) {
+      movement = { x: movement.x + delta.x, y: movement.y + delta.y }
+    },
+    scroll(delta: Delta) {
+      wheel = { x: wheel.x + delta.x, y: wheel.y + delta.y }
+      step("y", delta.y, "wheelUp", "wheelDown")
+      step("x", delta.x, "wheelLeft", "wheelRight")
+    },
+    snapshot(over: boolean, locked: boolean): Snapshot<B> {
       const taken = buttons.take()
-      const used = moved || anyUsed(taken.buttons)
+      const used = moved || movement.x !== 0 || movement.y !== 0 || wheel.x !== 0 || wheel.y !== 0 || anyUsed(taken.buttons)
+      const snapshot = { ...taken, position: { x: position.x, y: position.y }, movement, wheel, over, locked, used }
       moved = false
-      return { ...taken, position: { x: position.x, y: position.y }, over, used }
+      movement = { x: 0, y: 0 }
+      wheel = { x: 0, y: 0 }
+      return snapshot
     }
   }
 }
@@ -229,14 +350,18 @@ export const actions = <const B extends Bindings>(
   options: ActionsOptions = {}
 ): Actions<B> => {
   const preventContextMenu = options.preventContextMenu ?? true
+  const preventScroll = options.preventScroll ?? true
+  const lock = options.lock
   const pointerTypes = options.pointerTypes ?? ["mouse", "pen"]
   const tracked = (event: PointerEventLike): boolean => pointerTypes.includes(event.pointerType ?? "mouse")
   const state = tracker(bindings, { x: 0, y: 0 })
   let over = false
+  const isLocked = (): boolean => lock !== undefined && lock.pointerLockElement === target
 
   const locate = (event: PointerEventLike): void => {
     const rect = target.getBoundingClientRect()
     state.move({ x: event.clientX - rect.left, y: event.clientY - rect.top })
+    state.motion({ x: event.movementX ?? 0, y: event.movementY ?? 0 })
   }
 
   const onDown = (event: PointerEventLike): void => {
@@ -246,6 +371,11 @@ export const actions = <const B extends Bindings>(
     const button = buttonOf(event.button)
     if (button === undefined) return
     event.preventDefault()
+    if (lock !== undefined && !isLocked()) {
+      // The click that locks is not a press: "click to resume" does not also fire.
+      target.requestPointerLock?.()
+      return
+    }
     target.setPointerCapture?.(event.pointerId)
     state.buttons.down(button)
   }
@@ -277,6 +407,17 @@ export const actions = <const B extends Bindings>(
     if (preventContextMenu) event.preventDefault()
   }
 
+  const onWheel = (event: WheelEventLike): void => {
+    if (preventScroll) event.preventDefault()
+    const scale = pixelsPer[event.deltaMode] ?? 1
+    state.scroll({ x: event.deltaX * scale, y: event.deltaY * scale })
+  }
+
+  // Leaving the lock (Escape) releases what was held, like a blur.
+  const onLockChange = (): void => {
+    if (!isLocked()) state.buttons.upAll()
+  }
+
   target.addEventListener("pointerdown", onDown)
   target.addEventListener("pointerup", onUp)
   target.addEventListener("pointermove", onMove)
@@ -284,10 +425,15 @@ export const actions = <const B extends Bindings>(
   target.addEventListener("pointerleave", onLeave)
   target.addEventListener("pointercancel", onCancel)
   target.addEventListener("contextmenu", onContextMenu)
+  target.addEventListener("wheel", onWheel, { passive: false })
   blurHost.addEventListener("blur", state.buttons.upAll)
+  lock?.addEventListener("pointerlockchange", onLockChange)
 
   return {
-    snapshot: () => state.snapshot(over),
+    snapshot: () => {
+      const locked = isLocked()
+      return state.snapshot(over || locked, locked)
+    },
     rebind: state.buttons.rebind,
     dispose() {
       target.removeEventListener("pointerdown", onDown)
@@ -297,22 +443,29 @@ export const actions = <const B extends Bindings>(
       target.removeEventListener("pointerleave", onLeave)
       target.removeEventListener("pointercancel", onCancel)
       target.removeEventListener("contextmenu", onContextMenu)
+      target.removeEventListener("wheel", onWheel)
       blurHost.removeEventListener("blur", state.buttons.upAll)
+      lock?.removeEventListener("pointerlockchange", onLockChange)
     }
   }
 }
 
 /**
- * Pointer changes applied just before one snapshot: the move first, then
- * presses, then releases. `frame` is the snapshot's index, counting from 0 at
- * the first `snapshot()` call. A button both pressed and released in one frame
- * is a click shorter than a frame.
+ * Pointer changes applied just before one snapshot: the move, the raw
+ * motion, and the wheel first, then presses, then releases. `frame` is the
+ * snapshot's index, counting from 0 at the first `snapshot()` call. A button
+ * both pressed and released in one frame is a click shorter than a frame.
+ * Wheel pulses come from `wheel`, not from `press`.
  */
 export interface TimelineEntry {
   readonly frame: number
   readonly move?: Position
-  readonly press?: ReadonlyArray<Button>
-  readonly release?: ReadonlyArray<Button>
+  readonly movement?: Delta
+  readonly wheel?: Delta
+  /** Locks or unlocks the pointer from this frame on; unlocking releases what was held. */
+  readonly locked?: boolean
+  readonly press?: ReadonlyArray<PhysicalButton>
+  readonly release?: ReadonlyArray<PhysicalButton>
 }
 
 /**
@@ -342,15 +495,22 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
   }
   const state = tracker(bindings, start)
   let frame = 0
+  let locked = false
   return {
     snapshot() {
       for (const entry of byFrame.get(frame) ?? []) {
         if (entry.move !== undefined) state.move(entry.move)
+        if (entry.movement !== undefined) state.motion(entry.movement)
+        if (entry.wheel !== undefined) state.scroll(entry.wheel)
+        if (entry.locked !== undefined) {
+          if (locked && !entry.locked) state.buttons.upAll()
+          locked = entry.locked
+        }
         for (const button of entry.press ?? []) state.buttons.down(button)
         for (const button of entry.release ?? []) state.buttons.up(button)
       }
       frame += 1
-      return state.snapshot(true)
+      return state.snapshot(true, locked)
     },
     rebind: state.buttons.rebind,
     dispose() {},
@@ -372,17 +532,25 @@ export const recording = <B extends Bindings>(pointer: Actions<B>): Recording<B>
   const entries: Array<TimelineEntry> = []
   let frame = 0
   let last: Position | undefined
+  let locked = false
+  const nonZero = (delta: Delta): boolean => delta.x !== 0 || delta.y !== 0
   return {
     snapshot() {
       const snapshot = pointer.snapshot()
       const moved = last === undefined || last.x !== snapshot.position.x || last.y !== snapshot.position.y
       last = snapshot.position
-      const press = buttonNames.filter((button) => snapshot.buttons[button].pressed)
-      const release = buttonNames.filter((button) => snapshot.buttons[button].released)
-      if (moved || press.length > 0 || release.length > 0) {
+      // Wheel pulses replay from the recorded wheel.
+      const press = physicalButtons.filter((button) => snapshot.buttons[button].pressed)
+      const release = physicalButtons.filter((button) => snapshot.buttons[button].released)
+      const lockChanged = snapshot.locked !== locked
+      locked = snapshot.locked
+      if (moved || lockChanged || nonZero(snapshot.movement) || nonZero(snapshot.wheel) || press.length > 0 || release.length > 0) {
         entries.push({
           frame,
           ...(moved ? { move: snapshot.position } : {}),
+          ...(nonZero(snapshot.movement) ? { movement: snapshot.movement } : {}),
+          ...(nonZero(snapshot.wheel) ? { wheel: snapshot.wheel } : {}),
+          ...(lockChanged ? { locked: snapshot.locked } : {}),
           ...(press.length > 0 ? { press } : {}),
           ...(release.length > 0 ? { release } : {})
         })
@@ -408,8 +576,9 @@ export interface InvalidTimeline {
 
 /**
  * Validates untrusted data, such as a parsed JSON file, as a pointer
- * timeline: an array of entries with a non-negative integer `frame`, an
- * optional finite `move`, and optional `press`/`release` arrays of buttons.
+ * timeline: an array of entries with a non-negative integer `frame`,
+ * optional finite `move`, `movement`, and `wheel`, an optional boolean
+ * `locked`, and optional `press`/`release` arrays of physical buttons.
  */
 export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTimeline> => {
   const invalid = (path: string, message: string) => Result.failure<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
@@ -419,44 +588,36 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
     const entry: unknown = data[index]
     const path = `[${index}]`
     if (typeof entry !== "object" || entry === null) return invalid(path, "expected an object")
-    const { frame, move, press, release } = entry as {
-      readonly frame?: unknown
-      readonly move?: unknown
-      readonly press?: unknown
-      readonly release?: unknown
-    }
+    const fields = entry as Readonly<Record<string, unknown>>
+    const frame = fields["frame"]
     if (typeof frame !== "number" || !Number.isInteger(frame) || frame < 0) {
       return invalid(`${path}.frame`, "expected a non-negative integer")
     }
-    let position: Position | undefined
-    if (move !== undefined) {
-      if (typeof move !== "object" || move === null) return invalid(`${path}.move`, "expected an object with x and y")
-      const { x, y } = move as { readonly x?: unknown; readonly y?: unknown }
-      if (typeof x !== "number" || !Number.isFinite(x)) return invalid(`${path}.move.x`, "expected a finite number")
-      if (typeof y !== "number" || !Number.isFinite(y)) return invalid(`${path}.move.y`, "expected a finite number")
-      position = { x, y }
+    const parsed: Record<string, unknown> = { frame }
+    for (const field of ["move", "movement", "wheel"] as const) {
+      const value = fields[field]
+      if (value === undefined) continue
+      if (typeof value !== "object" || value === null) return invalid(`${path}.${field}`, "expected an object with x and y")
+      const { x, y } = value as { readonly x?: unknown; readonly y?: unknown }
+      if (typeof x !== "number" || !Number.isFinite(x)) return invalid(`${path}.${field}.x`, "expected a finite number")
+      if (typeof y !== "number" || !Number.isFinite(y)) return invalid(`${path}.${field}.y`, "expected a finite number")
+      parsed[field] = { x, y }
     }
-    const buttonsAt = (value: unknown, field: string): Result.Result<Array<Button> | undefined, InvalidTimeline> => {
-      if (value === undefined) return Result.success(undefined)
+    const locked = fields["locked"]
+    if (locked !== undefined) {
+      if (typeof locked !== "boolean") return invalid(`${path}.locked`, "expected a boolean")
+      parsed["locked"] = locked
+    }
+    for (const field of ["press", "release"] as const) {
+      const value = fields[field]
+      if (value === undefined) continue
       if (!Array.isArray(value)) return invalid(`${path}.${field}`, "expected an array of buttons")
-      const names: Array<Button> = []
       for (let offset = 0; offset < value.length; offset++) {
-        const name: unknown = value[offset]
-        if (!isButton(name)) return invalid(`${path}.${field}[${offset}]`, `expected one of ${buttonNames.join(", ")}`)
-        names.push(name)
+        if (!isPhysical(value[offset])) return invalid(`${path}.${field}[${offset}]`, `expected one of ${physicalButtons.join(", ")}`)
       }
-      return Result.success(names)
+      parsed[field] = [...value]
     }
-    const pressed = buttonsAt(press, "press")
-    if (!pressed.ok) return pressed
-    const released = buttonsAt(release, "release")
-    if (!released.ok) return released
-    entries.push({
-      frame,
-      ...(position === undefined ? {} : { move: position }),
-      ...(pressed.value === undefined ? {} : { press: pressed.value }),
-      ...(released.value === undefined ? {} : { release: released.value })
-    })
+    entries.push(parsed as unknown as TimelineEntry)
   }
   return Result.success(entries)
 }
