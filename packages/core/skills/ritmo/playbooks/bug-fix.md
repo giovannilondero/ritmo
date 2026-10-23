@@ -7,5 +7,6 @@
 5. Fix the system that writes the wrong value. Never patch the symptom in UI or render code.
 6. Turn the reproduction into a test next to the game.
 7. When the same class of bug could come back, encode it: a type, a lint rule in the game's config, or an invariant in the tests.
+   - When the wrong value was an impossible combination (a grounded body that still moves up, hitstun outside a hit), fix the model rather than adding a guard: make the states a `Descriptor.EntityState`, so the combination cannot be written.
 
 **Done when** the test fails without the fix, passes with it, and the game's check passes.
