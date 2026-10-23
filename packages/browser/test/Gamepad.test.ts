@@ -462,3 +462,32 @@ describe("Gamepad vector actions", () => {
     expect(Gamepad.parseRebinding(bindings, { move: {}, jump: ["east"] })).toMatchObject({ ok: false, error: { path: "move" } })
   })
 })
+
+describe("Gamepad.pads", () => {
+  it("reads every pad on its own, keeps an unplugged pad with its id, and stops at max", () => {
+    const first = makePad(0, "pad A")
+    const second = makePad(1, "pad B")
+    const third = makePad(2, "pad C")
+    const { host, connected } = makeHost(first, second, third)
+    const pads = Gamepad.pads(host, bindings, 2)
+    first.down("west")
+    second.tilt("left", 0, 1)
+    const both = pads.snapshot()
+    expect(both.map((pad) => pad.id)).toEqual(["pad A", "pad B"])
+    expect(both[0]!.actions.attack.pressed).toBe(true)
+    expect(both[1]!.actions.attack.pressed).toBe(false)
+    expect(both[1]!.left).toEqual({ x: 0, y: 1 })
+
+    connected[0] = null
+    const unplugged = pads.snapshot()
+    expect(unplugged[0]).toMatchObject({ connected: false, id: "pad A" })
+    expect(unplugged[0]!.actions.attack).toEqual(released)
+    connected[0] = first.pad
+    expect(pads.snapshot()[0]).toMatchObject({ connected: true, id: "pad A" })
+
+    pads.rebind({ attack: ["north"], dash: ["south"], ultimate: ["rightTrigger"] })
+    first.down("north")
+    expect(pads.snapshot()[0]!.actions.attack.pressed).toBe(true)
+    pads.dispose()
+  })
+})

@@ -5,7 +5,9 @@
  *   node --import tsx website/src/demos/town/check.ts
  *
  * Frame N is the N-th update. A key pressed at frame N is held from that
- * update on; pressed and released in one frame is a tap.
+ * update on; pressed and released in one frame is a tap. Nobody plays until
+ * a key joins: the first tap (frame 0) joins as p1 and does nothing else,
+ * so the scripted play starts at frame 2.
  */
 import { HostClock } from "@typeonce/ritmo"
 import { Keyboard } from "@typeonce/ritmo-browser"
@@ -14,19 +16,23 @@ import { Invariant, Session } from "@typeonce/ritmo-devtools"
 import { isOpenGround, sameCell } from "./map.ts"
 import type { Cell } from "./map.ts"
 import { createTownSimulation } from "./runtime.ts"
-import { Facing, Game, keyBindings, Look, Patrol, Solid, Stride, Talkable, Tile, Villager } from "./schema.ts"
+import { Facing, Game, leftKeys, Look, Patrol, Player, rightKeys, Solid, Stride, Talkable, Tile, Villager } from "./schema.ts"
 import { setupSchedule, updateSchedule } from "./schedules.ts"
-import { ReadPlayer, ReadScreen } from "./view.ts"
+import { ReadPlayers, ReadScreen } from "./view.ts"
 
-type Timeline = Keyboard.Timeline<typeof keyBindings>
-const tap = (frame: number, key: "up" | "down" | "left" | "right" | "action"): Timeline => [{ frame, press: [key], release: [key] }]
+type Timeline = Keyboard.Timeline<typeof leftKeys>
+/** The update the scripted play starts at: frame 0 is the tap that joins (2 keeps the clock's even steps where they were). */
+const PLAY = 2
+const tap = (frame: number, key: "up" | "down" | "left" | "right" | "action"): Timeline => [{ frame: frame + PLAY, press: [key], release: [key] }]
 const hold = (frame: number, until: number, key: "up" | "down" | "left" | "right"): Timeline => [
-  { frame, press: [key] },
-  { frame: until, release: [key] }
+  { frame: frame + PLAY, press: [key] },
+  { frame: until + PLAY, release: [key] }
 ]
+const join: Timeline = [{ frame: 0, press: ["action"], release: ["action"] }]
 
-// Read the house sign, walk around, bump the house, then talk to Ito.
+// Join, read the house sign, walk around, bump the house, then talk to Ito.
 const script: Timeline = [
+  ...join,
   // Start facing the sign at the door: read it, turn its two pages, close it.
   ...tap(0, "action"),
   ...[10, 20, 30, 40].flatMap((frame) => tap(frame, "action")),
@@ -49,7 +55,7 @@ const script: Timeline = [
 
 const hostClock = HostClock.test()
 const start = (timeline: Timeline) => {
-  const made = createTownSimulation({ keyboard: Keyboard.scripted(keyBindings, timeline), hostClock })
+  const made = createTownSimulation({ left: Keyboard.scripted(leftKeys, timeline), hostClock })
   if (!made.ok) throw new Error("The town's runtime could not start.")
   return made.value
 }
@@ -74,7 +80,7 @@ let kitBeside: number | undefined
 for (let frame = 0; frame < 1200 && kitBeside === undefined; frame++) {
   probe.tick(updateSchedule)
   const walker = probe.inspect(ReadWalker)
-  if (frame > 490 && walker !== undefined && sameCell(walker.tile, { col: 15, row: 8 }) && walker.stride === "still") kitBeside = frame + 1
+  if (frame > 490 + PLAY && walker !== undefined && sameCell(walker.tile, { col: 15, row: 8 }) && walker.stride === "still") kitBeside = frame + 1 - PLAY
 }
 if (kitBeside === undefined) throw new Error("Kit never came back to (15,8).")
 const talkToKit = kitBeside + 1
@@ -114,9 +120,9 @@ const check = (label: string, ok: boolean, detail: unknown) => {
   console.log(`${ok ? "ok  " : "FAIL"} frame ${String(frame).padStart(3)}  ${label}${ok ? "" : `: ${JSON.stringify(detail)}`}`)
   if (!ok) failures += 1
 }
-/** Runs updates one by one until `frame` reaches `until`, failing on a broken invariant or a failed tick. */
+/** Runs updates one by one until the scripted play reaches `until`, failing on a broken invariant or a failed tick. */
 const runTo = (until: number) => {
-  while (frame < until) {
+  while (frame < until + PLAY) {
     const result = session.run("update", { frames: 1 })
     frame += 1
     if (!result.data.ok) {
@@ -127,7 +133,7 @@ const runTo = (until: number) => {
     if (walker !== undefined) walkerColumns.add(walker.tile.col)
   }
 }
-const player = () => runtime.inspect(ReadPlayer)
+const player = () => runtime.inspect(ReadPlayers).p1
 const screen = () => runtime.inspect(ReadScreen)
 const at = (col: number, row: number) => player()?.tile.col === col && player()?.tile.row === row
 
@@ -140,7 +146,9 @@ check("no lint warnings", lints.every((lint) => lint.severity !== "warning"), li
 
 const setup = session.run("setup")
 if (!setup.data.ok) throw new Error(`setup failed: ${JSON.stringify(setup.data.stop)}`)
-check("starts at (6,5) facing the sign at the door", at(6, 5) && player()?.facing === "Left", player())
+check("nobody plays before a key joins", player() === undefined && screen().players === 0, screen())
+runTo(0)
+check("the tap that joins puts p1 at (6,5) facing the sign, and does nothing else", at(6, 5) && player()?.facing === "Left" && screen().mode === "Exploring", [player(), screen()])
 
 runTo(1)
 check("the house sign is readable", screen().mode === "Talking" && screen().dialogue?.speaker === "Sign", screen())
@@ -192,6 +200,51 @@ check("and Kit's pages close", screen().mode === "Exploring", screen())
 
 runTo(talkToKit + 400)
 check("Kit paces on and never steps into anyone (invariant held every frame)", at(14, 8) && walkerColumns.has(19), [...walkerColumns])
+
+// ── Two players ────────────────────────────────────────────────────────
+// p1 joins on WASD, p2 on the arrows a moment later and appears beside p1.
+// p2 walks right as far as the leash lets it (both stay on one screen),
+// then leaves with Backspace and disappears.
+console.log("\nTwo players")
+type ArrowTimeline = Keyboard.Timeline<typeof rightKeys>
+const arrows: ArrowTimeline = [
+  { frame: 5, press: ["right"], release: ["right"] },
+  { frame: 20, press: ["right"] },
+  { frame: 400, release: ["right"] },
+  { frame: 420, press: ["back"], release: ["back"] }
+]
+const duo = createTownSimulation({ left: Keyboard.scripted(leftKeys, join), right: Keyboard.scripted(rightKeys, arrows), hostClock })
+if (!duo.ok) throw new Error("The two-player town could not start.")
+const together = Invariant.fromInspector(Game.Inspector("both players fit on one screen", {
+  queries: { tiles: Game.Query({ selection: { tile: Game.Query.read(Tile) }, with: [Player] }) }
+}, ({ queries }) => {
+  const [first, second] = queries.tiles.each().map(({ data }) => data.tile.get())
+  if (first === undefined || second === undefined) return undefined
+  return Math.abs(first.col - second.col) > 13 || Math.abs(first.row - second.row) > 8
+    ? `players ${JSON.stringify(first)} and ${JSON.stringify(second)} do not fit on one screen`
+    : undefined
+}))
+const duoSession = Session.make(duo.value, { hostClock, schedules: { setup: setupSchedule, update: updateSchedule }, invariants: [NobodyOverlaps, together] })
+duoSession.run("setup")
+const duoPlayers = () => duo.value.inspect(ReadPlayers)
+const duoRun = (frames: number) => {
+  const result = duoSession.run("update", { frames })
+  frame += frames
+  if (!result.data.ok) {
+    console.log(result)
+    throw new Error(`two-player update stopped: ${JSON.stringify(result.data.stop)}`)
+  }
+}
+frame = 0
+duoRun(6)
+check("p2 joins on the arrows beside p1", duoPlayers().p1 !== undefined && duoPlayers().p2 !== undefined &&
+  Math.abs((duoPlayers().p2?.tile.col ?? 0) - (duoPlayers().p1?.tile.col ?? 0)) + Math.abs((duoPlayers().p2?.tile.row ?? 0) - (duoPlayers().p1?.tile.row ?? 0)) === 1, duoPlayers())
+const startCol = duoPlayers().p2?.tile.col ?? 0
+duoRun(400)
+check("p2 walks right until the leash stops it 13 tiles from p1, bumping, both on one screen",
+  startCol === 6 && duoPlayers().p2?.tile.col === (duoPlayers().p1?.tile.col ?? 0) + 13 && duoPlayers().p2?.stride === "bump", duoPlayers())
+duoRun(25)
+check("Backspace leaves: p2 is gone, p1 stays", duoPlayers().p2 === undefined && duoPlayers().p1 !== undefined, duoPlayers())
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`)
 if (failures > 0) process.exitCode = 1

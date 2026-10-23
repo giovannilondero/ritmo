@@ -17,8 +17,11 @@ import {
   PACE_REST,
   Patrol,
   Player,
+  Players,
+  PlayersInput,
   Position,
   Rng,
+  Seat,
   Signpost,
   Solid,
   Stride,
@@ -30,26 +33,17 @@ import {
   Villager,
   WALK
 } from "./schema.ts"
-import type { Foot, StrideValue } from "./schema.ts"
+import type { Foot, SeatValue, StrideValue } from "./schema.ts"
 
 // ── Setup ───────────────────────────────────────────────────────────────
 
 const standing: StrideValue = { kind: "still", foot: "left", rested: true }
 
-/** Puts the player, the villagers, and the signs on the map. */
+/** Puts the villagers and the signs on the map. Players appear when they join. */
 export const SpawnTown = Game.System(
   "Town/SpawnTown",
-  { commands: Game.System.commands(Game.System.spawns(Player, Villager, Patrol, Signpost)) },
+  { commands: Game.System.commands(Game.System.spawns(Villager, Patrol, Signpost)) },
   ({ commands }) => {
-    commands.spawn(Game.Command.spawn(
-      Game.Command.entry(Player, {}),
-      Game.Command.entry(Tile, playerStart.cell),
-      Game.Command.entry(Position, cellPosition(playerStart.cell)),
-      Game.Command.entry(Facing, playerStart.facing),
-      Game.Command.entry(Look, { character: playerStart.character }),
-      Game.Command.entry(Stride, standing),
-      Game.Command.entry(Solid, {})
-    ))
     for (const villager of villagers) {
       const draft = Game.Command.spawn(
         Game.Command.entry(Villager, {}),
@@ -82,6 +76,60 @@ export const SpawnTown = Game.System(
   }
 )
 
+/** Players drop in and out the whole time: joining opens once, at setup. */
+export const OpenJoining = Game.System(
+  "Town/OpenJoining",
+  { services: { players: Game.System.service(PlayersInput) } },
+  ({ services }) => services.players.setJoining(true)
+)
+
+// ── Players joining and leaving ─────────────────────────────────────────
+
+/** The second player is the same boy, tinted, so the two are told apart. */
+const tints: Readonly<Record<SeatValue, number | undefined>> = { p1: undefined, p2: 0x9fd8ff }
+
+/**
+ * A player who joins appears at the house door, or beside the other player
+ * when someone stands there; one who leaves disappears.
+ */
+export const JoinPlayers = Game.System(
+  "Town/JoinPlayers",
+  {
+    queries: {
+      players: Game.Query({ selection: { seat: Game.Query.read(Seat), tile: Game.Query.read(Tile), facing: Game.Query.read(Facing) }, with: [Player] }),
+      solids: Game.Query({ selection: { tile: Game.Query.read(Tile), stride: Game.Query.optional(Stride) }, with: [Solid] })
+    },
+    resources: { input: Game.System.readResource(Input) },
+    commands: Game.System.commands(Game.System.spawns(Player), Game.System.despawns(Player))
+  },
+  ({ queries, resources, commands }) => {
+    const input = resources.input.get()
+    for (const seat of Players.slots) {
+      if (input[seat].event === "left") {
+        for (const { entity, data } of queries.players.each()) if (data.seat.get() === seat) commands.despawn(entity)
+      }
+      if (input[seat].event !== "joined") continue
+      const free = (cell: Cell) => isOpenGround(cell) &&
+        !queries.solids.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.value() }, cell))
+      const other = queries.players.each().find(({ data }) => data.seat.get() !== seat)
+      const near = other === undefined ? playerStart.cell : other.data.tile.get()
+      const cell = [near, ...directions.map((direction) => cellInFront(near, direction))].find(free)
+      if (cell === undefined) continue
+      const tint = tints[seat]
+      commands.spawn(Game.Command.spawn(
+        Game.Command.entry(Player, {}),
+        Game.Command.entry(Seat, seat),
+        Game.Command.entry(Tile, cell),
+        Game.Command.entry(Position, cellPosition(cell)),
+        Game.Command.entry(Facing, other?.data.facing.get() ?? playerStart.facing),
+        Game.Command.entry(Look, tint === undefined ? { character: playerStart.character } : { character: playerStart.character, tint }),
+        Game.Command.entry(Stride, standing),
+        Game.Command.entry(Solid, {})
+      ))
+    }
+  }
+)
+
 // ── Walking ─────────────────────────────────────────────────────────────
 
 /** One read-write slot of an actor's data: a query write cell. */
@@ -103,6 +151,12 @@ const occupies = (blocker: { readonly tile: Cell; readonly stride: StrideValue |
   sameCell(blocker.tile, cell) || (blocker.stride?.kind === "walk" && sameCell(blocker.stride.from, cell))
 
 type DirectionActions = { readonly [K in "up" | "down" | "left" | "right"]: { readonly held: boolean; readonly pressed: boolean } }
+
+/**
+ * The most two players may stand apart, in tiles: the camera frames both,
+ * so neither walks off the shared screen (15 x 10 tiles).
+ */
+const LEASH = { cols: 13, rows: 8 } as const
 
 /**
  * The direction the player holds (or tapped within this step): the one they
@@ -159,17 +213,19 @@ const startWalk = (mover: Mover, foot: Foot) => {
 }
 
 /**
- * Moves the player tile by tile, one clock step at a time. On a tile, the
- * held direction turns the player (from rest, a tap only turns), steps onto
- * the next tile when it is free, or bumps in place when something solid is
- * there.
+ * Moves each player tile by tile, one clock step at a time, from that
+ * player's own input. On a tile, the held direction turns the player (from
+ * rest, a tap only turns), steps onto the next tile when it is free, or
+ * bumps in place when something solid is there (the other player too) or
+ * when the step would take the two players off one screen.
  */
 export const WalkPlayer = Game.System(
   "Town/WalkPlayer",
   {
     queries: {
-      player: Game.Query({
+      players: Game.Query({
         selection: {
+          seat: Game.Query.read(Seat),
           tile: Game.Query.write(Tile),
           position: Game.Query.write(Position),
           facing: Game.Query.write(Facing),
@@ -186,33 +242,39 @@ export const WalkPlayer = Game.System(
   },
   ({ queries, resources }) => {
     if (resources.time.get().dt === 0) return
-    const player = queries.player.single()
-    if (!player.ok) return
-    const mover: Mover = player.value.data
-    if (advanceStride(mover)) return
+    const input = resources.input.get()
+    const players = queries.players.each()
+    for (const player of players) {
+      const mover: Mover = player.data
+      if (advanceStride(mover)) continue
 
-    const stride = mover.stride.get()
-    if (stride.kind !== "still") return
-    const direction = heldDirection(resources.input.get(), mover.facing.get())
-    if (direction === undefined) {
-      if (!stride.rested) mover.stride.set({ ...stride, rested: true })
-      return
-    }
-    if (direction !== mover.facing.get()) {
-      mover.facing.set(direction)
-      if (stride.rested) {
-        mover.stride.set({ kind: "turn", foot: stride.foot, elapsed: 1 })
-        return
+      const stride = mover.stride.get()
+      if (stride.kind !== "still") continue
+      const direction = heldDirection(input[player.data.seat.get()], mover.facing.get())
+      if (direction === undefined) {
+        if (!stride.rested) mover.stride.set({ ...stride, rested: true })
+        continue
       }
-    }
+      if (direction !== mover.facing.get()) {
+        mover.facing.set(direction)
+        if (stride.rested) {
+          mover.stride.set({ kind: "turn", foot: stride.foot, elapsed: 1 })
+          continue
+        }
+      }
 
-    const target = cellInFront(mover.tile.get(), direction)
-    const taken = queries.blockers.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.value() }, target))
-    if (!isOpenGround(target) || taken) {
-      mover.stride.set({ kind: "bump", foot: stride.foot, elapsed: 1 })
-      return
+      const target = cellInFront(mover.tile.get(), direction)
+      const others = players.filter((other) => other.entity.id !== player.entity.id)
+      const taken = queries.blockers.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.value() }, target)) ||
+        others.some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.get() }, target))
+      const leashed = others.some(({ data }) =>
+        Math.abs(data.tile.get().col - target.col) > LEASH.cols || Math.abs(data.tile.get().row - target.row) > LEASH.rows)
+      if (!isOpenGround(target) || taken || leashed) {
+        mover.stride.set({ kind: "bump", foot: stride.foot, elapsed: 1 })
+        continue
+      }
+      startWalk(mover, stride.foot)
     }
-    startWalk(mover, stride.foot)
   }
 )
 
@@ -311,8 +373,8 @@ export const StartTalk = Game.System(
   "Town/StartTalk",
   {
     queries: {
-      player: Game.Query({
-        selection: { tile: Game.Query.read(Tile), facing: Game.Query.read(Facing), stride: Game.Query.read(Stride) },
+      players: Game.Query({
+        selection: { seat: Game.Query.read(Seat), tile: Game.Query.read(Tile), facing: Game.Query.read(Facing), stride: Game.Query.read(Stride) },
         with: [Player]
       }),
       talkables: Game.Query({ selection: { tile: Game.Query.read(Tile), talkable: Game.Query.read(Talkable), stride: Game.Query.optional(Stride) } }),
@@ -325,20 +387,23 @@ export const StartTalk = Game.System(
     nextMachines: { mode: Game.System.nextState(Mode) }
   },
   ({ queries, resources, nextMachines }) => {
-    if (!resources.input.get().actions.action.pressed) return
-    const player = queries.player.single()
-    if (!player.ok || player.value.data.stride.get().kind !== "still") return
-    const facing = player.value.data.facing.get()
-    const target = cellInFront(player.value.data.tile.get(), facing)
-    const found = queries.talkables.each().find((match) => sameCell(match.data.tile.get(), target))
-    // Someone mid-step is not there yet: wait until they stand on the tile.
-    if (found === undefined || (found.data.stride.value()?.kind ?? "still") !== "still") return
+    const input = resources.input.get()
+    // Either player can start a talk; the first one in slot order who can, does.
+    for (const player of queries.players.each()) {
+      if (!input[player.data.seat.get()].actions.action.pressed || player.data.stride.get().kind !== "still") continue
+      const facing = player.data.facing.get()
+      const target = cellInFront(player.data.tile.get(), facing)
+      const found = queries.talkables.each().find((match) => sameCell(match.data.tile.get(), target))
+      // Someone mid-step is not there yet: wait until they stand on the tile.
+      if (found === undefined || (found.data.stride.value()?.kind ?? "still") !== "still") continue
 
-    const { speaker, pages } = found.data.talkable.get()
-    resources.dialogue.set({ speaker, pages, page: 0, typed: 0 })
-    nextMachines.mode.set("Talking")
-    const listener = queries.listeners.get(found.entity.id)
-    if (listener.ok) listener.value.data.facing.set(opposite[facing])
+      const { speaker, pages } = found.data.talkable.get()
+      resources.dialogue.set({ speaker, pages, page: 0, typed: 0 })
+      nextMachines.mode.set("Talking")
+      const listener = queries.listeners.get(found.entity.id)
+      if (listener.ok) listener.value.data.facing.set(opposite[facing])
+      return
+    }
   }
 )
 
@@ -359,8 +424,12 @@ export const TypeDialogue = Game.System(
   }
 )
 
+/** Whether any player pressed the action button in this update. */
+const anyPressedAction = (input: Readonly<Record<SeatValue, { readonly actions: { readonly action: { readonly pressed: boolean } } }>>): boolean =>
+  Players.slots.some((seat) => input[seat].actions.action.pressed)
+
 /**
- * The action button while talking: shows the rest of a page still typing,
+ * Either player's action button while talking: shows the rest of a page still typing,
  * else turns to the next page, else closes the dialogue and goes back to
  * `Exploring`.
  */
@@ -374,7 +443,7 @@ export const AdvanceDialogue = Game.System(
     nextMachines: { mode: Game.System.nextState(Mode) }
   },
   ({ resources, nextMachines }) => {
-    if (!resources.input.get().actions.action.pressed) return
+    if (!anyPressedAction(resources.input.get())) return
     const dialogue = resources.dialogue.get()
     const page = dialogue?.pages[dialogue.page]
     if (dialogue !== null && page !== undefined && dialogue.typed < page.length) {

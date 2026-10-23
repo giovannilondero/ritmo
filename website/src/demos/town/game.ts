@@ -1,5 +1,6 @@
-// The browser host for the town: loads the art, reads the keyboard, a
-// gamepad, and on-screen touch buttons, runs the fixed-step loop on
+// The browser host for the town: loads the art, pools two keyboard
+// players (WASD and arrows), every gamepad, and on-screen touch buttons for
+// up to two players, runs the fixed-step loop on
 // animation frames, and draws with Pixi at a whole-number pixel scale. The
 // rules are the headless ones `check.ts` drives.
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
@@ -23,7 +24,7 @@ import tilesetWater from "./assets/TilesetWater.png"
 import type { Images } from "./render.ts"
 import { ActorNode, ActorNodes, Art, Camera, drawMap, FONT_FAMILY, makeArt, makeCamera, makeDialogBox, PropNodes, renderSchedule, VIEW_HEIGHT, VIEW_WIDTH } from "./render.ts"
 import { initialMachines, initialResources } from "./runtime.ts"
-import { ControlsInput, Game, keyBindings, makeControls, padBindings, step, touchButtons } from "./schema.ts"
+import { Game, leftKeys, makePlayers, padBindings, PlayersInput, rightKeys, step, touchButtons } from "./schema.ts"
 import { setupSchedule, updateSchedule } from "./schedules.ts"
 import { ReadScreen } from "./view.ts"
 
@@ -81,6 +82,14 @@ const drawTouch = (graphics: Graphics, view: Touch.View<(typeof touchButtons)[nu
   graphics.circle(a.x, a.y, 9).fill({ color: 0xf3f1ec, alpha: 0.6 })
 }
 
+/** Shown until someone joins: any key or button joins, so pressing it starts the game. */
+const pressToPlay = {
+  speaker: "Town",
+  text: "Press a key or button to play.\nA friend joins on the other keys.",
+  complete: true,
+  more: false
+} as const
+
 /**
  * Starts the town in `host` and returns the function that stops it. The
  * 240 x 160 screen is scaled by the largest whole number that fits the host.
@@ -136,15 +145,16 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
   observer.observe(host)
 
   const touch = Touch.actions(app.canvas, window, touchLayout)
-  const controls = makeControls({
-    keyboard: Keyboard.actions(window, keyBindings),
-    gamepad: Gamepad.actions(window, padBindings),
+  const controls = makePlayers({
+    left: Keyboard.actions(window, leftKeys),
+    right: Keyboard.actions(window, rightKeys),
+    pads: Gamepad.pads(window, padBindings, 2),
     touch
   })
 
   const made = Game.Runtime.make({
     services: Game.Runtime.services(
-      Game.Runtime.service(ControlsInput, controls),
+      Game.Runtime.service(PlayersInput, controls),
       Game.Runtime.service(Art, art),
       Game.Runtime.service(ActorNodes, PixiNodeRegistry.make(actors)),
       Game.Runtime.service(PropNodes, PixiNodeRegistry.make(props)),
@@ -178,7 +188,8 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
     render: () => {
       const drawn = runtime.tick(renderSchedule)
       if (!drawn.ok) console.error(drawn.error)
-      dialog.show(runtime.inspect(ReadScreen).dialogue)
+      const shown = runtime.inspect(ReadScreen)
+      dialog.show(shown.dialogue ?? (shown.players === 0 ? pressToPlay : null))
       if (showTouch) drawTouch(touchGraphics, touch.view())
     },
     onFailure: (failure) => console.error(failure)

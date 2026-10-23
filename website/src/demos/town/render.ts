@@ -6,7 +6,7 @@ import { RenderSync } from "@typeonce/ritmo-render"
 import type { NodeRegistry } from "@typeonce/ritmo-render"
 import { Container, Graphics, NineSliceSprite, Rectangle, Sprite, Text, Texture } from "pixi.js"
 
-import { MAP_COLUMNS, MAP_ROWS, TILE_SIZE } from "./map.ts"
+import { cellPosition, MAP_COLUMNS, MAP_ROWS, playerStart, TILE_SIZE } from "./map.ts"
 import type { Character, Direction } from "./map.ts"
 import { BUMP, Facing, Game, Look, Player, Position, Signpost, Stride, TURN, WALK } from "./schema.ts"
 import type { StrideValue } from "./schema.ts"
@@ -100,7 +100,7 @@ const frameOf = (stride: StrideValue | undefined): number => {
   return stride.foot === "left" ? 1 : 3
 }
 
-// The player and the villager. The villager has no stride: he only turns.
+// The players and the villagers. A villager standing in place has no stride: it only turns.
 const RenderActors = RenderSync.system(Game, {
   name: "Town/RenderActors",
   renderable: Look,
@@ -113,6 +113,7 @@ const RenderActors = RenderSync.system(Game, {
   apply: (node, { renderable, transform, data, services }) => {
     node.position.set(transform.x, transform.y)
     node.body.texture = services.art.walk(renderable.character, data.facing.get(), frameOf(data.stride.value()))
+    node.body.tint = renderable.tint ?? 0xffffff
   }
 })
 
@@ -146,22 +147,24 @@ export const makeCamera = (world: Container): CameraValue => ({
   }
 })
 
-const FollowPlayer = Game.System(
-  "Town/FollowPlayer",
+/** Frames every player: the point between them (the leash keeps both on screen), or the house door before anyone joins. */
+const FollowPlayers = Game.System(
+  "Town/FollowPlayers",
   {
-    queries: { player: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) },
+    queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) },
     services: { camera: Game.System.service(Camera) }
   },
   ({ queries, services }) => {
-    const player = queries.player.single()
-    if (!player.ok) return
-    const { x, y } = player.value.data.position.get()
+    const positions = queries.players.each().map(({ data }) => data.position.get())
+    const points = positions.length > 0 ? positions : [cellPosition(playerStart.cell)]
+    const x = points.reduce((sum, point) => sum + point.x, 0) / points.length
+    const y = points.reduce((sum, point) => sum + point.y, 0) / points.length
     services.camera.follow(x + TILE_SIZE / 2, y + TILE_SIZE / 2)
   }
 )
 
 /** Ticked once per drawn frame, after the fixed updates. */
-export const renderSchedule = Game.Schedule(RenderActors, RenderSigns, FollowPlayer)
+export const renderSchedule = Game.Schedule(RenderActors, RenderSigns, FollowPlayers)
 
 // ── The dialogue box ────────────────────────────────────────────────────
 

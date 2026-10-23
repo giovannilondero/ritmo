@@ -5,8 +5,8 @@
 export const demos = {
   town: {
     title: "Town",
-    description: "Walk a tiny town tile by tile, read the signs, and talk to the villagers.",
-    controls: "Arrows or WASD to walk, Space, Enter, or Z to talk. A gamepad or the on-screen buttons work too.",
+    description: "Walk a tiny town tile by tile, read the signs, and talk to the villagers, alone or with a friend.",
+    controls: "Press any key to join. WASD and Space for one player, arrows and Enter for a second; Q or Backspace leaves. Every gamepad (Ⓐ talks, Ⓑ leaves) and the on-screen buttons join too.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/town",
     load: () => import("./town/game.ts")
   },

@@ -335,12 +335,7 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
     followed = next?.index ?? null
     reading = next ?? null
     if (next === undefined) return
-    for (let index = 0; index < buttonNames.length; index++) {
-      const button = next.buttons[index]
-      const name = buttonNames[index]!
-      if (button !== undefined && isDown(button, index, triggerThreshold)) state.down(name)
-      else state.up(name)
-    }
+    readButtons(state, next, triggerThreshold)
   }
 
   const onFrame = (): void => {
@@ -354,17 +349,8 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
     snapshot() {
       poll()
       const pad = reading
-      if (pad === null) return state.snapshot({ left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false, id: null })
-      const axis = (index: number) => pad.axes[index] ?? 0
-      const trigger = (index: number) => Math.min(1, Math.max(0, pad.buttons[index]?.value ?? 0))
-      return state.snapshot({
-        left: stick(axis(0), axis(1), deadZone),
-        right: stick(axis(2), axis(3), deadZone),
-        leftTrigger: trigger(6),
-        rightTrigger: trigger(7),
-        connected: true,
-        id: pad.id
-      })
+      if (pad === null) return state.snapshot({ ...resting, connected: false, id: null })
+      return state.snapshot({ ...analogOf(pad, deadZone), connected: true, id: pad.id })
     },
     rebind: state.rebind,
     dispose() {
@@ -374,6 +360,131 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
       reading = null
       state.upAll()
     }
+  }
+}
+
+/**
+ * Every pad connected to the browser, each one on its own: what
+ * `Controls.players(...).pool(...)` hands to the player who joins with it.
+ * Use {@link actions} for one player, which follows whichever pad is used.
+ */
+export interface Pads<B extends Bindings> extends System.Consumes<"snapshot"> {
+  readonly _tag: "Pads"
+  /**
+   * One snapshot per pad seen so far, in the order they appeared, and
+   * starts a new press/release window on each. An unplugged pad stays in
+   * the list with `connected: false` and its last `id`, so a player keeps
+   * it until it comes back.
+   */
+  snapshot(): ReadonlyArray<Snapshot<B>>
+  /** Binds the same actions to new buttons on every pad, as {@link Actions.rebind}. */
+  rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
+  /** Stops reading pads and cancels the animation frame. */
+  dispose(): void
+}
+
+/** Presses and releases `state`'s buttons as `pad` reads now. */
+const readButtons = (state: ReturnType<typeof tracker>, pad: PadReading, triggerThreshold: number): void => {
+  for (let index = 0; index < buttonNames.length; index++) {
+    const button = pad.buttons[index]
+    const name = buttonNames[index]!
+    if (button !== undefined && isDown(button, index, triggerThreshold)) state.down(name)
+    else state.up(name)
+  }
+}
+
+/** A pad's sticks (dead zone removed) and triggers. */
+const analogOf = (pad: PadReading, deadZone: number) => {
+  const axis = (index: number) => pad.axes[index] ?? 0
+  const trigger = (index: number) => Math.min(1, Math.max(0, pad.buttons[index]?.value ?? 0))
+  return {
+    left: stick(axis(0), axis(1), deadZone),
+    right: stick(axis(2), axis(3), deadZone),
+    leftTrigger: trigger(6),
+    rightTrigger: trigger(7)
+  }
+}
+
+const resting = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
+
+/**
+ * Starts reading every pad on `host`, usually `window`, up to `max` of
+ * them, each with its own presses and sticks. A pad keeps its place in the
+ * list while unplugged; one that comes back at the same browser index
+ * continues it.
+ */
+export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, max: number, options: ActionsOptions = {}): Pads<B> => {
+  const deadZone = options.deadZone ?? 0.15
+  const triggerThreshold = options.triggerThreshold ?? 0.5
+  const seen: Array<{ readonly index: number; readonly state: ReturnType<typeof tracker<B>>; id: string | null; reading: PadReading | null }> = []
+  let disposed = false
+  let frame = 0
+
+  const poll = (): void => {
+    if (disposed) return
+    const connected = readPads(host).filter((pad): pad is PadReading => pad !== null && pad.connected)
+    for (const pad of connected) {
+      if (seen.length < max && !seen.some((entry) => entry.index === pad.index)) {
+        seen.push({ index: pad.index, state: tracker(bindings), id: pad.id, reading: null })
+      }
+    }
+    for (const entry of seen) {
+      const pad = connected.find((reading) => reading.index === entry.index)
+      // Unplugged, or another pad took the index: everything it held is released.
+      if (pad === undefined || pad.id !== entry.id) {
+        if (entry.reading !== null) entry.state.upAll()
+        entry.reading = null
+        if (pad === undefined) continue
+        entry.id = pad.id
+      }
+      entry.reading = pad
+      readButtons(entry.state, pad, triggerThreshold)
+    }
+  }
+
+  const onFrame = (): void => {
+    if (disposed) return
+    poll()
+    frame = host.requestAnimationFrame(onFrame)
+  }
+  frame = host.requestAnimationFrame(onFrame)
+
+  return {
+    _tag: "Pads",
+    snapshot() {
+      poll()
+      return seen.map((entry) => entry.state.snapshot(entry.reading === null
+        ? { ...resting, connected: false, id: entry.id }
+        : { ...analogOf(entry.reading, deadZone), connected: true, id: entry.id }))
+    },
+    rebind(next) {
+      for (const entry of seen) entry.state.rebind(next as Rebinding<B>)
+      // Pads that appear later start with the new bindings too.
+      bindings = next as unknown as B
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      host.cancelAnimationFrame(frame)
+      for (const entry of seen) entry.state.upAll()
+    }
+  }
+}
+
+/**
+ * Pads driven by timelines instead of a host, one timeline per pad (as
+ * {@link scripted}), each with the id `scripted <n>`: for tests of games
+ * where every player has a pad.
+ */
+export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: ReadonlyArray<Timeline>): Pads<B> => {
+  const each = timelines.map((timeline) => scripted(bindings, timeline))
+  return {
+    _tag: "Pads",
+    snapshot: () => each.map((pad, index) => ({ ...pad.snapshot(), id: `scripted ${index + 1}` })),
+    rebind(next) {
+      for (const pad of each) pad.rebind(next as never)
+    },
+    dispose() {}
   }
 }
 

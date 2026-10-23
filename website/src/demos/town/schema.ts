@@ -26,37 +26,62 @@ export const PACE_REST = Clock.duration(step, 1)
 
 // ── Input ───────────────────────────────────────────────────────────────
 
-/** The town's actions, bound on every device below. */
-export const Actions = Controls.actions({ buttons: ["up", "down", "left", "right", "action"] })
+/**
+ * The town's actions, bound on every device below. The directions are
+ * buttons, not a vector: the town steps tile by tile, and a tap only turns.
+ */
+export const Actions = Controls.actions({ buttons: ["up", "down", "left", "right", "action", "back"] })
 
-export const keyBindings = {
-  up: ["ArrowUp", "w"],
-  down: ["ArrowDown", "s"],
-  left: ["ArrowLeft", "a"],
-  right: ["ArrowRight", "d"],
-  action: [" ", "Enter", "z"]
+/** One keyboard player: WASD to walk, Space or E to talk, Q to leave. */
+export const leftKeys = {
+  up: ["w"],
+  down: ["s"],
+  left: ["a"],
+  right: ["d"],
+  action: [" ", "e"],
+  back: ["q"]
 } as const
 
-/** The d-pad walks, south (A on Xbox) talks. */
+/** The other keyboard player: arrows to walk, Enter to talk, Backspace to leave. */
+export const rightKeys = {
+  up: ["ArrowUp"],
+  down: ["ArrowDown"],
+  left: ["ArrowLeft"],
+  right: ["ArrowRight"],
+  action: ["Enter"],
+  back: ["Backspace"]
+} as const
+
+/** The d-pad walks, south (A on Xbox) talks, east (B) leaves. Every pad is its own player. */
 export const padBindings = {
   up: ["dpadUp"],
   down: ["dpadDown"],
   left: ["dpadLeft"],
   right: ["dpadRight"],
-  action: ["south"]
+  action: ["south"],
+  back: ["east"]
 } as const
 
-/** On a touch screen: an on-screen d-pad of four buttons and an A button. */
+/** On a touch screen: an on-screen d-pad of four buttons and an A button (no leave button). */
 export const touchButtons = ["up", "down", "left", "right", "action"] as const
 
-/** The one input source: every device merged, built the same way in the browser and in the check. */
-export const makeControls = (devices: {
-  readonly keyboard: Keyboard.Actions<typeof keyBindings>
-  readonly gamepad: Gamepad.Actions<typeof padBindings>
-  readonly touch: Touch.Actions<(typeof touchButtons)[number]>
-}) => Actions.merge(devices)
+/**
+ * Two players, dropping in and out: any button on a device nobody holds
+ * joins with it (that press does nothing else), and back leaves.
+ */
+export const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" })
 
-export const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Town/Controls")
+export type SeatValue = (typeof Players.slots)[number]
+
+/** The one input source: every device pooled, built the same way in the browser and in the check. */
+export const makePlayers = (devices: {
+  readonly left: Keyboard.Actions<typeof leftKeys>
+  readonly right: Keyboard.Actions<typeof rightKeys>
+  readonly pads: Gamepad.Pads<typeof padBindings>
+  readonly touch: Touch.Actions<(typeof touchButtons)[number]>
+}) => Players.pool({ left: devices.left, right: devices.right, pads: devices.pads, touch: Actions.lacking(devices.touch, ["back"]) })
+
+export const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()("Town/Players")
 
 // ── Components ──────────────────────────────────────────────────────────
 
@@ -65,13 +90,15 @@ export const Tile = Descriptor.Component<Cell>()("Town/Tile")
 /** Where an actor is drawn: the top-left pixel, between tiles while walking. */
 export const Position = Descriptor.Component<{ x: number; y: number }>()("Town/Position")
 export const Facing = Descriptor.EntityState("Town/Facing", directions)
-/** The character sheet an actor is drawn with. */
-export const Look = Descriptor.Component<{ character: Character }>()("Town/Look")
+/** The character sheet an actor is drawn with, and a tint to tell the second player apart. */
+export const Look = Descriptor.Component<{ character: Character; tint?: number }>()("Town/Look")
 /** Facing it and pressing the action button opens these pages. */
 export const Talkable = Descriptor.Component<{ speaker: string; pages: ReadonlyArray<Page> }>()("Town/Talkable")
 /** Nobody can step onto its tile. */
 export const Solid = Descriptor.Tag("Town/Solid")
 export const Player = Descriptor.Tag("Town/Player")
+/** Which player slot drives this player: its input is `Input[seat]`. */
+export const Seat = Descriptor.Component<SeatValue>()("Town/Seat")
 export const Villager = Descriptor.Tag("Town/Villager")
 export const Signpost = Descriptor.Tag("Town/Signpost")
 
@@ -107,8 +134,8 @@ export const Stride = Descriptor.Component<StrideValue>()("Town/Stride")
 export const Time = Clock.resource("Town/Time", step)
 /** The villagers' look-around and pacing draws come from here, so a run replays exactly. */
 export const Rng = Descriptor.ConstructedResource(Random)("Town/Rng")
-/** Captured from the controls at the start of each update; never saved. */
-export const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Town/Input")
+/** Captured from the players' devices at the start of each update; never saved. */
+export const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("Town/Input")
 
 /**
  * The conversation on screen: who speaks, their pages, the page shown, and
@@ -125,11 +152,11 @@ export const Dialogue = Descriptor.Resource<DialogueValue>()("Town/Dialogue")
 
 export const Game = Schema.bind(
   Schema.fragment({
-    components: { Tile, Position, Facing, Look, Talkable, Solid, Player, Villager, Signpost, Stride, Patrol },
+    components: { Tile, Position, Facing, Look, Talkable, Solid, Player, Seat, Villager, Signpost, Stride, Patrol },
     // What each kind of entity always has: spawning a villager without
     // pages to say does not compile.
     requires: [
-      Schema.requires(Player, Tile, Position, Facing, Look, Stride, Solid),
+      Schema.requires(Player, Seat, Tile, Position, Facing, Look, Stride, Solid),
       Schema.requires(Villager, Tile, Position, Facing, Look, Talkable, Solid),
       Schema.requires(Patrol, Villager, Stride),
       Schema.requires(Signpost, Tile, Position, Talkable, Solid)
