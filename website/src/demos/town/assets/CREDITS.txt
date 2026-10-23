@@ -1,0 +1,8 @@
+Art and font: "Ninja Adventure - Asset Pack" by Pixel-boy and AAA,
+released under CC0 1.0 (see LICENSE.txt).
+https://pixel-boy.itch.io/ninja-adventure-asset-pack
+
+Only the files this demo uses are copied here, unchanged:
+tilesets (TilesetFloor, TilesetFloorDetail, TilesetWater, TilesetNature,
+TilesetHouse, TilesetElement), the Boy, OldMan, Inspector, and Monk walk
+sheets (renamed <Name>Walk.png), Shadow.png, DialogBox.png, NormalFont.ttf.
