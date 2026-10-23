@@ -121,7 +121,7 @@ const TogglePause = Game.System(
     nextMachines: { mode: Game.System.nextState(Mode) }
   },
   ({ resources, machines, nextMachines }) => {
-    if (resources.input.get().actions.pause.pressed) nextMachines.mode.set(machines.mode.get() === "Playing" ? "Paused" : "Playing")
+    if (resources.input.get().actions.pause.pressed) nextMachines.mode.set({ _tag: machines.mode.is("Playing") ? "Paused" : "Playing" })
   }
 )
 
@@ -208,7 +208,7 @@ export const ReadLab = Game.Inspector("Controls/ReadLab", {
     heading: found?.data.ball.get().heading ?? 0,
     ready: (found?.data.ball.get().cooldown ?? 0) === 0,
     dashes: resources.dashes.get(),
-    paused: machines.mode.get() === "Paused",
+    paused: machines.mode.is("Paused"),
     input: resources.input.get()
   }
 })

@@ -228,7 +228,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Position, Speed } }))
 ## Closed values
 
 ```ts twoslash
-import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
@@ -236,13 +236,13 @@ const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // A step rate is a whole number of steps per second
 const step = Clock.hz(59.94)
 
-// A state is one of the listed names
-const Flow = Game.StateMachine("Arena/Flow", { Menu: {}, Playing: {}, Paused: {} })
+// A state is one of the listed states, with all of its data
+const Flow = Game.StateMachine("Arena/Flow", { Menu: {}, Playing: {}, GameOver: { winner: Decode.string } })
 
 Game.System(
-  "Arena/Pause",
+  "Arena/EndRound",
   { nextMachines: { flow: Game.System.nextState(Flow) } },
-  ({ nextMachines }) => nextMachines.flow.set({ _tag: "Pausd" })
+  ({ nextMachines }) => nextMachines.flow.set({ _tag: "GameOver" })
 )
 ```
 

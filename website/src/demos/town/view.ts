@@ -1,5 +1,5 @@
 // The world read as plain data, for the page, the renderer, and the check.
-import { Dialogue, Facing, Game, Mode, Player, Position, Seat, Stride, Tile } from "./schema.ts"
+import { Facing, Game, Mode, Player, Position, Seat, Stride, Tile } from "./schema.ts"
 import type { SeatValue } from "./schema.ts"
 
 /** The dialogue box: who speaks, the letters typed so far, and whether more follows. */
@@ -15,21 +15,20 @@ export interface DialogueView {
 /** What the screen shows besides the map: the mode, the dialogue box while talking, and who plays. */
 export const ReadScreen = Game.Inspector("Town/ReadScreen", {
   machines: { mode: Game.System.machine(Mode) },
-  resources: { dialogue: Game.System.readResource(Dialogue) },
   queries: { players: Game.Query({ selection: { seat: Game.Query.read(Seat) }, with: [Player] }) }
-}, ({ machines, resources, queries }) => {
-  const dialogue = resources.dialogue.get()
-  const page = dialogue?.pages[dialogue.page]
-  const box: DialogueView | null = dialogue === null || page === undefined
+}, ({ machines, queries }) => {
+  const mode = machines.mode.get()
+  const page = mode._tag === "Talking" ? mode.pages[mode.page] ?? "" : ""
+  const box: DialogueView | null = mode._tag === "Exploring"
     ? null
     : {
-      speaker: dialogue.speaker,
-      text: page.slice(0, dialogue.typed),
-      complete: dialogue.typed >= page.length,
-      more: dialogue.page + 1 < dialogue.pages.length
+      speaker: mode.speaker,
+      text: page.slice(0, mode.typed),
+      complete: mode.typed >= page.length,
+      more: mode.page + 1 < mode.pages.length
     }
   const seats: ReadonlyArray<SeatValue> = queries.players.each().map(({ data }) => data.seat.get())
-  return { mode: machines.mode.get(), dialogue: box, seats }
+  return { mode: mode._tag, dialogue: box, seats }
 })
 
 /** Each player's tile, pixel position, facing, and stride, by seat; a seat nobody holds is absent. */

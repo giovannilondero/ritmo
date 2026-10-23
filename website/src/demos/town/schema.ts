@@ -148,19 +148,6 @@ export const Rng = Descriptor.ConstructedResource(Random)("Town/Rng")
 export const Host = Descriptor.Resource<HostValue>()("Town/Host")
 export const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("Town/Input")
 
-/**
- * The conversation on screen: who speaks, their pages, the page shown, and
- * how many of its letters have typed out. `null` while nobody talks.
- */
-export type DialogueValue = {
-  readonly speaker: string
-  readonly pages: ReadonlyArray<Page>
-  readonly page: number
-  readonly typed: number
-} | null
-
-export const Dialogue = Descriptor.Resource<DialogueValue>()("Town/Dialogue")
-
 export const Game = Schema.bind(
   Schema.fragment({
     components: { Tile, Position, Facing, Look, Talkable, Solid, Player, Seat, Villager, Signpost, Stride, Patrol },
@@ -172,7 +159,7 @@ export const Game = Schema.bind(
       Schema.requires(Patrol, Villager, Stride),
       Schema.requires(Signpost, Tile, Position, Talkable, Solid)
     ],
-    resources: { Time, Rng, Host, Input, Dialogue }
+    resources: { Time, Rng, Host, Input }
   }),
   Schema.defineRoot("Town")
 )
@@ -180,6 +167,11 @@ export const Game = Schema.bind(
 /**
  * The game-wide mode. Walking, looking around, and starting a talk run only
  * while `Exploring`; while `Talking`, only the dialogue box listens, so the
- * world holds still.
+ * world holds still. `Talking` holds the conversation on screen: who speaks,
+ * their pages, the page shown, and how many of its letters have typed out,
+ * so there is never a talk without a conversation, or one left open after it.
  */
-export const Mode = Game.StateMachine("Town/Mode", { Exploring: {}, Talking: {} })
+export const Mode = Game.StateMachine("Town/Mode", {
+  Exploring: {},
+  Talking: { speaker: Decode.string, pages: Decode.array(Decode.string), page: Decode.integer, typed: Decode.integer }
+})
