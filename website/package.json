@@ -6,7 +6,7 @@
     "dev": "astro dev",
     "build": "astro build && pagefind",
     "preview": "astro preview",
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "astro sync && tsc --noEmit -p .",
     "deploy:cloudflare": "wrangler deploy"
   },
   "dependencies": {
