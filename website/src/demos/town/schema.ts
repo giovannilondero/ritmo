@@ -32,7 +32,7 @@ export const PACE_REST = Clock.duration(step, 1)
  */
 export const Actions = Controls.actions({ buttons: ["up", "down", "left", "right", "action", "back"] })
 
-/** One keyboard player: WASD to walk, Space or E to talk, Q to leave. */
+/** The second keyboard player: WASD to walk, Space or E to talk, Q to leave. Any of them joins. */
 export const leftKeys = {
   up: ["w"],
   down: ["s"],
@@ -42,14 +42,13 @@ export const leftKeys = {
   back: ["q"]
 } as const
 
-/** The other keyboard player: arrows to walk, Enter to talk, Backspace to leave. */
+/** The first player: arrows to walk, Enter to talk. In from the start, with no key to leave. */
 export const rightKeys = {
   up: ["ArrowUp"],
   down: ["ArrowDown"],
   left: ["ArrowLeft"],
   right: ["ArrowRight"],
-  action: ["Enter"],
-  back: ["Backspace"]
+  action: ["Enter"]
 } as const
 
 /** The d-pad walks, south (A on Xbox) talks, east (B) leaves. Every pad is its own player. */
@@ -66,8 +65,9 @@ export const padBindings = {
 export const touchButtons = ["up", "down", "left", "right", "action"] as const
 
 /**
- * Two players, dropping in and out: any button on a device nobody holds
- * joins with it (that press does nothing else), and back leaves.
+ * Two players: the first is in from the start (seated at setup), and a
+ * second drops in and out: any button on a device nobody holds joins with
+ * it (that press does nothing else), and back leaves.
  */
 export const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" })
 
@@ -79,7 +79,15 @@ export const makePlayers = (devices: {
   readonly right: Keyboard.Actions<typeof rightKeys>
   readonly pads: Gamepad.Pads<typeof padBindings>
   readonly touch: Touch.Actions<(typeof touchButtons)[number]>
-}) => Players.pool({ left: devices.left, right: devices.right, pads: devices.pads, touch: Actions.lacking(devices.touch, ["back"]) })
+}) => Players.pool({
+  left: devices.left,
+  right: Actions.lacking(devices.right, ["back"]),
+  pads: devices.pads,
+  touch: Actions.lacking(devices.touch, ["back"])
+})
+
+/** The device the first player is seated on: the arrows, or the on-screen buttons on a touch screen. */
+export type HostValue = "right" | "touch"
 
 export const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()("Town/Players")
 
@@ -135,6 +143,8 @@ export const Time = Clock.resource("Town/Time", step)
 /** The villagers' look-around and pacing draws come from here, so a run replays exactly. */
 export const Rng = Descriptor.ConstructedResource(Random)("Town/Rng")
 /** Captured from the players' devices at the start of each update; never saved. */
+/** Which device the first player plays on; set by the host before setup. */
+export const Host = Descriptor.Resource<HostValue>()("Town/Host")
 export const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("Town/Input")
 
 /**
@@ -161,7 +171,7 @@ export const Game = Schema.bind(
       Schema.requires(Patrol, Villager, Stride),
       Schema.requires(Signpost, Tile, Position, Talkable, Solid)
     ],
-    resources: { Time, Rng, Input, Dialogue }
+    resources: { Time, Rng, Host, Input, Dialogue }
   }),
   Schema.defineRoot("Town")
 )

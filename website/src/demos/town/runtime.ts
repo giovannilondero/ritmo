@@ -5,12 +5,14 @@ import { Gamepad, Keyboard, Touch } from "@typeonce/ritmo-browser"
 import * as Random from "@typeonce/ritmo-math/Random"
 
 import { Game, leftKeys, makePlayers, Mode, padBindings, Players, PlayersInput, rightKeys, step, touchButtons } from "./schema.ts"
+import type { HostValue } from "./schema.ts"
 import { setupSchedule, updateSchedule } from "./schedules.ts"
 
-/** Every resource's first value; the same for the browser and the check. */
-export const initialResources = () => ({
+/** Every resource's first value, with the device the first player plays on; the same for the browser and the check. */
+export const initialResources = (host: HostValue) => ({
   Time: Clock.start(step),
   Rng: Random.seed(0x7017),
+  Host: host,
   Input: Players.idle({ left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padBindings), touch: Touch.idle({ buttons: touchButtons }) }),
   Dialogue: null
 } as const)
@@ -23,20 +25,20 @@ export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(
  * world with live devices and the render services.
  */
 export const createTownSimulation = (devices: {
-  /** WASD: the first to press a key joins as p1. */
-  readonly left: Keyboard.Actions<typeof leftKeys>
-  /** Arrows; idle when the check plays alone. */
-  readonly right?: Keyboard.Actions<typeof rightKeys>
+  /** Arrows: p1, in from the start. */
+  readonly right: Keyboard.Actions<typeof rightKeys>
+  /** WASD: a key joins as p2; idle when the check plays alone. */
+  readonly left?: Keyboard.Actions<typeof leftKeys>
   readonly hostClock: HostClock.HostClock
 }) => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(Game.Runtime.service(PlayersInput, makePlayers({
-      left: devices.left,
-      right: devices.right ?? Keyboard.scripted(rightKeys, []),
+      left: devices.left ?? Keyboard.scripted(leftKeys, []),
+      right: devices.right,
       pads: Gamepad.scriptedPads(padBindings, []),
       touch: Touch.scripted({ buttons: touchButtons }, [])
     }))),
-    resources: initialResources(),
+    resources: initialResources("right"),
     machines: initialMachines(),
     debug: { hostClock: devices.hostClock }
   })

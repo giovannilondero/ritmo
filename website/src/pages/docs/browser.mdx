@@ -164,9 +164,12 @@ if (input.p2.device === "pads") {
 
 A system opens joining with `setJoining(true)` (once for drop-in play, or
 on a join screen) and frees a slot with `leave("p2")` (a pause menu). A
+player who is in from the start is seated without a press, from a setup
+system: `seat("p1", "right")` (a pool name), or `seat("p1", { pads: 0 })` for the first
+pad; it returns `{ ok: false, reason }` when the slot or device is taken. A
 pad that disconnects keeps its slot (`connected: false`) and returns to it.
-The town on the home page plays this way: WASD and the arrows are two
-players.
+The town on the home page plays this way: player 1 is seated on the
+arrows, and WASD or a gamepad joins player 2.
 
 ## Rendering
 

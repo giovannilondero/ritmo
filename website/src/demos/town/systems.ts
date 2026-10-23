@@ -10,6 +10,7 @@ import {
   Dialogue,
   Facing,
   Game,
+  Host,
   Input,
   Look,
   LOOK_AROUND,
@@ -76,11 +77,21 @@ export const SpawnTown = Game.System(
   }
 )
 
-/** Players drop in and out the whole time: joining opens once, at setup. */
-export const OpenJoining = Game.System(
-  "Town/OpenJoining",
-  { services: { players: Game.System.service(PlayersInput) } },
-  ({ services }) => services.players.setJoining(true)
+/**
+ * The first player is in from the start, on the host's device; a second
+ * drops in and out the whole time, so joining opens once, here.
+ */
+export const SeatFirstPlayer = Game.System(
+  "Town/SeatFirstPlayer",
+  {
+    services: { players: Game.System.service(PlayersInput) },
+    resources: { host: Game.System.readResource(Host) }
+  },
+  ({ services, resources }) => {
+    // At setup every slot and device is free, so seating p1 cannot fail.
+    services.players.seat("p1", resources.host.get())
+    services.players.setJoining(true)
+  }
 )
 
 // ── Players joining and leaving ─────────────────────────────────────────
@@ -364,21 +375,25 @@ export const LookAround = Game.System(
 
 // ── Talking ─────────────────────────────────────────────────────────────
 
+/** The player number shown in talks: p1 is player 1. */
+const playerNumber = (seat: SeatValue): number => Players.slots.indexOf(seat) + 1
+
 /**
- * The action button, standing still and facing something talkable, opens
- * its pages and switches the mode to `Talking` (at the next
- * `applyStateTransitions()`). A villager turns to face the player.
+ * The action button, standing still and facing something talkable (or the
+ * other player), opens its pages and switches the mode to `Talking` (at the
+ * next `applyStateTransitions()`). A villager or player spoken to turns to
+ * face the speaker.
  */
 export const StartTalk = Game.System(
   "Town/StartTalk",
   {
     queries: {
       players: Game.Query({
-        selection: { seat: Game.Query.read(Seat), tile: Game.Query.read(Tile), facing: Game.Query.read(Facing), stride: Game.Query.read(Stride) },
+        selection: { seat: Game.Query.read(Seat), tile: Game.Query.read(Tile), facing: Game.Query.write(Facing), stride: Game.Query.read(Stride) },
         with: [Player]
       }),
       talkables: Game.Query({ selection: { tile: Game.Query.read(Tile), talkable: Game.Query.read(Talkable), stride: Game.Query.optional(Stride) } }),
-      listeners: Game.Query({ selection: { facing: Game.Query.write(Facing) }, with: [Villager] })
+      listeners: Game.Query({ selection: { facing: Game.Query.write(Facing) }, with: [Villager], without: [Player] })
     },
     resources: {
       input: Game.System.readResource(Input),
@@ -389,10 +404,25 @@ export const StartTalk = Game.System(
   ({ queries, resources, nextMachines }) => {
     const input = resources.input.get()
     // Either player can start a talk; the first one in slot order who can, does.
-    for (const player of queries.players.each()) {
-      if (!input[player.data.seat.get()].actions.action.pressed || player.data.stride.get().kind !== "still") continue
+    const players = queries.players.each()
+    for (const player of players) {
+      const seat = player.data.seat.get()
+      if (!input[seat].actions.action.pressed || player.data.stride.get().kind !== "still") continue
       const facing = player.data.facing.get()
       const target = cellInFront(player.data.tile.get(), facing)
+      const other = players.find((match) => match.entity.id !== player.entity.id && sameCell(match.data.tile.get(), target))
+      if (other !== undefined) {
+        if (other.data.stride.get().kind !== "still") continue
+        resources.dialogue.set({
+          speaker: `Player ${playerNumber(seat)}`,
+          pages: [`Ah, it's player ${playerNumber(other.data.seat.get())}.`, "Ritmo supports multiplayer, of course!"],
+          page: 0,
+          typed: 0
+        })
+        nextMachines.mode.set("Talking")
+        other.data.facing.set(opposite[facing])
+        return
+      }
       const found = queries.talkables.each().find((match) => sameCell(match.data.tile.get(), target))
       // Someone mid-step is not there yet: wait until they stand on the tile.
       if (found === undefined || (found.data.stride.value()?.kind ?? "still") !== "still") continue

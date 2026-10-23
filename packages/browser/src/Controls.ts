@@ -119,6 +119,7 @@ export interface Group<Members> {
  */
 export interface Pads {
   readonly _tag: "Pads"
+  readonly max: number
   snapshot(): ReadonlyArray<DeviceSnapshot<string, string> & { readonly id: string | null; readonly connected: boolean }>
   dispose(): void
 }
@@ -506,12 +507,36 @@ type CheckPoolEntry<A extends string, V extends string, J extends string, Name e
     : `${Name} lacks ${Missing & J}: every pooled device binds ${J}, or no one can join with it`
   : CheckEntry<A, V, Name, E>
 
+/**
+ * A pooled device to seat a player on: its pool name, or `{ [name]: index }`
+ * for one pad of a `Gamepad.pads` entry (its place in the pad list, from 0).
+ */
+export type SeatDevice<R> =
+  | { readonly [K in keyof R & string]: DeviceOf<R[K]> extends Pads ? never : K }[keyof R & string]
+  | { readonly [K in keyof R & string]: DeviceOf<R[K]> extends Pads ? { readonly [P in K]: number } : never }[keyof R & string]
+
+/**
+ * Whether {@link Pool.seat} seated the player: `slot-taken` when someone
+ * holds the slot, `device-taken` when another slot holds the device, and
+ * `no-such-pad` when the index is not a place in the pad list.
+ */
+export type SeatResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: "slot-taken" | "device-taken" | "no-such-pad" }
+
 /** The pooled input source, for `InputCapture.system(...)`; systems call the rest through a plain service. */
 export interface Pool<A extends string, V extends string, S extends string, R> extends System.Consumes<"snapshot"> {
   /** Takes every device's snapshot, applies joins, leaves, and reconnects, and reports every slot. */
   snapshot(): PlayersSnapshot<A, V, S, PoolDevicesOf<R>>
   /** Opens or closes joining: open on a join screen or for drop-in play, closed during a round. Closed at the start. */
   setJoining(open: boolean): void
+  /**
+   * Gives `slot` to `device` without a press, joining or not: a player who
+   * is in from the start (call it from a setup system), or one picked on a
+   * menu. The next snapshot reports `event: "joined"`, as a join does. A
+   * pad not plugged in yet holds the slot with `connected: false`.
+   */
+  seat(slot: S, device: SeatDevice<R>): SeatResult
   /** Frees a slot (a pause menu's "Leave", "Continue without P2"); its device goes back to the pool. */
   leave(slot: S): void
   /** Each pooled device's `rebind`, by its pool name (`Gamepad.pads` rebinds every pad). */
@@ -558,7 +583,8 @@ type SlotNames<S extends string> = [S & "joining"] extends [never] ? unknown : "
  * pad that disconnects keeps its slot (`connected: false`) and returns to
  * it when it comes back. Leaving by button works only while joining is
  * open; otherwise `leave` is an ordinary action (a pause menu), and
- * `pool.leave(slot)` frees the slot.
+ * `pool.leave(slot)` frees the slot. `pool.seat(slot, device)` puts a
+ * player in without a press: one who is in from the start.
  *
  * @example
  * ```ts
@@ -608,10 +634,11 @@ export const players = <
       })
       const isPads = (unit: Device | Pads | Unit): unit is Pads => (unit as Partial<Pads>)._tag === "Pads"
       /** Who holds each slot: the pool entry, the pad's place in its list, and the pad's id to find it again. */
-      const held = new Map<string, { readonly device: string; key: string; readonly id: string | null }>()
+      const held = new Map<string, { readonly device: string; key: string; id: string | null }>()
       const events = new Map<string, "joined" | "left">()
       let joining = false
       let everOpened = false
+      let everSeated = false
       const wantsJoin = (snapshot: Snap): boolean => {
         const pressed = (name: string) => (snapshot.actions as Readonly<Record<string, ActionState | undefined>>)[name]?.pressed === true
         if (join !== "any") return pressed(join)
@@ -631,6 +658,11 @@ export const players = <
             else units.push({ key: name, device: name, id: null, connected: true, snapshot: (unit as Device).snapshot() })
           }
           const byKey = new Map(units.map((unit) => [unit.key, unit]))
+          // A pad seated before it was plugged in is known by its id from the first snapshot it shows up in.
+          for (const holder of held.values()) {
+            const unit = byKey.get(holder.key)
+            if (holder.id === null && unit?.connected === true) holder.id = unit.id
+          }
           const taken = new Set([...held.values()].map((holder) => holder.key))
           // A pad that comes back (here or at another index) returns to the slot it holds.
           for (const holder of held.values()) {
@@ -697,6 +729,20 @@ export const players = <
           joining = open
           if (open) everOpened = true
         },
+        seat(slot: string, device: string | Readonly<Record<string, number>>): SeatResult {
+          const [name, index] = typeof device === "string" ? [device, null] : Object.entries(device)[0] ?? ["", 0]
+          const unit = entries.find((entry) => entry.name === name)?.unit
+          if (unit === undefined || (index !== null && !(isPads(unit) && Number.isInteger(index) && index >= 0 && index < unit.max))) {
+            return { ok: false, reason: "no-such-pad" }
+          }
+          const key = index === null ? name : `${name}#${index}`
+          if (held.has(slot)) return { ok: false, reason: "slot-taken" }
+          if ([...held.values()].some((holder) => holder.key === key)) return { ok: false, reason: "device-taken" }
+          held.set(slot, { device: name, key, id: null })
+          events.set(slot, "joined")
+          everSeated = true
+          return { ok: true }
+        },
         leave(slot: string) {
           if (!held.delete(slot)) return
           events.set(slot, "left")
@@ -724,7 +770,7 @@ export const players = <
               message: `${name} lacks ${action}, so a player on ${name} cannot ${action}`,
               fix: `fine if the game offers ${action} another way (read available.${action} from the player's input); otherwise bind ${action} on ${name}`
             }))),
-            ...(everOpened ? [] : [{
+            ...(everOpened || everSeated ? [] : [{
               severity: "info" as const,
               message: "joining was never opened in this session, so nobody could join",
               fix: "call setJoining(true) from a system (on the join screen, or once at setup for drop-in play)"

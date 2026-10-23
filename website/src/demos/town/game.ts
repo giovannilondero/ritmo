@@ -1,6 +1,6 @@
-// The browser host for the town: loads the art, pools two keyboard
-// players (WASD and arrows), every gamepad, and on-screen touch buttons for
-// up to two players, runs the fixed-step loop on
+// The browser host for the town: loads the art, seats the first player on
+// the arrows (the on-screen buttons on a touch screen), pools WASD and every
+// gamepad for a second player to drop in, runs the fixed-step loop on
 // animation frames, and draws with Pixi at a whole-number pixel scale. The
 // rules are the headless ones `check.ts` drives.
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
@@ -22,7 +22,7 @@ import tilesetHouse from "./assets/TilesetHouse.png"
 import tilesetNature from "./assets/TilesetNature.png"
 import tilesetWater from "./assets/TilesetWater.png"
 import type { Images } from "./render.ts"
-import { ActorNode, ActorNodes, Art, Camera, drawMap, FONT_FAMILY, makeArt, makeCamera, makeDialogBox, PropNodes, renderSchedule, VIEW_HEIGHT, VIEW_WIDTH } from "./render.ts"
+import { ActorNode, ActorNodes, Art, Camera, drawMap, FONT_FAMILY, makeArt, makeCamera, makeDialogBox, makeHint, PropNodes, renderSchedule, VIEW_HEIGHT, VIEW_WIDTH } from "./render.ts"
 import { initialMachines, initialResources } from "./runtime.ts"
 import { Game, leftKeys, makePlayers, padBindings, PlayersInput, rightKeys, step, touchButtons } from "./schema.ts"
 import { setupSchedule, updateSchedule } from "./schedules.ts"
@@ -82,13 +82,9 @@ const drawTouch = (graphics: Graphics, view: Touch.View<(typeof touchButtons)[nu
   graphics.circle(a.x, a.y, 9).fill({ color: 0xf3f1ec, alpha: 0.6 })
 }
 
-/** Shown until someone joins: any key or button joins, so pressing it starts the game. */
-const pressToPlay = {
-  speaker: "Town",
-  text: "Press a key or button to play.\nA friend joins on the other keys.",
-  complete: true,
-  more: false
-} as const
+/** The corner note: how a second player joins while nobody holds p2, and how they leave once they do. */
+const hintFor = (seats: ReadonlyArray<string>): string =>
+  seats.includes("p2") ? "P2: Q (B on a pad) to leave" : "P2: press WASD or a pad to join"
 
 /**
  * Starts the town in `host` and returns the function that stops it. The
@@ -115,8 +111,9 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
   const actors = world.addChild(new Container<ActorNode>())
   view.addChild(world)
   const dialog = makeDialogBox(art)
+  const hint = makeHint()
   screen.addChild(view, dialog.node)
-  app.stage.addChild(screen, dialog.text)
+  app.stage.addChild(screen, dialog.text, hint.node)
 
   const showTouch = window.matchMedia("(pointer: coarse)").matches
   const touchGraphics = app.stage.addChild(new Graphics())
@@ -131,6 +128,7 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
       Math.round((app.screen.height * ratio - VIEW_HEIGHT * scale) / 2) / ratio
     )
     dialog.layout(scale, ratio, screen.position)
+    hint.layout(scale, ratio, screen.position)
   }
   fit()
   app.renderer.on("resize", fit)
@@ -160,7 +158,7 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
       Game.Runtime.service(PropNodes, PixiNodeRegistry.make(props)),
       Game.Runtime.service(Camera, makeCamera(world))
     ),
-    resources: initialResources(),
+    resources: initialResources(showTouch ? "touch" : "right"),
     machines: initialMachines()
   })
 
@@ -189,7 +187,8 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
       const drawn = runtime.tick(renderSchedule)
       if (!drawn.ok) console.error(drawn.error)
       const shown = runtime.inspect(ReadScreen)
-      dialog.show(shown.dialogue ?? (shown.players === 0 ? pressToPlay : null))
+      dialog.show(shown.dialogue)
+      hint.show(shown.dialogue === null ? hintFor(shown.seats) : null)
       if (showTouch) drawTouch(touchGraphics, touch.view())
     },
     onFailure: (failure) => console.error(failure)

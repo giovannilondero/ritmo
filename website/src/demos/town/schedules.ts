@@ -3,14 +3,14 @@ import { Clock } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
 
 import { Game, Input, Mode, PlayersInput, Time } from "./schema.ts"
-import { AdvanceDialogue, JoinPlayers, LookAround, OpenJoining, PaceVillagers, SpawnTown, StartTalk, TypeDialogue, WalkPlayer } from "./systems.ts"
+import { AdvanceDialogue, JoinPlayers, LookAround, PaceVillagers, SeatFirstPlayer, SpawnTown, StartTalk, TypeDialogue, WalkPlayer } from "./systems.ts"
 
 const AdvanceTime = Clock.system(Game, { name: "Town/AdvanceTime", resource: Time })
 
 const CaptureInput = InputCapture.system(Game, { name: "Town/CaptureInput", source: PlayersInput, resource: Input })
 
-/** Puts the villagers on the map and opens joining; ticked once before the first update. */
-export const setupSchedule = Game.Schedule(SpawnTown, OpenJoining, Game.Schedule.applyDeferred())
+/** Puts the villagers on the map, seats the first player, and opens joining; ticked once before the first update. */
+export const setupSchedule = Game.Schedule(SpawnTown, SeatFirstPlayer, Game.Schedule.applyDeferred())
 
 /**
  * One fixed update. The mode chosen this step takes effect at the closing

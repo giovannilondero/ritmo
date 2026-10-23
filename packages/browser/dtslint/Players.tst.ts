@@ -44,6 +44,16 @@ describe("Controls.players", () => {
     pool.rebind.nope
   })
 
+  it("seats by slot and pool name, a pad by its place", () => {
+    const pool = makePlayers({ left: Keyboard.actions(host, leftKeys), right: Keyboard.actions(host, rightKeys), pads: Gamepad.pads(host, padKeys, 4) })
+    expect(pool.seat("p1", "right")).type.toBe<Controls.SeatResult>()
+    expect(pool.seat).type.toBeCallableWith("p2", { pads: 0 })
+    expect(pool.seat).type.not.toBeCallableWith("p3", "right")
+    expect(pool.seat).type.not.toBeCallableWith("p1", "mouse")
+    expect(pool.seat).type.not.toBeCallableWith("p1", "pads")
+    expect(pool.seat).type.not.toBeCallableWith("p1", { left: 0 })
+  })
+
   it("requires the join action on every pooled device", () => {
     const noJoin = Keyboard.actions(host, { move: Keyboard.vector({ up: ["i"], down: ["k"], left: ["j"], right: ["l"] }), back: ["u"], jump: ["o"] })
     // @ts-expect-error right lacks join: every pooled device binds join, or no one can join with it

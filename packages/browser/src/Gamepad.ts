@@ -370,6 +370,8 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
  */
 export interface Pads<B extends Bindings> extends System.Consumes<"snapshot"> {
   readonly _tag: "Pads"
+  /** The most pads read at once: their places in the list run from 0 to `max - 1`. */
+  readonly max: number
   /**
    * One snapshot per pad seen so far, in the order they appeared, and
    * starts a new press/release window on each. An unplugged pad stays in
@@ -451,6 +453,7 @@ export const pads = <const B extends Bindings>(host: GamepadHost, bindings: B, m
 
   return {
     _tag: "Pads",
+    max,
     snapshot() {
       poll()
       return seen.map((entry) => entry.state.snapshot(entry.reading === null
@@ -480,6 +483,7 @@ export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: R
   const each = timelines.map((timeline) => scripted(bindings, timeline))
   return {
     _tag: "Pads",
+    max: each.length,
     snapshot: () => each.map((pad, index) => ({ ...pad.snapshot(), id: `scripted ${index + 1}` })),
     rebind(next) {
       for (const pad of each) pad.rebind(next as never)

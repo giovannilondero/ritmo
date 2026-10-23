@@ -244,3 +244,49 @@ export const makeDialogBox = (art: TownArt) => {
     }
   }
 }
+
+/**
+ * A one-line note in the top-left corner of the screen (who can join, how
+ * to leave), on a dark band, in the dialogue's font.
+ */
+export const makeHint = () => {
+  const node = new Container()
+  node.visible = false
+  const band = node.addChild(new Graphics())
+  const label = node.addChild(new Text({ text: "", style: { fontFamily: FONT_FAMILY, fill: 0xf3e9d8 } }))
+  const padding = { x: 3, y: 2 }
+  let shown: string | null = null
+  let place = { scale: 1, ratio: 1, screen: { x: 0, y: 0 } }
+
+  const draw = () => {
+    const { scale, ratio, screen } = place
+    const fontPixel = Math.max(1, Math.round(scale / 2))
+    label.resolution = ratio
+    label.style.fontSize = (FONT_PIXELS * fontPixel) / ratio
+    label.style.lineHeight = (12 * fontPixel) / ratio
+    const snap = (value: number) => Math.round(value * ratio) / ratio
+    const left = snap(screen.x + (2 * scale) / ratio)
+    const top = snap(screen.y + (2 * scale) / ratio)
+    label.position.set(left + (padding.x * scale) / ratio, top + (padding.y * scale) / ratio)
+    band.clear()
+      .rect(left, top, label.width + (2 * padding.x * scale) / ratio, label.height + (2 * padding.y * scale) / ratio)
+      .fill({ color: 0x0e1013, alpha: 0.6 })
+  }
+
+  return {
+    /** The note, in CSS pixels: add it to the stage, unscaled. */
+    node,
+    /** Places the note over the screen, as the dialogue box's `layout`. */
+    layout: (scale: number, ratio: number, screen: { readonly x: number; readonly y: number }) => {
+      place = { scale, ratio, screen: { x: screen.x, y: screen.y } }
+      draw()
+    },
+    show: (text: string | null) => {
+      node.visible = text !== null
+      if (text === null || text === shown) return
+      shown = text
+      label.text = spaced(text)
+      draw()
+    }
+  }
+}

@@ -108,6 +108,40 @@ describe("Controls.players", () => {
     if (back.p1.device === "pads") expect(back.p1.devices.pads.id).toBe("scripted 1")
   })
 
+  it("seats a player without a press, joining or not, and refuses a held slot or device", () => {
+    const pool = Players.pool({
+      left: Keyboard.scripted(leftKeys, [{ frame: 1, press: ["jump"] }]),
+      right: Keyboard.scripted(rightKeys, [{ frame: 1, press: ["join"], release: ["join"] }])
+    })
+    expect(pool.seat("p1", "left")).toEqual({ ok: true })
+    expect(pool.seat("p1", "right")).toEqual({ ok: false, reason: "slot-taken" })
+    expect(pool.seat("p2", "left")).toEqual({ ok: false, reason: "device-taken" })
+    const seated = pool.snapshot()
+    expect(seated.joining).toBe(false)
+    expect(seated.p1).toMatchObject({ joined: true, device: "left", connected: true, event: "joined" })
+    const playing = pool.snapshot()
+    expect(playing.p1.event).toBe(null)
+    expect(playing.p1.actions.jump.pressed).toBe(true)
+    // Joining is still closed: the other keyboard's press does not join.
+    expect(playing.p2.joined).toBe(false)
+  })
+
+  it("seats a pad by its place in the list, before it is plugged in", () => {
+    const pool = Players.pool({
+      left: Keyboard.scripted(leftKeys, []),
+      pads: Gamepad.scriptedPads(padKeys, [[{ frame: 0, connected: false }, { frame: 2, connected: true, left: { x: 1, y: 0 } }]])
+    })
+    expect(pool.seat("p1", { pads: 1 })).toEqual({ ok: false, reason: "no-such-pad" })
+    expect(pool.seat("p1", { pads: -1 })).toEqual({ ok: false, reason: "no-such-pad" })
+    expect(pool.seat("p1", { pads: 0 })).toEqual({ ok: true })
+    expect(pool.seat("p2", { pads: 0 })).toEqual({ ok: false, reason: "device-taken" })
+    expect(pool.snapshot().p1).toMatchObject({ joined: true, device: "pads", connected: false, event: "joined" })
+    pool.snapshot()
+    const plugged = pool.snapshot()
+    expect(plugged.p1.connected).toBe(true)
+    expect(plugged.p1.vectors.move).toEqual({ x: 1, y: 0 })
+  })
+
   it("starts idle with every slot empty and joining closed", () => {
     expect(Players.idle({ left: Keyboard.idle(leftKeys), pads: Gamepad.idle(padKeys) })).toEqual({
       joining: false,

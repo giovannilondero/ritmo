@@ -12,7 +12,7 @@ export interface DialogueView {
   readonly more: boolean
 }
 
-/** What the screen shows besides the map: the mode, the dialogue box while talking, and how many play. */
+/** What the screen shows besides the map: the mode, the dialogue box while talking, and who plays. */
 export const ReadScreen = Game.Inspector("Town/ReadScreen", {
   machines: { mode: Game.System.machine(Mode) },
   resources: { dialogue: Game.System.readResource(Dialogue) },
@@ -28,7 +28,8 @@ export const ReadScreen = Game.Inspector("Town/ReadScreen", {
       complete: dialogue.typed >= page.length,
       more: dialogue.page + 1 < dialogue.pages.length
     }
-  return { mode: machines.mode.get(), dialogue: box, players: queries.players.each().length }
+  const seats: ReadonlyArray<SeatValue> = queries.players.each().map(({ data }) => data.seat.get())
+  return { mode: machines.mode.get(), dialogue: box, seats }
 })
 
 /** Each player's tile, pixel position, facing, and stride, by seat; a seat nobody holds is absent. */
