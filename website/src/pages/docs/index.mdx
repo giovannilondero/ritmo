@@ -1,0 +1,133 @@
+---
+layout: ../../layouts/Docs.astro
+title: Getting started
+description: Install Ritmo, define a world, and run its first tick.
+---
+Describe the world once, write systems that declare what they touch, and run
+them at a fixed step. The compiler checks that it all fits together.
+
+## Install
+
+```sh
+pnpm add @typeonce/ritmo
+```
+
+TypeScript 5.9+ with `strict` on. Add-ons, all released with the same
+version:
+
+| Package | What it gives you |
+|---|---|
+| `@typeonce/ritmo` | The ECS runtime and the fixed-step loop |
+| `@typeonce/ritmo-math` | Vectors, collision, a spatial grid, a flow field, seeded random, trigonometry that returns the same bits everywhere |
+| `@typeonce/ritmo-browser` | The browser loop, keyboard, gamepad, pointer, and touch input |
+| `@typeonce/ritmo-render` | Mirrors entities into any renderer's nodes |
+| `@typeonce/ritmo-pixi` | The Pixi adapter for `ritmo-render` |
+| `@typeonce/ritmo-devtools` | Headless debug sessions, determinism checks, `ritmo-devtools lint` |
+| `@typeonce/oxlint-plugin-ritmo` | Lint rules that keep simulation code deterministic and headless |
+
+## A first world
+
+Every other API comes from `Game`. Hover any name to see its type.
+
+```ts twoslash title="schema.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+
+type Vec = { x: number; y: number }
+
+// The simulation advances 60 fixed steps per second
+const step = Clock.hz(60)
+const Time = Clock.resource("Example/Time", step)
+
+// What an entity can carry
+const Position = Descriptor.Component<Vec>()("Example/Position")
+const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
+
+// The world: every other API comes from Game
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Velocity },
+    resources: { Time }
+  })
+)
+```
+
+## A system
+
+It gets only what it declares: it writes `Position`, and reads `Velocity`
+and the clock.
+
+```ts twoslash title="move.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+type Vec = { x: number; y: number }
+const step = Clock.hz(60)
+const Time = Clock.resource("Example/Time", step)
+const Position = Descriptor.Component<Vec>()("Example/Position")
+const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+// ---cut---
+const Move = Game.System(
+  "Example/Move",
+  {
+    queries: {
+      moving: Game.Query({
+        selection: {
+          position: Game.Query.write(Position), // [!code highlight]
+          velocity: Game.Query.read(Velocity) // [!code highlight]
+        }
+      })
+    },
+    resources: { time: Game.System.readResource(Time) }
+  },
+  ({ queries, resources }) => {
+    const { dt } = resources.time.get()
+    for (const match of queries.moving.each()) {
+      const position = match.data.position.get()
+      const velocity = match.data.velocity.get()
+      //    ^?
+      match.data.position.set({
+        x: position.x + velocity.x * dt,
+        y: position.y + velocity.y * dt
+      })
+    }
+  }
+)
+```
+
+## Run it
+
+Making a runtime and running a tick both return a `Result`. Neither throws.
+
+```ts twoslash title="main.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+type Vec = { x: number; y: number }
+const step = Clock.hz(60)
+const Time = Clock.resource("Example/Time", step)
+const Position = Descriptor.Component<Vec>()("Example/Position")
+const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Move = Game.System("Example/Move", { queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) }, resources: { time: Game.System.readResource(Time) } }, () => {})
+// ---cut---
+// Moves the clock forward one step per tick
+const AdvanceTime = Clock.system(Game, {
+  name: "Example/AdvanceTime",
+  resource: Time
+})
+
+// Every service and resource the schedules need
+const made = Game.Runtime.make({
+  services: Game.Runtime.services(),
+  resources: { Time: Clock.start(step) }
+})
+
+if (made.ok) {
+  const runtime = made.value
+
+  // One tick: AdvanceTime, then Move
+  const ticked = runtime.tick(Game.Schedule(AdvanceTime, Move)) // [!code highlight]
+  if (!ticked.ok) console.error(ticked.error)
+}
+```
+
+This is a whole game loop, and it runs the same in tests, in Node and on a
+page. Next: [Concepts](/docs/concepts/) or [Loop, input,
+rendering](/docs/browser/).

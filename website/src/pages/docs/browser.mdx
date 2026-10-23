@@ -1,0 +1,159 @@
+---
+layout: ../../layouts/Docs.astro
+title: Loop, input, rendering
+description: Put a Ritmo world on a page, with a fixed-step loop, keyboard and gamepad, and a renderer.
+---
+
+import Game from "../../components/Game.astro"
+
+The simulation never touches the page. The page is a **host** that runs the
+loop, reads input and draws.
+
+<Game id="top-down" />
+
+## The loop
+
+Fixed updates whatever the frame rate, then one `render`. Long frames are
+clamped.
+
+```ts twoslash title="main.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+const Game = Schema.bind(Schema.fragment({ components: { Tag: Descriptor.Component<{}>()("Example/Tag") } }))
+const update = Game.Schedule()
+const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value!
+declare const draw: (alpha: number) => void
+// ---cut---
+import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
+import { BrowserTickSource } from "@typeonce/ritmo-browser"
+
+// Turns animation frames into fixed steps
+const loop = FixedLoop.start({
+  source: BrowserTickSource.make(window),
+  step: Clock.hz(60), // [!code highlight]
+
+  // A tab back from the background does not run a minute of game at once
+  maxFrameSeconds: 0.25,
+  maxStepsPerFrame: 5,
+
+  update: () => runtime.tick(update), // [!code highlight]
+  render: (frame) => draw(frame.alpha), // [!code highlight]
+  onFailure: (failure) => console.error(failure)
+})
+```
+
+A renderer with its own ticker plugs in through `FixedLoop.source`.
+
+## Input
+
+Systems see **actions**, never keys. Each device binds them, and the devices
+merge into one source.
+
+```ts twoslash title="input.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+// ---cut---
+import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+
+// What the player can do, whatever the device
+const Actions = Controls.actions(["left", "right", "jump"]) // [!code highlight]
+
+// How each device triggers it
+
+const keys = {
+  left: ["ArrowLeft", "a"],
+  right: ["ArrowRight", "d"],
+  jump: [" ", "w"]
+} as const
+const buttons = { left: ["dpadLeft"], right: ["dpadRight"], jump: ["south"] } as const
+
+
+// Keyboard and gamepad merged into one source
+const makeControls = (devices: {
+  readonly keyboard: Keyboard.Actions<typeof keys>
+  readonly gamepad: Gamepad.Actions<typeof buttons>
+}) => Actions.merge(devices)
+
+// The input source is a service; each update copies its snapshot into a resource.
+const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
+const Input = Descriptor.TransientResource<
+  InputCapture.SnapshotOf<typeof ControlsInput>
+>()("Example/Input")
+```
+
+One snapshot per update, so every system sees the same input:
+
+```ts twoslash title="jump.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+const Actions = Controls.actions(["left", "right", "jump"])
+const keys = { left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"], jump: [" ", "w"] } as const
+const buttons = { left: ["dpadLeft"], right: ["dpadRight"], jump: ["south"] } as const
+const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof buttons> }) => Actions.merge(devices)
+const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
+const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Example/Input")
+const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+// ---cut---
+const CaptureInput = InputCapture.system(Game, {
+  name: "Example/CaptureInput",
+  source: ControlsInput,
+  resource: Input
+})
+
+const Jump = Game.System(
+  "Example/Jump",
+  { resources: { input: Game.System.readResource(Input) } },
+  ({ resources }) => {
+    const input = resources.input.get()
+    if (input.actions.jump.pressed) {
+      //                  ^?
+    }
+  }
+)
+```
+
+```ts
+const keyboard = Keyboard.actions(window, keys) // in the page
+const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump"] }]) // in a test
+```
+
+`Pointer` and `Touch` work the same way.
+
+## Rendering
+
+One node per entity: created when it appears, updated when it moves,
+destroyed when it goes. You say what a node is.
+
+```ts twoslash title="render.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("TopDown/Position")
+const Collider = Descriptor.Component<{ width: number; height: number }>()("TopDown/Collider")
+const Wall = Descriptor.Component<{}>()("TopDown/Wall")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Collider, Wall } }))
+// ---cut---
+import { RenderSync } from "@typeonce/ritmo-render"
+import type { NodeRegistry } from "@typeonce/ritmo-render"
+import { Graphics } from "pixi.js"
+
+const WallNodes = Descriptor.Service<NodeRegistry.NodeRegistry<Graphics>>()("TopDown/WallNodes")
+
+const RenderWalls = RenderSync.system(Game, {
+  name: "TopDown/RenderWalls",
+  renderable: Wall,
+  transform: Position,
+  registry: WallNodes,
+  select: { collider: Game.Query.read(Collider) },
+  create: ({ data }) => { // [!code highlight]
+    const { width, height } = data.collider.get()
+    return new Graphics().rect(-width / 2, -height / 2, width, height).fill(0x262a31)
+  },
+  apply: (node, { transform }) => node.position.set(transform.x, transform.y) // [!code highlight]
+})
+```
+
+The system needs a `NodeRegistry`, not Pixi. The page picks the renderer:
+
+```ts title="main.ts"
+Game.Runtime.service(WallNodes, PixiNodeRegistry.make(wallLayer))
+```
+
+Any renderer works: `NodeRegistry.make({ attach, detach })`. Full host:
+[`website/src/demos/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/top-down).

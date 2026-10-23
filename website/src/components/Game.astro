@@ -1,0 +1,141 @@
+---
+// A game running inside a page. It is a frame around `/play/<id>/`: each game
+// keeps its own window, so its keyboard and gamepad listeners, and any crash,
+// stay inside the frame. The frame loads when it nears the screen, and the
+// game starts on a click. Full screen enlarges this frame, so the game keeps
+// running where it is.
+import { demos } from "../demos/index.ts"
+import type { DemoId } from "../demos/index.ts"
+
+interface Props {
+  id: DemoId
+  /** Width over height of the frame. */
+  ratio?: string
+}
+
+const { id, ratio = "11 / 8" } = Astro.props
+const demo = demos[id]
+const href = `/play/${id}/`
+---
+
+<figure class="game" data-demo={id}>
+  <div class="frame" style={`aspect-ratio: ${ratio}`}>
+    <iframe src={href} title={`${demo.title}, a game made with Ritmo`} loading="lazy" allow="gamepad; fullscreen"></iframe>
+  </div>
+  <figcaption>
+    <span><strong>{demo.title}</strong> <span class="muted">{demo.controls}</span></span>
+    <span class="actions">
+      <button type="button" class="fullscreen" hidden>Full screen</button>
+      <a href={demo.source}>Source</a>
+    </span>
+  </figcaption>
+</figure>
+
+<script>
+  // Full screen enlarges the frame and starts its game. Any button on the
+  // page with `data-play="<id>"` does the same for that game; where full
+  // screen is not available (an iPhone), it scrolls to the game and starts it.
+  const loaded = (iframe: HTMLIFrameElement) =>
+    new Promise<void>((resolve) => {
+      if (iframe.contentDocument?.readyState === "complete" && iframe.contentWindow?.location.href !== "about:blank") {
+        resolve()
+        return
+      }
+      iframe.addEventListener("load", () => resolve(), { once: true })
+      iframe.loading = "eager"
+    })
+
+  const play = async (game: HTMLElement) => {
+    const frame = game.querySelector<HTMLElement>(".frame")
+    const iframe = game.querySelector<HTMLIFrameElement>("iframe")
+    if (frame === null || iframe === null) return
+    if (document.fullscreenEnabled) {
+      await frame.requestFullscreen().catch(() => game.scrollIntoView({ behavior: "smooth", block: "center" }))
+    } else {
+      game.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+    await loaded(iframe)
+    iframe.contentWindow?.postMessage("ritmo:start", location.origin)
+    iframe.focus()
+  }
+
+  for (const game of document.querySelectorAll<HTMLElement>("figure.game")) {
+    const button = game.querySelector<HTMLButtonElement>(".fullscreen")
+    if (button === null || !document.fullscreenEnabled) continue
+    button.hidden = false
+    button.addEventListener("click", () => void play(game))
+  }
+
+  for (const button of document.querySelectorAll<HTMLElement>("[data-play]")) {
+    button.addEventListener("click", () => {
+      const game = document.querySelector<HTMLElement>(`figure.game[data-demo="${button.dataset.play}"]`)
+      if (game !== null) void play(game)
+    })
+  }
+</script>
+
+<style>
+  .game {
+    margin: 0 0 1.6em;
+  }
+
+  .frame {
+    position: relative;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--ink);
+  }
+
+  .frame:fullscreen {
+    aspect-ratio: auto !important;
+    width: 100vw;
+    height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+
+  figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding-top: 10px;
+    font-size: 0.85rem;
+  }
+
+  strong {
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+
+  .fullscreen {
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .fullscreen:hover {
+    text-decoration: underline;
+  }
+
+  .actions {
+    display: flex;
+    gap: 16px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+</style>

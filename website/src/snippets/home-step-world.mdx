@@ -1,0 +1,18 @@
+```ts twoslash title="schema.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+
+// Data an entity can carry
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
+
+// One value for the whole world: a clock at a fixed 60 steps per second
+const Time = Clock.resource("Arena/Time", Clock.hz(60))
+
+// Every other API hangs off Game, so nothing can mix up two worlds
+export const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Velocity },
+    resources: { Time }
+  })
+)
+```

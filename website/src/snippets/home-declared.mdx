@@ -1,0 +1,22 @@
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+// ---cut---
+// The query only asks to read Position
+const Moving = Game.Query({
+  selection: { position: Game.Query.read(Position) } // [!code highlight]
+})
+
+const Move = Game.System(
+  "Arena/Move",
+  { queries: { moving: Moving } },
+  ({ queries }) => {
+    for (const { data } of queries.moving.each()) {
+      // ...so a read cell has no set()
+// @errors: 2339
+      data.position.set({ x: 1, y: 1 })
+    }
+  }
+)
+```

@@ -1,0 +1,51 @@
+---
+// The brand animation, played once: the icon jumps, stamps the dot of the i,
+// returns, and rests on the finished lockup. Geometry and timing come from
+// brand/motion-model.mjs, the same model as the README animation. A reader
+// who prefers reduced motion sees the finished lockup, still.
+import { browserModel, scene, timing } from "../../../brand/motion-model.mjs"
+
+const script = `(() => {
+${browserModel}
+  const root = document.querySelector(".hero-motion")
+  if (root === null) return
+  const jumper = root.querySelector(".jumper"), paint = root.querySelector(".paint"), ri = root.querySelector(".ri")
+  const draw = (t) => {
+    const a = attributes(pose(t))
+    jumper.setAttribute("transform", a.jumper)
+    ri.setAttribute("transform", a.ri)
+    paint.setAttribute("opacity", a.opacity)
+    paint.setAttribute("transform", a.paint)
+  }
+  const still = matchMedia("(prefers-reduced-motion: reduce)")
+  if (still.matches) return draw(timing.reduced)
+  let start = null
+  const frame = (now) => {
+    if (start === null) start = now
+    const t = now - start
+    draw(Math.min(t, timing.duration))
+    if (t < timing.duration) requestAnimationFrame(frame)
+  }
+  // A beat after the page appears: time to look around it first, then the
+  // icon moves.
+  setTimeout(() => requestAnimationFrame(frame), 1400)
+})()`
+---
+
+<div class="hero-motion" aria-label="Ritmo" role="img" set:html={scene(0)} />
+<script is:inline set:html={script} />
+
+<style>
+  .hero-motion {
+    width: min(360px, 72vw);
+    aspect-ratio: 490 / 370;
+    color: var(--fg);
+  }
+
+  .hero-motion :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+</style>

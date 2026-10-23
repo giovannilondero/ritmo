@@ -1,0 +1,22 @@
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Health, Enemy } }))
+const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Health, Enemy)) }, () => {})
+const Enemies = Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] })
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (!made.ok) throw new Error()
+const runtime = made.value
+// ---cut---
+// Aim wants the enemies SpawnWave queues in this same tick
+const Aim = Game.System(
+  "Arena/Aim",
+  { queries: { enemies: Game.System.thisTick(Enemies) } }, // [!code highlight]
+  () => {}
+)
+
+// ...but nothing applies the spawns between the two
+// @errors: 2345
+runtime.tick(Game.Schedule(SpawnWave, Aim))
+```

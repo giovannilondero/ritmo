@@ -1,0 +1,23 @@
+```ts twoslash title="main.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+const Time = Clock.resource("Arena/Time", Clock.hz(60))
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Move = Game.System("Arena/Move", { resources: { time: Game.System.readResource(Time) } }, () => {})
+// ---cut---
+// The order of a tick, checked by the compiler
+const AdvanceTime = Clock.system(Game, { name: "Arena/AdvanceTime", resource: Time })
+const update = Game.Schedule(AdvanceTime, Move)
+
+// Making a runtime can fail, so it returns a Result
+const made = Game.Runtime.make({
+  services: Game.Runtime.services(),
+  resources: { Time: Clock.start(Clock.hz(60)) }
+})
+
+if (made.ok) {
+  // Same code in a test, a Node script, or the browser loop
+  const ticked = made.value.tick(update) // [!code highlight]
+}
+```

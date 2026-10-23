@@ -1,0 +1,451 @@
+---
+import Game from "../components/Game.astro"
+import HeroMotion from "../components/HeroMotion.astro"
+import Base from "../layouts/Base.astro"
+import { repository } from "../nav.ts"
+import { Content as Complete } from "../snippets/home-complete.mdx"
+import { Content as Declared } from "../snippets/home-declared.mdx"
+import { Content as Order } from "../snippets/home-order.mdx"
+import { Content as Render } from "../snippets/home-render.mdx"
+import { Content as Result } from "../snippets/home-result.mdx"
+import { Content as Services } from "../snippets/home-services.mdx"
+import { Content as Run } from "../snippets/home-step-run.mdx"
+import { Content as System } from "../snippets/home-step-system.mdx"
+import { Content as World } from "../snippets/home-step-world.mdx"
+import { Content as Why } from "../snippets/home-why.mdx"
+
+const steps = [
+  { title: "Describe the world", body: "Components, resources and events, each with a name and a type. Bound once into Game.", code: World },
+  { title: "Declare each system", body: "A system lists what it reads and writes, and gets exactly that.", code: System },
+  { title: "Run it, anywhere", body: "Schedules put systems in a checked order. The same tick runs in tests, Node and the browser.", code: Run }
+]
+
+const checks = [
+  { title: "Only what it declares", body: "Writing a value the system only reads.", code: Declared },
+  { title: "Complete entities", body: "Spawning an enemy without its health.", code: Complete },
+  { title: "Checked tick order", body: "Reading spawns before they land.", code: Order },
+  { title: "Provided services", body: "Running a system whose service is missing.", code: Services },
+  { title: "Failures as values", body: "A tick that fails returns, it never throws.", code: Result }
+]
+---
+
+<Base title="Ritmo · The type-safe game engine for TypeScript" bare>
+  <main data-pagefind-ignore>
+    <section class="hero">
+      <HeroMotion />
+      <h1>The type-safe game engine<br />for TypeScript</h1>
+      <p class="sub">
+        What if a bug in your game logic broke the build instead of the playtest?<br />
+        Yes, it's possible, with Ritmo
+      </p>
+      <div class="cta">
+        <a class="button primary" href="/docs/">Get started</a>
+        <button type="button" class="button" data-play="town">Play the demo</button>
+        <a class="button ghost" href={repository}>GitHub</a>
+      </div>
+    </section>
+
+    <section class="play">
+      <Game id="town" ratio="3 / 2" />
+    </section>
+
+    <section class="section">
+      <div class="heading">
+        <h2>Three steps to a running game</h2>
+        <p>Hover any name in the code to see its type.</p>
+      </div>
+      <ol class="steps">
+        {
+          steps.map(({ title, body, code: Code }, index) => (
+            <li class="step">
+              <div class="step-copy">
+                <span class="number">{index + 1}</span>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </div>
+              <div class="step-code">
+                <Code />
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section class="section">
+      <div class="heading">
+        <h2>Bugs that never reach a playtest</h2>
+        <p>Pick a mistake. The red line is the error your editor shows, with the fix Ritmo writes into it.</p>
+      </div>
+      <div class="checks">
+        <div class="check-list" role="tablist" aria-label="Mistakes the compiler catches" aria-orientation="vertical">
+          {
+            checks.map(({ title, body }, index) => (
+              <button
+                type="button"
+                role="tab"
+                id={`check-tab-${index}`}
+                aria-controls={`check-panel-${index}`}
+                aria-selected={index === 0 ? "true" : "false"}
+                tabindex={index === 0 ? 0 : -1}
+              >
+                <strong>{title}</strong>
+                <span>{body}</span>
+              </button>
+            ))
+          }
+          <a class="check-more" href="/docs/type-safety/">All the checks →</a>
+        </div>
+        <div class="check-panels">
+          {
+            checks.map(({ code: Code }, index) => (
+              <div role="tabpanel" id={`check-panel-${index}`} aria-labelledby={`check-tab-${index}`} hidden={index !== 0}>
+                <Code />
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="heading">
+        <h2>Built to be debugged and drawn</h2>
+        <p>The simulation never touches the page, so it runs headless and draws with anything.</p>
+      </div>
+      <ol class="steps">
+        <li class="step">
+          <div class="step-copy">
+            <h3>Ask why a value changed</h3>
+            <p>Play the game in Node with scripted input, check rules every frame, and read the answer as text.</p>
+            <a href="/docs/devtools/">Headless debugging →</a>
+          </div>
+          <div class="step-code"><Why /></div>
+        </li>
+        <li class="step">
+          <div class="step-copy">
+            <h3>Bring your renderer</h3>
+            <p>Ritmo does not draw. It keeps one node per entity in sync, and ships the loop and input adapters.</p>
+            <a href="/docs/browser/">Loop, input, rendering →</a>
+          </div>
+          <div class="step-code"><Render /></div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="end">
+      <h2>Start with one system</h2>
+      <div class="cta">
+        <a class="button primary" href="/docs/">Get started</a>
+        <a class="button" href="/docs/with-an-agent/">Use it with an agent</a>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  // The mistakes explorer: one tab per mistake, arrow keys move between them.
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>(".check-list [role=tab]")]
+  const select = (tab: HTMLButtonElement) => {
+    for (const other of tabs) {
+      const selected = other === tab
+      other.setAttribute("aria-selected", String(selected))
+      other.tabIndex = selected ? 0 : -1
+      const panel = document.getElementById(other.getAttribute("aria-controls") ?? "")
+      if (panel !== null) panel.hidden = !selected
+    }
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => select(tab))
+    tab.addEventListener("keydown", (event) => {
+      const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0
+      if (step === 0) return
+      event.preventDefault()
+      const next = tabs[(index + step + tabs.length) % tabs.length]
+      if (next !== undefined) {
+        select(next)
+        next.focus()
+      }
+    })
+  })
+</script>
+
+<style>
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* Hero */
+
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 16px 0 96px;
+  }
+
+  h1 {
+    font-size: clamp(1.9rem, 4.2vw, 2.8rem);
+    line-height: 1.25;
+    letter-spacing: -0.03em;
+    margin: 8px 0 32px;
+  }
+
+  .sub {
+    font-size: 1.15rem;
+    color: var(--muted);
+    max-width: 58ch;
+    margin: 0;
+  }
+
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin: 36px 0 0;
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    padding: 0 22px;
+    font: 600 0.9rem var(--mono);
+    text-decoration: none;
+    color: var(--fg);
+    border: 1px solid color-mix(in srgb, var(--fg) 38%, transparent);
+    border-radius: 6px;
+  }
+
+  button.button {
+    background: none;
+    cursor: pointer;
+  }
+
+  .button:hover {
+    border-color: var(--fg);
+  }
+
+  .button.ghost {
+    border-color: var(--border);
+    color: var(--muted);
+  }
+
+  .button.ghost:hover {
+    color: var(--fg);
+    border-color: color-mix(in srgb, var(--fg) 38%, transparent);
+  }
+
+  .button.primary {
+    background: var(--tick);
+    border-color: var(--tick);
+    color: var(--ink);
+  }
+
+  .button.primary:hover {
+    background: #ff6f50;
+  }
+
+  .play {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 0 144px;
+  }
+
+  /* Sections */
+
+  .section {
+    padding: 136px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .heading {
+    max-width: 880px;
+    margin: 0 0 80px;
+  }
+
+  h2 {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    padding: 0;
+    border: 0;
+  }
+
+  .heading p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+
+  h3 {
+    font-size: 1.15rem;
+    margin: 0 0 10px;
+  }
+
+  /* Steps: copy on the left, code on the right, one row each. */
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 120px;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  .step-copy {
+    position: sticky;
+    top: calc(var(--header) + 32px);
+  }
+
+  .step-copy p {
+    margin: 0 0 16px;
+    color: var(--muted);
+  }
+
+  .step-copy a {
+    font: 600 0.88rem var(--mono);
+  }
+
+  .number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin: 0 0 16px;
+    font: 700 0.9rem var(--mono);
+    color: var(--bg);
+    background: var(--fg);
+    border-radius: 6px;
+  }
+
+  .step-code :global(figure.code),
+  .step-code :global(pre) {
+    margin: 0;
+  }
+
+  .step-code :global(figure.code + figure.code) {
+    margin-top: 16px;
+  }
+
+  /* Mistakes explorer: the list on the left, one snippet on the right. */
+
+  .checks {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  .check-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .check-list [role="tab"] {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 16px;
+    text-align: left;
+    color: var(--fg);
+    background: none;
+    border: 0;
+    border-left: 2px solid var(--border);
+    border-radius: 0 6px 6px 0;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .check-list [role="tab"] strong {
+    font: 600 0.95rem var(--mono);
+  }
+
+  .check-list [role="tab"] span {
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  .check-list [role="tab"]:hover {
+    border-left-color: var(--muted);
+  }
+
+  .check-list [role="tab"][aria-selected="true"] {
+    border-left-color: var(--tick);
+    background: color-mix(in srgb, var(--raised) 55%, transparent);
+  }
+
+  .check-list [role="tab"]:focus-visible {
+    outline: 2px solid var(--tick);
+    outline-offset: -2px;
+  }
+
+  .check-more {
+    margin: 16px 0 0 18px;
+    font: 600 0.88rem var(--mono);
+  }
+
+  .check-panels :global(figure.code),
+  .check-panels :global(pre) {
+    margin: 0;
+  }
+
+  /* End */
+
+  .end {
+    text-align: center;
+    padding: 136px 0 160px;
+    border-top: 1px solid var(--border);
+  }
+
+  .end .cta {
+    margin-bottom: 0;
+  }
+
+  @media (max-width: 900px) {
+    .step,
+    .checks {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 24px;
+    }
+
+    .step-copy {
+      position: static;
+    }
+
+    .section {
+      padding: 80px 0;
+    }
+
+    .heading {
+      margin-bottom: 48px;
+    }
+
+    .steps {
+      gap: 72px;
+    }
+
+    h1 br {
+      display: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    main {
+      padding: 0 16px;
+    }
+  }
+</style>

@@ -1,0 +1,37 @@
+---
+layout: ../layouts/Docs.astro
+title: Examples
+description: Games made with Ritmo, running in the page and in the wild.
+---
+
+import Game from "../components/Game.astro"
+
+## Town
+
+A Game Boy-style overworld: walk tile by tile, read the sign, talk to the
+villager. The rules are headless systems with a `Mode` state machine
+(`Exploring` / `Talking`). Art: the CC0
+[Ninja Adventure](https://pixel-boy.itch.io/ninja-adventure-asset-pack) pack
+by Pixel-boy and AAA.
+
+<Game id="town" ratio="3 / 2" />
+
+## Top-down
+
+Five parts to find. The rules are
+[`integration/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/integration/top-down),
+the same schedules its headless tests run.
+
+<Game id="top-down" />
+
+
+## Games built with Ritmo
+
+**[Spirit Call](https://spirit-call.typeonce.dev)**: a top-down action game
+for the phone, with teams of elemental spirits, rendered in 3D with Three.js
+and shipped to Android and iOS.
+[Play it](https://spirit-call.typeonce.dev) or read
+[its source](https://github.com/SandroMaglione/spirit-call).
+
+**[Inkline Town](https://github.com/SandroMaglione/inkline-town)**: a town
+simulation in isometric line art, rendered with Three.js.

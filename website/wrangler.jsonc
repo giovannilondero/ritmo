@@ -1,0 +1,13 @@
+// The website on Cloudflare: the built `dist` folder as static assets, no
+// Worker code. `pnpm run deploy:cloudflare` (after `pnpm build`) needs CLOUDFLARE_API_TOKEN
+// and CLOUDFLARE_ACCOUNT_ID; the release workflow deploys after each publish.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ritmo-website",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "ritmo.typeonce.dev", "custom_domain": true }]
+}

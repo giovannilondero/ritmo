@@ -1,0 +1,46 @@
+---
+const colors = [
+  { name: "Ink", hex: "#0E1013", use: "Backgrounds, text on paper. The default surface." },
+  { name: "Paper", hex: "#F3F1EC", use: "Light surface, text on ink. Warm, not pure white." },
+  { name: "Tick", hex: "#FF5A36", use: "The changing cell, and the round avatar's background." },
+  { name: "Graphite", hex: "#262A31", use: "Raised surfaces on ink: cards, code blocks." },
+  { name: "Steel", hex: "#8A8F98", use: "Secondary text, the ruler's minor ticks, borders on ink." },
+  { name: "Line", hex: "#D9D5CC", use: "Borders and dividers on paper." }
+] as const
+---
+
+<div class="palette">
+  {
+    colors.map((color) => (
+      <div class="color">
+        <div class="chip" style={`background: ${color.hex}`} />
+        <p>
+          <strong>{color.name}</strong> <code>{color.hex}</code>
+        </p>
+        <p class="muted">{color.use}</p>
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 0 0 1.6em;
+  }
+
+  .chip {
+    height: 64px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  p {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+</style>

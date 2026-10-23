@@ -1,0 +1,80 @@
+---
+// The brand's files, served from brand/assets, each on the surface it is for.
+import { brand } from "../brand.ts"
+
+const assets = [
+  { name: "Lockup", file: "ritmo-lockup.svg", src: brand.lockup.src, surface: "paper" },
+  { name: "Lockup, inverse", file: "ritmo-lockup-inverse.svg", src: brand.lockupInverse.src, surface: "ink" },
+  { name: "Stacked lockup", file: "ritmo-lockup-stacked.svg", src: brand.stacked.src, surface: "paper" },
+  { name: "Stacked lockup, inverse", file: "ritmo-lockup-stacked-inverse.svg", src: brand.stackedInverse.src, surface: "ink" },
+  { name: "Wordmark", file: "ritmo-wordmark.svg", src: brand.wordmark.src, surface: "paper" },
+  { name: "Wordmark, inverse", file: "ritmo-wordmark-inverse.svg", src: brand.wordmarkInverse.src, surface: "ink" },
+  { name: "Icon", file: "ritmo-icon.svg", src: brand.icon.src, surface: "paper" },
+  { name: "Icon, inverse", file: "ritmo-icon-inverse.svg", src: brand.iconInverse.src, surface: "ink" },
+  { name: "App icon", file: "ritmo-app-icon-512.png", src: brand.appIcon.src, surface: "ink" }
+] as const
+---
+
+<div class="assets">
+  {
+    assets.map((asset) => (
+      <figure>
+        <div class:list={["swatch", asset.surface]}>
+          <img src={asset.src} alt={asset.name} loading="lazy" />
+        </div>
+        <figcaption>
+          <span>{asset.name}</span>
+          <a href={asset.src} download={asset.file}>Download</a>
+        </figcaption>
+      </figure>
+    ))
+  }
+</div>
+
+<style>
+  .assets {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 0 0 1.6em;
+  }
+
+  figure {
+    margin: 0;
+  }
+
+  .swatch {
+    height: 140px;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .swatch img {
+    max-width: 100%;
+    max-height: 72px;
+  }
+
+  .paper {
+    background: var(--paper);
+  }
+
+  .ink {
+    background: var(--ink);
+  }
+
+  figcaption {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 8px;
+    font-size: 0.85rem;
+  }
+
+  figcaption a {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+</style>

@@ -1,0 +1,198 @@
+---
+layout: ../../layouts/Docs.astro
+title: Concepts
+description: The pieces of a Ritmo game, and the rule each one keeps.
+---
+
+A **world** of entities, **systems** that change it, and **schedules** that
+run them in a checked order, one fixed step at a time. Hover any name for its
+type.
+
+## The world
+
+Components belong to entities, resources to the whole world, and events are
+messages sent within a tick. `Schema.bind` turns them into `Game`, and every
+other API comes from `Game`.
+
+```ts twoslash title="schema.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+
+// Components: data on an entity. An empty one is a tag.
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+
+// A resource: one value for the whole world
+const Score = Descriptor.Resource<number>()("Arena/Score")
+
+// An event: a message read by the systems that ask for it
+const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Health, Enemy },
+    resources: { Score },
+    events: { Hit }
+  })
+)
+```
+
+## Systems
+
+The spec declares everything the system touches, and the function gets only
+that.
+
+```ts twoslash title="damage.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Score = Descriptor.Resource<number>()("Arena/Score")
+const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, resources: { Score }, events: { Hit } }))
+// ---cut---
+const Damage = Game.System(
+  "Arena/Damage",
+  {
+    // Writes the health of every enemy... // [!code focus]
+    queries: { // [!code focus]
+      enemies: Game.Query({ // [!code focus]
+        selection: { health: Game.Query.write(Health) }, // [!code focus]
+        with: [Enemy] // [!code focus]
+      }) // [!code focus]
+    }, // [!code focus]
+ // [!code focus]
+    // ...and reads this tick's hits // [!code focus]
+    events: { hits: Game.System.readEvent(Hit) } // [!code focus]
+  },
+
+  ({ queries, events }) => {
+    for (const hit of events.hits.all()) {
+      for (const { data } of queries.enemies.each()) {
+        data.health.set(data.health.get() - hit.amount)
+      }
+    }
+  }
+)
+```
+
+## Queries
+
+`selection` is the data per entity, `with` / `without` filter, and `changed`
+keeps only what changed since this system last ran.
+
+```ts twoslash title="queries.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+// ---cut---
+const Wounded = Game.Query({
+  // The data each match gets
+  selection: {
+    position: Game.Query.read(Position),
+    health: Game.Query.read(Health)
+  },
+
+  // Only enemies, and only when their health changed since this system last ran
+  with: [Enemy],
+  filters: [Game.Query.changed(Health)] // [!code highlight]
+})
+```
+
+## Commands
+
+Spawns and despawns are queued, and they land together at the next
+`applyDeferred()`.
+
+```ts twoslash title="waves.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const Enemies = Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] })
+// ---cut---
+const Cull = Game.System(
+  "Arena/Cull",
+  {
+    queries: { enemies: Enemies },
+
+    // The only command this system may queue
+    commands: Game.System.commands(Game.System.despawns(Enemy)) // [!code highlight]
+  },
+
+  ({ queries, commands }) => {
+    for (const match of queries.enemies.each()) {
+      // match.entity proves this is an Enemy: a raw id would not compile
+      if (match.data.health.get() <= 0) commands.despawn(match.entity) // [!code highlight]
+    }
+  }
+)
+```
+
+## Schedules and the tick
+
+A schedule lists the systems in order and marks where commands land. A tick
+returns a `Result`. If a system fails, its writes are rolled back.
+
+```ts twoslash title="update.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, events: { Hit } }))
+const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, () => {})
+const Damage = Game.System("Arena/Damage", { queries: { enemies: Game.Query({ selection: { health: Game.Query.write(Health) }, with: [Enemy] }) }, events: { hits: Game.System.readEvent(Hit) } }, () => {})
+const Cull = Game.System("Arena/Cull", { queries: { enemies: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] }) }, commands: Game.System.commands(Game.System.despawns(Enemy)) }, () => {})
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (!made.ok) throw new Error()
+const runtime = made.value
+// ---cut---
+// Systems run in this order; queued commands land at applyDeferred()
+const update = Game.Schedule(
+  SpawnWave,
+  Damage,
+  Cull,
+  Game.Schedule.applyDeferred() // [!code highlight]
+)
+
+const ticked = runtime.tick(update)
+//    ^?
+```
+
+## State machines
+
+```ts twoslash title="flow.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+// ---cut---
+// A closed list of states
+const Flow = Game.StateMachine("Arena/Flow", ["Menu", "Playing", "Paused"])
+
+// Asks for the next state...
+const Pause = Game.System(
+  "Arena/Pause",
+  { nextMachines: { flow: Game.System.nextState(Flow) } },
+  ({ nextMachines }) => nextMachines.flow.set("Paused") // [!code highlight]
+)
+
+// ...and this one runs only while playing
+const Simulate = Game.System(
+  "Arena/Simulate",
+  { when: [Game.Condition.inState(Flow, "Playing")] }, // [!code highlight]
+  () => {}
+)
+```
+
+The change applies at `applyStateTransitions()`.
+
+## Same input, same game
+
+The simulation advances in fixed steps (`Clock.hz(60)`). Time comes from
+`Clock`, randomness from a seeded `Random`, and trigonometry from `Ops`. That
+makes replays and [headless tests](/docs/devtools/) exact, and the lint rules
+reject `Math.random`, `Date.now` and page APIs inside systems.

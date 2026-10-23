@@ -1,0 +1,40 @@
+---
+layout: ../../layouts/Docs.astro
+title: With a coding agent
+description: Ritmo is built for games whose code an agent writes. Here is how to set one up.
+---
+
+You direct the game. A coding agent writes the simulation, and Ritmo keeps it
+on track:
+
+| Layer | What the agent gets |
+|---|---|
+| **Compile time** | Wrong code does not compile, and the error names the fix. [Type safety](/docs/type-safety/) |
+| **Headless runs** | Play in Node, check invariants every frame, ask why a value changed. [Headless debugging](/docs/devtools/) |
+| **Lock-in** | The script that reproduced a bug becomes a test. |
+
+## Set up a project
+
+Paste this into your agent, in the game's folder:
+
+```text title="prompt"
+Set up Ritmo in this project by following
+https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
+```
+
+This installs the packages, sets up the checks (types, lints,
+`ritmo-devtools lint`, tests) and links the **Ritmo skill**.
+
+## The skill
+
+It ships inside `@typeonce/ritmo`, so it always matches the installed version.
+It has one playbook per kind of change (mechanic, content, UI, bug fix,
+refactor, saves) and four principles:
+
+- **The simulation is the game.** Input, drawing, UI and sound are host code.
+- **Intents in, plain data out.** Bots, tests and replays send the same intents as the UI.
+- **Each fact has one home.** A missing table entry does not compile.
+- **Make the next mistake fail loudly.** As a type, a lint or a test.
+
+Agents read the JSDoc, READMEs and CHANGELOGs that ship with the packages.
+This site is for people.

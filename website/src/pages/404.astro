@@ -1,0 +1,19 @@
+---
+import Base from "../layouts/Base.astro"
+---
+
+<Base title="Not found">
+  <main class="missing">
+    <p class="muted">404</p>
+    <h1>This page is not on the grid</h1>
+    <p class="muted">It may have moved. Start from the <a href="/docs/">guide</a> or the <a href="/">home page</a>.</p>
+  </main>
+</Base>
+
+<style>
+  .missing {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 96px 24px;
+  }
+</style>
