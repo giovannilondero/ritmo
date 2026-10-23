@@ -1,5 +1,5 @@
 import { Controls } from "@typeonce/ritmo-browser"
-import type { Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+import type { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import type * as Vector2Value from "@typeonce/ritmo-math/Vector2"
 
 export type Vector2 = Vector2Value.Vector2
@@ -22,8 +22,12 @@ export const padBindings = {
   interact: ["south"]
 } as const
 export type GamepadInput = Gamepad.Actions<typeof padBindings>
-/** The one input source: both devices merged, built the same way in the browser and in tests. */
-export const makeControls = (devices: { readonly keyboard: KeyboardInput; readonly gamepad: GamepadInput }) => Actions.merge(devices)
+/** A click interacts too; the mouse is grouped with the keyboard, so using both is one device in use. */
+export const mouseBindings = { interact: ["primary"] } as const
+export type MouseInput = Pointer.Actions<typeof mouseBindings>
+/** The one input source: keyboard and mouse as one group, and the gamepad, built the same way in the browser and in tests. */
+export const makeControls = (devices: { readonly keyboard: KeyboardInput; readonly mouse: MouseInput; readonly gamepad: GamepadInput }) =>
+  Actions.merge({ desktop: Actions.group({ keyboard: devices.keyboard, mouse: devices.mouse }), gamepad: devices.gamepad })
 export type ControlsValue = ReturnType<typeof makeControls>
 export type InputStateValue = ReturnType<ControlsValue["snapshot"]>
 /** What one fixed update needs from the host: the step length. */

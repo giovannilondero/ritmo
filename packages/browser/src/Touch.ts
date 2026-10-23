@@ -45,6 +45,7 @@
  * For tests and headless runs, `scripted(...)` plays a timeline of stick
  * vectors, presses, drags, and releases.
  */
+import type * as System from "@typeonce/ritmo/System"
 import { anyUsed } from "./internal/used.ts"
 import type { ActionState } from "./Keyboard.ts"
 
@@ -160,7 +161,7 @@ export interface View<B extends string> {
   readonly buttons: { readonly [K in B]: { readonly held: boolean; readonly aim: Vector | null } }
 }
 
-export interface Touch<B extends string> {
+export interface Touch<B extends string> extends System.Consumes<"snapshot"> {
   /** Returns the controls' state and starts a new press/release window. */
   snapshot(): Snapshot<B>
   /** The live state for drawing. */

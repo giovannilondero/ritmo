@@ -1,9 +1,10 @@
 import { Descriptor, Schema } from "@typeonce/ritmo"
-import { Controls, Gamepad, InputCapture, Keyboard, Touch } from "@typeonce/ritmo-browser"
+import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
 import { describe, expect, it } from "tstyche"
 
 declare const host: Keyboard.KeyboardHost & Gamepad.GamepadHost
 declare const touch: Touch.Touch<"jump">
+declare const canvas: Pointer.PointerTarget
 
 const keyBindings = { jump: [" "], pause: ["Escape"] } as const
 const padBindings = { jump: ["south"], pause: ["start"] } as const
@@ -11,6 +12,9 @@ const Actions = Controls.actions(["jump", "pause"])
 
 const keyboard = Keyboard.actions(host, keyBindings)
 const gamepad = Gamepad.actions(host, padBindings)
+const mouseBindings = { jump: ["primary"] } as const
+const mouse = Pointer.actions(canvas, window, mouseBindings)
+const keysWithoutPause = Keyboard.actions(host, { jump: [" "] })
 
 describe("Controls", () => {
   it("types merged actions by the declared names", () => {
@@ -95,8 +99,87 @@ describe("Controls", () => {
     })
   })
 
+  it("rejects snapshot() through a plain service, and keeps the other methods", () => {
+    const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings> }) => Actions.merge(devices)
+    const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTypes/Plain")
+    const Game = Schema.bind(Schema.fragment({}))
+    Game.System("ControlsTypes/Settings", { services: { controls: Game.System.service(ControlsInput) } }, ({ services }) => {
+      expect(services.controls.rebind.keyboard({ jump: ["w"], pause: ["p"] })).type.toBe<void>()
+      // @ts-expect-error snapshot() drains ControlsTypes/Plain: declare it with Game.System.consumeService, or read the resource its capture writes
+      services.controls.snapshot()
+    })
+    Game.System("ControlsTypes/Drain", { services: { controls: Game.System.consumeService(ControlsInput) } }, ({ services }) => {
+      expect(services.controls.snapshot().actions.jump.pressed).type.toBe<boolean>()
+    })
+    const KeysInput = Descriptor.Service<Keyboard.Actions<typeof keyBindings>>()("ControlsTypes/Keys")
+    Game.System("ControlsTypes/Keys", { services: { keys: Game.System.service(KeysInput) } }, ({ services }) => {
+      // @ts-expect-error snapshot() drains ControlsTypes/Keys
+      services.keys.snapshot()
+    })
+  })
+
   it("declares at least one action", () => {
     // @ts-expect-error Argument of type '[]' is not assignable
     Controls.actions([])
+  })
+
+  it("groups devices into one entry: lastUsed by entry, devices and rebind by device", () => {
+    const controls = Actions.merge({ desktop: Actions.group({ keyboard, mouse }), gamepad, touch: Actions.lacking(touch, ["pause"]) })
+    const input = controls.snapshot()
+    expect(input.lastUsed).type.toBe<"desktop" | "gamepad" | "touch" | null>()
+    expect(input.devices.mouse).type.toBe<Pointer.Snapshot<typeof mouseBindings>>()
+    expect(input.devices.mouse.position).type.toBe<Pointer.Position>()
+    expect(input.devices.keyboard).type.toBe<Keyboard.Snapshot<typeof keyBindings>>()
+    expect(controls.rebind.mouse).type.toBeCallableWith({ jump: ["back"] })
+    expect(controls.rebind.mouse).type.not.toBeCallableWith({ jump: ["left"] })
+    // @ts-expect-error Property 'desktop' does not exist
+    input.devices.desktop
+    // @ts-expect-error Property 'desktop' does not exist
+    controls.rebind.desktop
+  })
+
+  it("checks a group as one device in the merge", () => {
+    // @ts-expect-error desktop has no action pause: bind it on desktop, or pass lacking(desktop, [...]) from the action set
+    Actions.merge({ desktop: Actions.group({ keyboard: keysWithoutPause, mouse }), gamepad })
+    const desktop = Actions.lacking(Actions.group({ keyboard: keysWithoutPause, mouse }), ["pause"])
+    expect(Actions.merge({ desktop, gamepad }).snapshot().lastUsed).type.toBe<"desktop" | "gamepad" | null>()
+    // @ts-expect-error This device also lacks pause: bind it, or list it here
+    Actions.lacking(Actions.group({ keyboard: keysWithoutPause, mouse }), [])
+  })
+
+  it("rejects groups that are not two or more plain devices of the declared actions", () => {
+    // @ts-expect-error a group needs at least two devices: pass keyboard to merge directly
+    Actions.group({ keyboard })
+    // @ts-expect-error lacking applies to the whole group: pass lacking(group(...), [...])
+    Actions.group({ keyboard, touch: Actions.lacking(touch, ["pause"]) })
+    // @ts-expect-error groups do not nest: list every device in one group
+    Actions.group({ desktop: Actions.group({ keyboard, mouse }), gamepad })
+    const extra = Pointer.actions(canvas, window, { jump: ["primary"], fire: ["secondary"] })
+    // @ts-expect-error mouse binds fire, which is not one of the actions
+    Actions.group({ keyboard, mouse: extra })
+  })
+
+  it("rejects a name used twice across groups and devices", () => {
+    const fullMouse = Pointer.actions(canvas, window, { jump: ["primary"], pause: ["middle"] })
+    // @ts-expect-error the name mouse is used twice: give every device and group its own name
+    Actions.merge({ desktop: Actions.group({ keyboard, mouse }), mouse: fullMouse })
+    // @ts-expect-error the name keyboard is used twice
+    Actions.merge({ keyboard: Actions.group({ keyboard, mouse }), gamepad })
+  })
+
+  it("initializes a grouped merge by device names", () => {
+    const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings>; readonly mouse: Pointer.Actions<typeof mouseBindings> }) =>
+      Actions.merge({ desktop: Actions.group(devices), gamepad })
+    const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTypes/Grouped")
+    const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("ControlsTypes/GroupedInput")
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const services = Game.Runtime.services(Game.Runtime.service(ControlsInput, makeControls({ keyboard, mouse })))
+    const idle = Actions.idle({ keyboard: Keyboard.idle(keyBindings), mouse: Pointer.idle(mouseBindings), gamepad: Gamepad.idle(padBindings) })
+    Game.Runtime.make({ services, resources: { Input: idle } })
+    Game.Runtime.make({
+      services,
+      // @ts-expect-error Property 'mouse' is missing
+      resources: { Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings) }) }
+    })
   })
 })

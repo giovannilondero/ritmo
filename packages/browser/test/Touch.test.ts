@@ -164,11 +164,11 @@ describe("Touch.track", () => {
 
   it("leaves touches out of Pointer by default", () => {
     const fake = makeTarget()
-    const pointer = Pointer.track(fake.target, fake.blurHost)
+    const pointer = Pointer.actions(fake.target, fake.blurHost, {})
     fake.down(1, 700, 300, "touch")
-    expect(pointer.snapshot().primary.held).toBe(false)
+    expect(pointer.snapshot().buttons.primary.held).toBe(false)
     fake.down(1, 700, 300, "mouse")
-    expect(pointer.snapshot().primary.held).toBe(true)
+    expect(pointer.snapshot().buttons.primary.held).toBe(true)
   })
 })
 

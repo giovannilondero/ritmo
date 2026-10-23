@@ -3,13 +3,13 @@
 // unchanged from integration/top-down, the same schedules its tests run.
 import { Clock } from "@typeonce/ritmo"
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
-import { BrowserTickSource, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+import { BrowserTickSource, Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
 import { WORLD_HEIGHT, WORLD_WIDTH } from "@typeonce/ritmo-integration-top-down/constants.ts"
 import { initialMachines, initialResources } from "@typeonce/ritmo-integration-top-down/runtime.ts"
 import { setupWorldSchedule, simulationSchedule } from "@typeonce/ritmo-integration-top-down/schedules.ts"
 import { CollectedCount, ControlsInput, FocusedCollectable, FrameContext, Game, TotalCollectables } from "@typeonce/ritmo-integration-top-down/schema.ts"
-import { inputBindings, makeControls, padBindings } from "@typeonce/ritmo-integration-top-down/types.ts"
+import { inputBindings, makeControls, mouseBindings, padBindings } from "@typeonce/ritmo-integration-top-down/types.ts"
 import { Application, Container, Graphics } from "pixi.js"
 import type { Container as ContainerType } from "pixi.js"
 
@@ -92,12 +92,13 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
   app.renderer.on("resize", fit)
 
   const keyboard = Keyboard.actions(window, inputBindings)
+  const mouse = Pointer.actions(app.canvas, window, mouseBindings)
   const gamepad = Gamepad.actions(window, padBindings)
   const frame = { deltaSeconds: step.dt }
 
   const made = Game.Runtime.make({
     services: Game.Runtime.services(
-      Game.Runtime.service(ControlsInput, makeControls({ keyboard, gamepad })),
+      Game.Runtime.service(ControlsInput, makeControls({ keyboard, mouse, gamepad })),
       Game.Runtime.service(FrameContext, frame),
       Game.Runtime.service(WallNodes, PixiNodeRegistry.make(walls)),
       Game.Runtime.service(PickupNodes, PixiNodeRegistry.make(pickups)),
@@ -109,6 +110,7 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
 
   const dispose = () => {
     keyboard.dispose()
+    mouse.dispose()
     gamepad.dispose()
     app.destroy(true, { children: true })
   }

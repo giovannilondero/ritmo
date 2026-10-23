@@ -18,12 +18,12 @@ and the run stops at the first frame that breaks it.
 
 ```ts twoslash title="debug.ts"
 import { HostClock } from "@typeonce/ritmo"
-import { Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import { Invariant, Session } from "@typeonce/ritmo-devtools"
 import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
 import { Game, Position } from "@typeonce/ritmo-integration-top-down/schema.ts"
 import { createTopDownSimulation } from "@typeonce/ritmo-integration-top-down/simulation.ts"
-import { inputBindings, padBindings } from "@typeonce/ritmo-integration-top-down/types.ts"
+import { inputBindings, mouseBindings, padBindings } from "@typeonce/ritmo-integration-top-down/types.ts"
 
 const keyboard = Keyboard.scripted(inputBindings, [
   { frame: 0, press: ["up", "left"] },
@@ -33,8 +33,9 @@ const keyboard = Keyboard.scripted(inputBindings, [
 
 // A test clock keeps every timing at 0, so the output is the same on every run.
 const hostClock = HostClock.test()
+const mouse = Pointer.scripted(mouseBindings, [])
 const gamepad = Gamepad.scripted(padBindings, [])
-const simulation = createTopDownSimulation({ keyboard, gamepad, hostClock })
+const simulation = createTopDownSimulation({ keyboard, mouse, gamepad, hostClock })
 if (!simulation.ok) throw new Error(simulation.error.message)
 const { runtime, setup, update } = simulation.value
 

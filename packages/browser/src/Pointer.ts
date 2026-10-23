@@ -1,54 +1,96 @@
 /**
- * Mouse and pen input over one element: position and button edges. Touches
- * are ignored by default; on-screen touch controls are `Touch`.
+ * Mouse and pen input over one element: bound actions, raw buttons, and the
+ * position. Touches are ignored by default; on-screen touch controls are
+ * `Touch`.
  *
- * Games that aim with the mouse read one snapshot per update, like keyboard
- * actions. The module owns the browser plumbing: element-relative
- * coordinates, press/release edges that survive clicks shorter than one
- * frame, pointer capture so a release outside the element is still seen,
- * suppressing the context menu, clearing buttons on window blur, and listener
- * cleanup. It does not know about the ECS; `InputCapture.system(...)` copies
- * snapshots from a service into a resource, directly or through an adapter
- * that merges pointer and keyboard snapshots.
+ * `Pointer.actions(target, window, bindings)` binds game actions to
+ * buttons, like `Keyboard.actions` and `Gamepad.actions`, so the pointer
+ * merges into `Controls` (group it with the keyboard there, so the two count
+ * as one device for `lastUsed` and `available`). Games that aim with the
+ * mouse read `position`. The module owns the browser plumbing:
+ * element-relative coordinates, press/release edges that survive clicks
+ * shorter than one frame, pointer capture so a release outside the element
+ * is still seen, suppressing the context menu, clearing buttons on window
+ * blur, and listener cleanup. It does not know about the ECS;
+ * `InputCapture.system(...)` copies snapshots into a resource.
  *
  * Positions are in CSS pixels relative to the element's top-left corner.
  * Converting them into world coordinates (camera, zoom, projection) is game
- * code.
+ * code. `rebind(...)` swaps the buttons of the same actions, and
+ * `parseRebinding(...)` validates saved ones.
  *
  * @module Pointer
  * @docGroup browser
  *
  * @example
  * ```ts
- * const pointer = Pointer.track(canvas, window)
+ * const bindings = { fire: ["primary"], aim: ["secondary"] } as const
+ * const mouse = Pointer.actions(canvas, window, bindings)
  *
- * // Once per update:
- * const snapshot = pointer.snapshot()
- * aimAt(snapshot.position)
- * if (snapshot.primary.held) fire()
+ * // Once per update (through InputCapture in a game):
+ * const input = mouse.snapshot()
+ * aimAt(input.position)
+ * if (input.actions.fire.pressed) fire()
+ *
+ * // Settings screen: bind the button the player clicks.
+ * const clicked = Pointer.buttonNames.find((button) => input.buttons[button].pressed)
+ * if (clicked !== undefined) mouse.rebind({ fire: [clicked], aim: ["secondary"] })
  *
  * // On teardown:
- * pointer.dispose()
+ * mouse.dispose()
  * ```
  *
- * For tests, replays, and headless runs, `scripted(...)` plays a timeline of
- * moves, presses, and releases, and `recording(...)` wraps a live pointer to
- * capture the timeline a session produced. `parseTimeline(...)` validates a
- * timeline loaded from JSON.
+ * For tests, replays, and headless runs, `scripted(bindings, timeline)`
+ * plays a timeline of moves, presses, and releases, and `recording(...)`
+ * wraps a live pointer to capture the timeline a session produced.
+ * `parseTimeline(...)` validates a timeline loaded from JSON.
  */
+import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
 import type { ActionState } from "./Keyboard.ts"
+import * as ButtonsInternal from "./internal/buttons.ts"
+import { buttonTracker, idleActions, idleButtons } from "./internal/buttons.ts"
+import { anyUsed } from "./internal/used.ts"
 
 export type { ActionState }
 
-/** The buttons a snapshot reports, from `PointerEvent.button` 0, 2, and 1. */
-export type Button = "primary" | "secondary" | "middle"
+/**
+ * The buttons a snapshot reports, in `PointerEvent.button` order 0 to 4:
+ * the main (usually left) button, the wheel button, the secondary (usually
+ * right) button, and the side buttons.
+ */
+export const buttonNames = ["primary", "middle", "secondary", "back", "forward"] as const
 
-const buttons: ReadonlyArray<Button> = ["primary", "secondary", "middle"]
+/** One pointer button, see {@link buttonNames}. */
+export type Button = (typeof buttonNames)[number]
 
-const buttonOf = (code: number): Button | undefined =>
-  code === 0 ? "primary" : code === 2 ? "secondary" : code === 1 ? "middle" : undefined
+const buttonOf = (code: number): Button | undefined => buttonNames[code]
+
+const buttonSet: ReadonlySet<string> = new Set(buttonNames)
+
+/** Whether `name` is a pointer button, for validating stored bindings. */
+export const isButton = (name: unknown): name is Button => typeof name === "string" && buttonSet.has(name)
+
+/**
+ * Action name to the buttons that trigger it. Every action needs at least
+ * one button; `{}` tracks the position and raw buttons only.
+ */
+export type Bindings = Readonly<Record<string, readonly [Button, ...Array<Button>]>>
+
+/**
+ * New buttons for the same actions, for {@link Actions.rebind}. Load saved
+ * ones with {@link parseRebinding}.
+ */
+export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: readonly [Button, ...Array<Button>] }
+
+/**
+ * Rejects actions a rebinding names that the bindings do not have, so
+ * {@link Actions.rebind} takes exactly the actions it was made with.
+ */
+export type OnlyActionsOf<R, B extends Bindings> = {
+  readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
+}
 
 /** A position in CSS pixels relative to the element's top-left corner. */
 export interface Position {
@@ -56,24 +98,35 @@ export interface Position {
   readonly y: number
 }
 
-export interface Snapshot {
+export interface Snapshot<B extends Bindings> {
+  /** Every bound action's state. */
+  readonly actions: { readonly [Action in keyof B]: ActionState }
+  /** Every button's state by name, whatever the bindings (capture the button to bind from here). */
+  readonly buttons: { readonly [Name in Button]: ActionState }
   /** The last position the pointer was seen at, or where it was last left. */
   readonly position: Position
   /** Whether the pointer is currently over the element (or captured by it). */
   readonly over: boolean
-  readonly primary: ActionState
-  readonly secondary: ActionState
-  readonly middle: ActionState
+  /**
+   * Some button was pressed in this window or is held, or the pointer moved
+   * over the element: the player is using the pointer.
+   */
+  readonly used: boolean
 }
 
-export interface Pointer {
+export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
+  /** Returns the pointer state and starts a new press/release window. */
+  snapshot(): Snapshot<B>
   /**
-   * Returns the pointer state and starts a new press/release window.
+   * Binds the same actions to new buttons, from the next snapshot, for a
+   * settings screen where players remap controls (capture the button to bind
+   * from the snapshot's `buttons`). An action held only through buttons it
+   * lost reports `released`; a button held across the rebind holds a newly
+   * bound action only once it is pressed again. It takes exactly the actions
+   * the pointer was made with.
    */
-  snapshot(): Snapshot
-  /**
-   * Removes the event listeners.
-   */
+  rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
+  /** Removes the event listeners. */
   dispose(): void
 }
 
@@ -118,7 +171,7 @@ export interface BlurHost {
   removeEventListener(type: "blur", listener: () => void): void
 }
 
-export interface TrackOptions {
+export interface ActionsOptions {
   /**
    * Suppress the context menu over the element, so the secondary button is
    * usable. Defaults to `true`.
@@ -133,54 +186,57 @@ export interface TrackOptions {
 }
 
 /**
- * A snapshot with no buttons down, for initializing an input resource before
- * the first capture.
+ * A snapshot with no buttons down and no use yet, for initializing an input
+ * resource before the first capture.
  */
-export const idle = (position: Position = { x: 0, y: 0 }): Snapshot => ({
+export const idle = <const B extends Bindings>(bindings: B, position: Position = { x: 0, y: 0 }): Snapshot<B> => ({
+  actions: idleActions(bindings),
+  buttons: idleButtons(buttonNames),
   position: { x: position.x, y: position.y },
   over: false,
-  primary: { held: false, pressed: false, released: false },
-  secondary: { held: false, pressed: false, released: false },
-  middle: { held: false, pressed: false, released: false }
+  used: false
 })
 
-interface ButtonEdges {
-  readonly held: Set<Button>
-  readonly pressed: Set<Button>
-  readonly released: Set<Button>
-}
-
-const makeEdges = (): ButtonEdges => ({ held: new Set(), pressed: new Set(), released: new Set() })
-
-const snapshotOf = (position: Position, over: boolean, edges: ButtonEdges): Snapshot => {
-  const state = (button: Button): ActionState => {
-    const held = edges.held.has(button)
-    return { held, pressed: edges.pressed.has(button), released: edges.released.has(button) && !held }
-  }
+/** The button tracker with the position, shared by live and scripted pointers. */
+const tracker = <B extends Bindings>(initial: B, start: Position) => {
+  const buttons = buttonTracker(buttonNames, initial)
+  let position = start
+  let moved = false
   return {
-    position: { x: position.x, y: position.y },
-    over,
-    primary: state("primary"),
-    secondary: state("secondary"),
-    middle: state("middle")
+    buttons,
+    move(next: Position) {
+      if (next.x === position.x && next.y === position.y) return
+      position = next
+      moved = true
+    },
+    snapshot(over: boolean): Snapshot<B> {
+      const taken = buttons.take()
+      const used = moved || anyUsed(taken.buttons)
+      moved = false
+      return { ...taken, position: { x: position.x, y: position.y }, over, used }
+    }
   }
 }
 
 /**
- * Starts tracking the pointer over `target`. `blurHost` (usually `window`)
- * releases held buttons when the page loses focus.
+ * Starts tracking the pointer over `target` with `bindings`. `blurHost`
+ * (usually `window`) releases held buttons when the page loses focus.
  */
-export const track = (target: PointerTarget, blurHost: BlurHost, options: TrackOptions = {}): Pointer => {
+export const actions = <const B extends Bindings>(
+  target: PointerTarget,
+  blurHost: BlurHost,
+  bindings: B,
+  options: ActionsOptions = {}
+): Actions<B> => {
   const preventContextMenu = options.preventContextMenu ?? true
   const pointerTypes = options.pointerTypes ?? ["mouse", "pen"]
   const tracked = (event: PointerEventLike): boolean => pointerTypes.includes(event.pointerType ?? "mouse")
-  const edges = makeEdges()
-  let position: Position = { x: 0, y: 0 }
+  const state = tracker(bindings, { x: 0, y: 0 })
   let over = false
 
   const locate = (event: PointerEventLike): void => {
     const rect = target.getBoundingClientRect()
-    position = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    state.move({ x: event.clientX - rect.left, y: event.clientY - rect.top })
   }
 
   const onDown = (event: PointerEventLike): void => {
@@ -191,27 +247,19 @@ export const track = (target: PointerTarget, blurHost: BlurHost, options: TrackO
     if (button === undefined) return
     event.preventDefault()
     target.setPointerCapture?.(event.pointerId)
-    if (edges.held.has(button)) return
-    edges.held.add(button)
-    edges.pressed.add(button)
+    state.buttons.down(button)
   }
 
   const onUp = (event: PointerEventLike): void => {
     if (!tracked(event)) return
     locate(event)
     const button = buttonOf(event.button)
-    if (button === undefined || !edges.held.delete(button)) return
-    edges.released.add(button)
-    if (edges.held.size === 0) target.releasePointerCapture?.(event.pointerId)
+    if (button === undefined || !state.buttons.held.has(button)) return
+    state.buttons.up(button)
+    if (state.buttons.held.size === 0) target.releasePointerCapture?.(event.pointerId)
   }
 
   const onMove = (event: PointerEventLike): void => {
-    if (!tracked(event)) return
-    locate(event)
-    over = true
-  }
-
-  const onEnter = (event: PointerEventLike): void => {
     if (!tracked(event)) return
     locate(event)
     over = true
@@ -221,13 +269,8 @@ export const track = (target: PointerTarget, blurHost: BlurHost, options: TrackO
     if (tracked(event)) over = false
   }
 
-  const releaseAll = (): void => {
-    for (const button of edges.held) edges.released.add(button)
-    edges.held.clear()
-  }
-
   const onCancel = (event: PointerEventLike): void => {
-    if (tracked(event)) releaseAll()
+    if (tracked(event)) state.buttons.upAll()
   }
 
   const onContextMenu = (event: { preventDefault(): void }): void => {
@@ -237,28 +280,24 @@ export const track = (target: PointerTarget, blurHost: BlurHost, options: TrackO
   target.addEventListener("pointerdown", onDown)
   target.addEventListener("pointerup", onUp)
   target.addEventListener("pointermove", onMove)
-  target.addEventListener("pointerenter", onEnter)
+  target.addEventListener("pointerenter", onMove)
   target.addEventListener("pointerleave", onLeave)
   target.addEventListener("pointercancel", onCancel)
   target.addEventListener("contextmenu", onContextMenu)
-  blurHost.addEventListener("blur", releaseAll)
+  blurHost.addEventListener("blur", state.buttons.upAll)
 
   return {
-    snapshot() {
-      const snapshot = snapshotOf(position, over, edges)
-      edges.pressed.clear()
-      edges.released.clear()
-      return snapshot
-    },
+    snapshot: () => state.snapshot(over),
+    rebind: state.buttons.rebind,
     dispose() {
       target.removeEventListener("pointerdown", onDown)
       target.removeEventListener("pointerup", onUp)
       target.removeEventListener("pointermove", onMove)
-      target.removeEventListener("pointerenter", onEnter)
+      target.removeEventListener("pointerenter", onMove)
       target.removeEventListener("pointerleave", onLeave)
       target.removeEventListener("pointercancel", onCancel)
       target.removeEventListener("contextmenu", onContextMenu)
-      blurHost.removeEventListener("blur", releaseAll)
+      blurHost.removeEventListener("blur", state.buttons.upAll)
     }
   }
 }
@@ -278,60 +317,50 @@ export interface TimelineEntry {
 
 /**
  * Pointer changes by snapshot index. Plain data, so it round-trips through
- * JSON; load it back with `parseTimeline`.
+ * JSON; load it back with `parseTimeline`. It names buttons, not actions, so
+ * a replay follows the bindings as live play does.
  */
 export type Timeline = ReadonlyArray<TimelineEntry>
 
-/**
- * A pointer driven by a timeline instead of an element.
- */
-export interface Scripted extends Pointer {
+/** A pointer driven by a timeline instead of an element. */
+export interface Scripted<B extends Bindings> extends Actions<B> {
   /** Number of snapshots taken so far, which is the next frame index. */
   readonly frames: () => number
 }
 
 /**
- * Plays `timeline`: before the snapshot at index `frame`, every entry for that
- * frame is applied. Buttons stay held from their press until their release.
- * The scripted pointer is always over the element.
+ * Plays `timeline` with `bindings`: before the snapshot at index `frame`,
+ * every entry for that frame is applied. Buttons stay held from their press
+ * until their release. The scripted pointer is always over the element.
  */
-export const scripted = (timeline: Timeline, start: Position = { x: 0, y: 0 }): Scripted => {
+export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeline, start: Position = { x: 0, y: 0 }): Scripted<B> => {
   const byFrame = new Map<number, Array<TimelineEntry>>()
   for (const entry of timeline) {
     const entries = byFrame.get(entry.frame)
     if (entries) entries.push(entry)
     else byFrame.set(entry.frame, [entry])
   }
-  const edges = makeEdges()
-  let position = start
+  const state = tracker(bindings, start)
   let frame = 0
   return {
     snapshot() {
-      edges.pressed.clear()
-      edges.released.clear()
       for (const entry of byFrame.get(frame) ?? []) {
-        if (entry.move !== undefined) position = entry.move
-        for (const button of entry.press ?? []) {
-          edges.held.add(button)
-          edges.pressed.add(button)
-        }
-        for (const button of entry.release ?? []) {
-          if (edges.held.delete(button)) edges.released.add(button)
-        }
+        if (entry.move !== undefined) state.move(entry.move)
+        for (const button of entry.press ?? []) state.buttons.down(button)
+        for (const button of entry.release ?? []) state.buttons.up(button)
       }
       frame += 1
-      return snapshotOf(position, true, edges)
+      return state.snapshot(true)
     },
+    rebind: state.buttons.rebind,
     dispose() {},
     frames: () => frame
   }
 }
 
-/**
- * A live pointer that also records the timeline it produces.
- */
-export interface Recording extends Pointer {
-  /** The recorded timeline; `scripted(timeline)` replays the same positions and buttons. */
+/** A live pointer that also records the timeline it produces. */
+export interface Recording<B extends Bindings> extends Actions<B> {
+  /** The recorded timeline; `scripted(bindings, timeline)` replays the same positions and buttons. */
   readonly timeline: () => Timeline
 }
 
@@ -339,7 +368,7 @@ export interface Recording extends Pointer {
  * Wraps `pointer` and records, for every snapshot, the position when it moved
  * and the buttons pressed and released since the previous one.
  */
-export const recording = (pointer: Pointer): Recording => {
+export const recording = <B extends Bindings>(pointer: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
   let frame = 0
   let last: Position | undefined
@@ -348,8 +377,8 @@ export const recording = (pointer: Pointer): Recording => {
       const snapshot = pointer.snapshot()
       const moved = last === undefined || last.x !== snapshot.position.x || last.y !== snapshot.position.y
       last = snapshot.position
-      const press = buttons.filter((button) => snapshot[button].pressed)
-      const release = buttons.filter((button) => snapshot[button].released)
+      const press = buttonNames.filter((button) => snapshot.buttons[button].pressed)
+      const release = buttonNames.filter((button) => snapshot.buttons[button].released)
       if (moved || press.length > 0 || release.length > 0) {
         entries.push({
           frame,
@@ -361,9 +390,8 @@ export const recording = (pointer: Pointer): Recording => {
       frame += 1
       return snapshot
     },
-    dispose() {
-      pointer.dispose()
-    },
+    rebind: (bindings) => pointer.rebind(bindings),
+    dispose: () => pointer.dispose(),
     timeline: () => [...entries]
   }
 }
@@ -414,9 +442,8 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
       const names: Array<Button> = []
       for (let offset = 0; offset < value.length; offset++) {
         const name: unknown = value[offset]
-        const button = buttons.find((candidate) => candidate === name)
-        if (button === undefined) return invalid(`${path}.${field}[${offset}]`, `expected one of ${buttons.join(", ")}`)
-        names.push(button)
+        if (!isButton(name)) return invalid(`${path}.${field}[${offset}]`, `expected one of ${buttonNames.join(", ")}`)
+        names.push(name)
       }
       return Result.success(names)
     }
@@ -433,3 +460,28 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
   }
   return Result.success(entries)
 }
+
+/**
+ * Why loaded data is not a rebinding for the bindings. `path` points at the
+ * offending value, for example `fire[1]`.
+ */
+export type InvalidRebinding = ButtonsInternal.InvalidRebinding
+
+/**
+ * Validates untrusted data, such as saved settings parsed from JSON, as new
+ * buttons for `bindings`: an object with exactly the same action names, each
+ * mapped to a non-empty array of button names. Pass the result to
+ * {@link Actions.rebind}; on failure, keep the defaults.
+ *
+ * @example
+ * ```ts
+ * const saved = Pointer.parseRebinding(bindings, JSON.parse(stored))
+ * if (saved.ok) mouse.rebind(saved.value)
+ * ```
+ */
+export const parseRebinding = <const B extends Bindings>(
+  bindings: B,
+  data: unknown
+): Result.Result<Rebinding<B>, InvalidRebinding> =>
+  // The checked names and buttons are exactly `Rebinding<B>`.
+  ButtonsInternal.parseButtonRebinding(buttonNames, bindings, data) as Result.Result<Rebinding<B>, InvalidRebinding>
