@@ -1,5 +1,31 @@
 # @typeonce/ritmo
 
+## 0.11.0
+
+### Minor Changes
+
+- 778301a: **Draining a service is declared, checked at compile time, and observed at run time.**
+
+  - **`System.Consumes<"snapshot">`** marks the methods of a service type that drain it. A system that declares the service with `Game.System.service` sees those methods as a compile error naming the fix (`snapshot() drains Game/Controls: declare it with Game.System.consumeService, or read the resource its capture writes`); `Game.System.consumeService` calls them. Its other methods stay available through `service` (a settings screen can still `rebind`).
+  - Every input source is marked: `Keyboard.Actions`, `Keyboard.Presses`, `Gamepad.Actions`, `Gamepad.Pads`, `Touch.Actions`, `Pointer.Actions`, `Controls.Device`, `Controls.Controls`, `Controls.Pool`, and `InputCapture.Source`. **Breaking:** a system that called `snapshot()` through `Game.System.service` no longer compiles; read the resource `InputCapture.system` writes instead (or, for a system that must drain the source itself, declare it with `Game.System.consumeService`).
+  - `Game.System.service` returns `ServiceRead<D, false>` and `consumeService` returns `ServiceRead<D, true>`.
+  - The `service-consumed-twice` lint also reports what a debug runtime saw: a consumed service whose consumers ran at more than one placement in the session, in unnamed schedules too (`Game/Drain (schedule#2, step 0, unnamed)`). Named schedules are reported once, by the static lint.
+
+- 866bcff: **`Controls` merges several input devices into one source, every device snapshot shares one shape, and capturing input is checked at compile time and by `describe()`.**
+
+  - **`Controls.actions({ buttons: [...] })`** declares the game's actions once. Its `merge({ keyboard, gamepad, touch })` builds one input source: an action is `held` while any device holds it, `pressed` when any device pressed it, and `released` when a device released it and none holds it now (the same rules as one device with all the bindings). Each device binds every declared action; a device that cannot is passed as `lacking(device, ["pause"])`, which must name exactly the actions it lacks (autocomplete offers them). A device binding an undeclared action, a device missing an action, and an action no device binds do not compile.
+  - The merged snapshot has `actions`, `vectors`, `available` (whether the last used device binds each action, so a game can offer a lacking action another way), `devices` (each device's own snapshot, keyed by the merge names: sticks, triggers, touch aim), and `lastUsed` (`null` until a device is used). The merged source exposes `rebind.<device>` for devices that can rebind, and `dispose()`. `idle({ keyboard: Keyboard.idle(...), ... })` initializes the input resource. Reading an action on a device that lacks it does not compile.
+  - **Breaking: `Keyboard.Snapshot` is `{ actions, vectors, used }`.** Read `input.actions.jump.pressed` instead of `input.jump.pressed`. Hand-written timelines and bindings are unchanged.
+  - **Breaking: `Touch.Snapshot` renames `buttons` to `actions`** (each still a `ButtonState` with `aim` and `cancelled`) **and replaces `touched` with `used`.** Read `input.actions.fire` instead of `input.buttons.fire`. `Layout.buttons` and `View.buttons` are unchanged.
+  - Every device snapshot (`Keyboard`, `Gamepad`, `Pointer`, `Touch`) has `used`: something pressed in this window or held, or a stick or swipe in use. Releases do not count, so a blur or a disconnect does not change `lastUsed`.
+  - **`Game.System.consumeService(Service)`** declares a service a system drains on each run (an input source's `snapshot()`, a message queue); it is the only way to call the draining methods (see `System.Consumes`). `describe()` warns with the new `service-consumed-twice` lint when a consumed service has more than one placement, for example the same input captured in a fixed and a render schedule, where each capture sees only the presses since the other ran. `SystemDescription.consumes` lists them.
+  - **Breaking: `InputCapture.system` keeps its declared access**: it consumes the source and writes the resource, so a `Game.System.thisTick` reader of the resource placed before the capture no longer compiles (the error names both systems and the fix: place the reader after the capture), and capturing one source twice is reported by `describe()`. The exported `InputCapture.CaptureSystem` type is removed: let the system's type be inferred.
+  - **`Debug.serviceLints`** lets a service value add findings to `describe()` lints, reported as `service-lint` with the service as subject; `Controls` uses it to list every device that lacks an action.
+
+### Patch Changes
+
+- e46f284: **Documentation pass over every public module.** Every export has JSDoc saying what it is for and which neighbouring API to use instead; examples that no longer compiled (`Session.make` without `hostClock`, `Replay.session`, the `Pointer` rebind) are fixed; `Debug.Lint` lists every lint code the runtime emits. The `stale-target` lint's fix now names `queries.x.getHandle(handle)`.
+
 ## 0.10.0
 
 ### Patch Changes
