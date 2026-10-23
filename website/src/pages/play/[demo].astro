@@ -98,6 +98,85 @@ const demo = demos[id]
         color: #ff5a36;
       }
 
+      :global(.panel-toggle),
+      :global(.panel-cell),
+      :global(.panel-reset) {
+        font: inherit;
+        color: #f3f1ec;
+        background: #0e1013;
+        border: 1px solid #3a3f48;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      :global(.panel-toggle) {
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        padding: 6px 12px;
+        font-size: 13px;
+      }
+
+      :global(.panel-toggle:hover),
+      :global(.panel-cell:hover),
+      :global(.panel-reset:hover) {
+        border-color: #ff5a36;
+      }
+
+      :global(.panel) {
+        position: fixed;
+        right: 12px;
+        bottom: 52px;
+        width: min(340px, calc(100% - 24px));
+        padding: 14px;
+        background: rgba(14, 16, 19, 0.94);
+        border: 1px solid #262a31;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+
+      :global(.panel[hidden]) {
+        display: none;
+      }
+
+      :global(.panel-title) {
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      :global(.panel-grid) {
+        display: grid;
+        grid-template-columns: auto 1fr 1fr;
+        gap: 6px 8px;
+        align-items: center;
+      }
+
+      :global(.panel-head) {
+        color: #8a8f98;
+      }
+
+      :global(.panel-cell) {
+        padding: 6px 8px;
+        text-align: left;
+      }
+
+      :global(.panel-cell.waiting) {
+        color: #ff5a36;
+        border-color: #ff5a36;
+      }
+
+      :global(.panel-note) {
+        margin: 10px 0;
+        color: #8a8f98;
+        line-height: 1.5;
+      }
+
+      :global(.panel-reset) {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+
       .start {
         position: fixed;
         inset: 0;
