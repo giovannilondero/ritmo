@@ -4,7 +4,7 @@
 // never keys. The browser host (game.ts) and the determinism fingerprint
 // (fingerprint.ts) build this same world.
 import type { HostClock } from "@typeonce/ritmo"
-import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
 import * as Ops from "@typeonce/ritmo-math/Ops"
 
@@ -62,20 +62,30 @@ export const makeControls = (devices: {
   touch: Actions.lacking(devices.touch, ["pause"])
 })
 
-export const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Controls/Input")
+/**
+ * What the rules need from the controls: one snapshot per update. The page
+ * keeps the whole merge (to rebind it); a replay provides its recorded
+ * snapshots in its place.
+ */
+export type ControlsSource = Pick<ReturnType<typeof makeControls>, "snapshot">
+
+export const ControlsInput = Descriptor.Service<ControlsSource>()("Controls/Input")
 
 // ── World ───────────────────────────────────────────────────────────────
 
-export const Position = Descriptor.Component<{ x: number; y: number }>()("Controls/Position")
-export const Velocity = Descriptor.Component<{ x: number; y: number }>()("Controls/Velocity")
+// Constructed from a decoder, so a saved world (a snapshot, a replay's start) is checked as it loads.
+const point = Decode.struct({ x: Decode.number, y: Decode.number })
+
+export const Position = Descriptor.ConstructedComponent(point)("Controls/Position")
+export const Velocity = Descriptor.ConstructedComponent(point)("Controls/Velocity")
 /** Where the ball points, in radians, and the steps until it can dash again. */
-export const Ball = Descriptor.Component<{ heading: number; cooldown: number }>()("Controls/Ball")
+export const Ball = Descriptor.ConstructedComponent(Decode.struct({ heading: Decode.number, cooldown: Decode.number }))("Controls/Ball")
 
 export const Time = Clock.resource("Controls/Time", step)
 /** Captured from the devices at the start of each update. */
 export const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Controls/InputState")
 /** How many dashes so far: the one number the page shows from the rules. */
-export const Dashes = Descriptor.Resource<number>()("Controls/Dashes")
+export const Dashes = Descriptor.ConstructedResource(Decode.number)("Controls/Dashes")
 
 export const Game = Schema.bind(
   Schema.fragment({
@@ -175,6 +185,8 @@ export const updateSchedule = Game.Schedule(AdvanceTime, CaptureInput, TogglePau
 
 /** What the page draws: the ball, the input this step, and whether the game is paused. */
 export interface Lab {
+  /** The ball's entity, for asking a debug session about it. */
+  readonly ball: number | null
   readonly position: { readonly x: number; readonly y: number }
   readonly heading: number
   /** The dash is ready again. */
@@ -191,6 +203,7 @@ export const ReadLab = Game.Inspector("Controls/ReadLab", {
 }, ({ queries, resources, machines }): Lab => {
   const found = queries.ball.each()[0]
   return {
+    ball: found?.entity.id ?? null,
     position: found?.data.position.get() ?? { x: 0, y: 0 },
     heading: found?.data.ball.get().heading ?? 0,
     ready: (found?.data.ball.get().cooldown ?? 0) === 0,
@@ -214,11 +227,22 @@ export const initialResources = () => ({
 
 export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, "Playing"))
 
+const world = (controls: ControlsSource) => ({
+  services: Game.Runtime.services(Game.Runtime.service(ControlsInput, controls)),
+  resources: initialResources(),
+  machines: initialMachines()
+})
+
 /** The world over merged controls: live devices in the page, scripted ones headless. */
-export const createControlsSimulation = (controls: ReturnType<typeof makeControls>, options: { readonly hostClock?: HostClock.HostClock } = {}) =>
-  Game.Runtime.make({
-    services: Game.Runtime.services(Game.Runtime.service(ControlsInput, controls)),
-    resources: initialResources(),
-    machines: initialMachines(),
-    debug: options.hostClock === undefined ? undefined : { hostClock: options.hostClock }
-  })
+export const createControlsSimulation = (controls: ControlsSource) => Game.Runtime.make(world(controls))
+
+/** The same world with the debug handle on, for replays and headless sessions. */
+export const createDebugSimulation = (controls: ControlsSource, hostClock: HostClock.HostClock) => {
+  const made = Game.Runtime.make({ ...world(controls), debug: { hostClock } })
+  // Named, a debug session can say which system spawned what.
+  if (made.ok) made.value.debug.nameSchedules({ setup: setupSchedule, update: updateSchedule })
+  return made
+}
+
+/** A runtime made by {@link createDebugSimulation}: one that replays can record. */
+export type DebugRuntime = Extract<ReturnType<typeof createDebugSimulation>, { readonly ok: true }>["value"]

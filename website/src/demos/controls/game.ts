@@ -2,11 +2,13 @@
 // into one source, the fixed-step loop on animation frames, and a 2D canvas.
 // The button prompts follow the device the player used last. With
 // `settings`, a panel rebinds the keyboard and the gamepad and keeps the
-// bindings in the browser.
+// bindings in the browser. With `replay`, the last seconds of play are
+// recorded, and a button replays them headless in the page and shows what a
+// debug session says about them.
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
-import { BrowserTickSource, Gamepad, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
+import { BrowserHostClock, BrowserTickSource, Gamepad, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
 
-import { ARENA, createControlsSimulation, keyBindings, makeControls, mouseBindings, padBindings, RADIUS, ReadLab, setupSchedule, step, updateSchedule } from "./sim.ts"
+import { ARENA, createDebugSimulation, keyBindings, makeControls, mouseBindings, padBindings, RADIUS, ReadLab, setupSchedule, step, updateSchedule } from "./sim.ts"
 import type { Lab } from "./sim.ts"
 
 const palette = {
@@ -166,6 +168,8 @@ const drawMeter = (context: CanvasRenderingContext2D, move: { readonly x: number
 export interface Options {
   /** Shows the controls panel, which rebinds the keyboard and the gamepad. */
   readonly settings?: boolean
+  /** Records the last seconds of play, and replays them on a button. */
+  readonly replay?: boolean
 }
 
 const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ""): HTMLElementTagNameMap[K] => {
@@ -201,7 +205,9 @@ export const mountControls = async (host: HTMLElement, options: Options = {}): P
   const coarse = window.matchMedia("(pointer: coarse)").matches
 
   const controls = makeControls({ keyboard, mouse, gamepad, touch })
-  const made = createControlsSimulation(controls)
+  // The debug handle is on so the replay page can record through it. A
+  // shipped game turns it on in development builds only.
+  const made = createDebugSimulation(controls, BrowserHostClock.make(window))
   if (!made.ok) {
     controls.dispose()
     throw new Error("The controls demo could not start.")
@@ -209,6 +215,8 @@ export const mountControls = async (host: HTMLElement, options: Options = {}): P
   const runtime = made.value
   const setup = runtime.tick(setupSchedule)
   if (!setup.ok) console.error(setup.error)
+  // Loaded only for the replay page, so the other pages do not ship the devtools.
+  const replays = options.replay === true ? (await import("./replays.ts")).recordReplays(runtime, host, () => lab.ball) : undefined
 
   // The bindings the player has now, starting from any saved ones.
   const saved = options.settings === true ? loadSaved() : {}
@@ -457,6 +465,7 @@ export const mountControls = async (host: HTMLElement, options: Options = {}): P
     if (loop.ok) loop.value.stop()
     observer.disconnect()
     panel?.dispose()
+    replays?.dispose()
     controls.dispose()
   }
 }

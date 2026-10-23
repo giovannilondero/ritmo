@@ -30,6 +30,13 @@ export const demos = {
     controls: "Open Controls in the corner, click a binding, then press the new key or pad button.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
     load: () => import("./controls/rebind.ts")
+  },
+  replay: {
+    title: "Controls, recorded",
+    description: "The same ball, recording the last ten seconds as a replay you can open on the spot.",
+    controls: "Move and dash for a while, then press Replay in the corner.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
+    load: () => import("./controls/replay.ts")
   }
 } as const
 
