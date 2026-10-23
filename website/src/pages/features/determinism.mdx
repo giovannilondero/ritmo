@@ -68,12 +68,18 @@ const makeSimulation = (hostClock: HostClock.HostClock) => ({
   schedules: { update }
 })
 // ---cut---
-const result = Determinism.check(({ hostClock }) => makeSimulation(hostClock), {
-  schedule: "update",
-  frames: 1800, // thirty seconds
-  hostClock: HostClock.test()
-})
-if (!result.ok) throw new Error(JSON.stringify(result))
+const result = Determinism.check(
+  ({ hostClock }) => makeSimulation(hostClock),
+  {
+    schedule: "update",
+    frames: 1800, // thirty seconds
+    hostClock: HostClock.test()
+  }
+)
+
+if (!result.ok) {
+  throw new Error(JSON.stringify(result))
+}
 ```
 
 ## What it buys

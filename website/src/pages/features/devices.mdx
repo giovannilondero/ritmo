@@ -28,16 +28,27 @@ declare const mouse: Pointer.Actions<typeof clicks>
 declare const gamepad: Gamepad.Actions<typeof pad>
 declare const touch: Touch.Actions<"dash", "move">
 // ---cut---
-const Actions = Controls.actions({ buttons: ["dash", "pause"], vectors: ["move"] })
+const Actions = Controls.actions({
+  buttons: ["dash", "pause"],
+  vectors: ["move"]
+})
 
 const keys = {
   move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }),
   dash: [" "],
   pause: ["Escape"]
 } as const
+
 const clicks = { dash: ["primary"] } as const
+
 const pad = {
-  move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+  move: Gamepad.vector({
+    stick: "left",
+    up: ["dpadUp"],
+    down: ["dpadDown"],
+    left: ["dpadLeft"],
+    right: ["dpadRight"]
+  }),
   dash: ["south"], // A on Xbox, Cross on PlayStation, B on Nintendo
   pause: ["start"]
 } as const
@@ -46,6 +57,7 @@ const controls = Actions.merge({
   // Used together, so they count as one device
   desktop: Actions.group({ keyboard, mouse }), // [!code highlight]
   gamepad,
+
   // The touch layout has no pause button, and says so
   touch: Actions.lacking(touch, ["pause"]) // [!code highlight]
 })
@@ -73,7 +85,10 @@ declare const input: ReturnType<typeof controls.snapshot>
 
 // Keys, d-pad, stick, or touch stick: never longer than 1, even all at once
 walk(input.vectors.move)
-if (input.actions.dash.pressed) dash()
+
+if (input.actions.dash.pressed) {
+  dash()
+}
 ```
 
 ## Prompts that follow the player
@@ -94,10 +109,16 @@ declare const touch: Touch.Actions<"dash", "move">
 const controls = Actions.merge({ desktop: Actions.group({ keyboard, mouse }), gamepad, touch: Actions.lacking(touch, ["pause"]) })
 declare const input: ReturnType<typeof controls.snapshot>
 // ---cut---
-const device = input.lastUsed // "desktop" | "gamepad" | "touch" | null
+// "desktop" | "gamepad" | "touch" | null
+const device = input.lastUsed
 
-const prompt = device === "gamepad" ? "Ⓐ to dash" : device === "touch" ? "Tap to dash" : "Space to dash"
-const showPause = input.available.pause // false while playing on touch
+const prompt =
+  device === "gamepad" ? "Ⓐ to dash"
+  : device === "touch" ? "Tap to dash"
+  : "Space to dash"
+
+// false while playing on touch
+const showPause = input.available.pause
 ```
 
 The pad reports its maker too (`devices.gamepad.id`), so the demo above

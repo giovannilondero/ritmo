@@ -40,13 +40,16 @@ const recorder = Replay.recorder(runtime, {
   name: "update",
   keep: 30, // seconds
   step: Clock.hz(60),
+  hostClock: HostClock.standard,
+
   // Posts each replay to the dev server, which writes it to .replays/
   sink: ReplayViteSink.make({ fetch }),
-  hostClock: HostClock.standard,
+
   saveOn: { failure: true, invariants: [ScoreNeverDrops] } // [!code highlight]
 })
 
-recorder.save("the boss walked through the wall") // a key in the dev build
+// Bound to a key in the dev build
+recorder.save("the boss walked through the wall")
 ```
 
 `ReplayVitePlugin.plugin()` in the Vite config receives the files and
@@ -77,11 +80,14 @@ const makeGame = (controls: Replay.Source<Input>, hostClock: HostClock.HostClock
 const make = (playback: Replay.Playback) => {
   const hostClock = HostClock.test()
   const runtime = makeGame(playback.source(Controls), hostClock) // [!code highlight]
+
   return { runtime, schedules: { update }, hostClock }
 }
 
-const file = Replay.parse(JSON.parse(readFileSync(".replays/boss.json", "utf8")))
+const json = readFileSync(".replays/boss.json", "utf8")
+const file = Replay.parse(JSON.parse(json))
 const replay = file.ok ? Replay.session(make, file.value) : file
+
 if (replay.ok) {
   console.log(replay.value.play())
   console.log(replay.value.session.whyResource(Dashes))
@@ -116,7 +122,8 @@ declare const file: Replay.ReplayFile
 // Ticks 1400 to 1412 only: a few kilobytes for the test folder
 const small = Replay.extract(make, file, { from: 1400, to: 1412 })
 
-// Plays twice and compares: a difference means something outside the world leaks in
+// Plays twice and compares:
+// a difference means something outside the world leaks in
 const same = Replay.verify(make, file)
 ```
 

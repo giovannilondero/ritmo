@@ -25,17 +25,48 @@ joining never also jumps.
 ```ts twoslash title="players.ts"
 import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
 // ---cut---
-const Actions = Controls.actions({ buttons: ["talk", "back"], vectors: ["move"] })
-const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" }) // [!code highlight]
+const Actions = Controls.actions({
+  buttons: ["talk", "back"],
+  vectors: ["move"]
+})
 
-const wasd = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), talk: [" "], back: ["q"] } as const
-const arrows = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), talk: ["Enter"], back: ["Backspace"] } as const
-const pad = { move: Gamepad.vector({ stick: "left" }), talk: ["south"], back: ["east"] } as const
+// [!code highlight:5]
+const Players = Controls.players(Actions, {
+  slots: ["p1", "p2"],
+  join: "any",
+  leave: "back"
+})
+
+const wasd = {
+  move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }),
+  talk: [" "],
+  back: ["q"]
+} as const
+
+const arrows = {
+  move: Keyboard.vector({
+    up: ["ArrowUp"],
+    down: ["ArrowDown"],
+    left: ["ArrowLeft"],
+    right: ["ArrowRight"]
+  }),
+  talk: ["Enter"],
+  back: ["Backspace"]
+} as const
+
+const pad = {
+  move: Gamepad.vector({ stick: "left" }),
+  talk: ["south"],
+  back: ["east"]
+} as const
 
 const players = Players.pool({
-  left: Keyboard.actions(window, wasd), // two players on one keyboard
+  // Two players on one keyboard
+  left: Keyboard.actions(window, wasd),
   right: Keyboard.actions(window, arrows),
-  pads: Gamepad.pads(window, pad, 4) // every pad on its own
+
+  // Every pad on its own
+  pads: Gamepad.pads(window, pad, 4)
 })
 ```
 
@@ -54,11 +85,15 @@ declare const input: ReturnType<typeof players.snapshot>
 declare const spawnSecondPlayer: () => void
 // ---cut---
 // In a system: input = resources.input.get()
-if (input.p2.event === "joined") spawnSecondPlayer()
+if (input.p2.event === "joined") {
+  spawnSecondPlayer()
+}
+
 const walk = input.p2.vectors.move
 
 if (input.p2.joined && input.p2.device === "pads") {
-  const connected = input.p2.connected // the pad was unplugged, the seat is kept
+  // false while the pad is unplugged: the seat is kept
+  const connected = input.p2.connected
 }
 ```
 

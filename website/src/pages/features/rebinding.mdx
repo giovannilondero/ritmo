@@ -27,8 +27,10 @@ const pad = { move: Gamepad.vector({ stick: "left" }), dash: ["south"], pause: [
 declare const keyboard: Keyboard.Actions<typeof keys>
 declare const gamepad: Gamepad.Actions<typeof pad>
 // ---cut---
-// Dash moves to J, and to the west button (X on Xbox, Square on PlayStation)
+// Dash moves to J on the keyboard...
 keyboard.rebind({ ...keys, dash: ["j"] })
+
+// ...and to the west button on the pad (X on Xbox, Square on PlayStation)
 gamepad.rebind({ ...pad, dash: ["west"] })
 ```
 
@@ -53,7 +55,10 @@ const presses = Keyboard.presses(window)
 
 // Each frame while the screen waits for the new dash key:
 const press = presses.snapshot()[0]
-if (press !== undefined) keyboard.rebind({ ...keys, dash: [press.key] })
+
+if (press !== undefined) {
+  keyboard.rebind({ ...keys, dash: [press.key] })
+}
 
 // And for the pad, the first button pressed:
 const button = Gamepad.buttonNames.find((name) => snapshot.buttons[name].pressed)
@@ -74,13 +79,21 @@ declare const gamepad: Gamepad.Actions<typeof pad>
 declare const stored: string
 // ---cut---
 const saved = Gamepad.parseRebinding(pad, JSON.parse(stored))
-if (saved.ok) gamepad.rebind(saved.value)
-else console.warn(saved.error.message) // and keep the defaults
+
+if (saved.ok) {
+  gamepad.rebind(saved.value)
+} else {
+  // Keep the defaults
+  console.warn(saved.error.message)
+}
 ```
 
 ```text
-{ _tag: "InvalidRebinding", path: "dash[0]",
-  message: "expected one of south, east, west, north, leftBumper, ..." }
+{
+  _tag: "InvalidRebinding",
+  path: "dash[0]",
+  message: "expected one of south, east, west, north, leftBumper, ..."
+}
 ```
 
 ## Mistakes in code do not compile
@@ -94,7 +107,10 @@ const pad = { move: Gamepad.vector({ stick: "left" }), dash: ["south"], pause: [
 declare const gamepad: Gamepad.Actions<typeof pad>
 // ---cut---
 // @errors: 2322
+// The game has no "jump" action
 gamepad.rebind({ ...pad, jump: ["north"] })
+
+// Buttons are named by place: "south", not "A"
 gamepad.rebind({ ...pad, dash: ["A"] })
 ```
 
