@@ -142,6 +142,32 @@ describe("Controls.players", () => {
     expect(plugged.p1.vectors.move).toEqual({ x: 1, y: 0 })
   })
 
+  it("reports a seated slot's join before a leave pressed on the same snapshot", () => {
+    const pool = Players.pool({ left: Keyboard.scripted(leftKeys, [tap(0, "back")]), right: Keyboard.scripted(rightKeys, []) })
+    pool.seat("p1", "left")
+    pool.setJoining(true)
+    expect(pool.snapshot().p1).toMatchObject({ joined: true, event: "joined" })
+    expect(pool.snapshot().p1).toMatchObject({ joined: true, event: null })
+  })
+
+  it("tells two pads of one model apart by their place: neither takes the other's slot", () => {
+    const base = Gamepad.scriptedPads(padKeys, [
+      [{ frame: 0, press: ["south"], release: ["south"] }, { frame: 2, connected: false }],
+      [{ frame: 1, press: ["south"], release: ["south"] }, { frame: 2, connected: false }, { frame: 3, connected: true }]
+    ])
+    // Both report the same id, as two controllers of one model do.
+    const same = { ...base, snapshot: () => base.snapshot().map((pad) => ({ ...pad, id: "Xbox Controller" })) }
+    const pool = Players.pool({ left: Keyboard.scripted(leftKeys, []), pads: same })
+    pool.setJoining(true)
+    pool.snapshot()
+    pool.snapshot()
+    pool.snapshot()
+    const back = pool.snapshot()
+    // The second pad came back: it is p2's again, and p1 waits for its own.
+    expect(back.p1).toMatchObject({ joined: true, connected: false })
+    expect(back.p2).toMatchObject({ joined: true, connected: true })
+  })
+
   it("starts idle with every slot empty and joining closed", () => {
     expect(Players.idle({ left: Keyboard.idle(leftKeys), pads: Gamepad.idle(padKeys) })).toEqual({
       joining: false,

@@ -571,6 +571,9 @@ export interface PlayerSet<A extends string, V extends string, S extends string,
 /** Rejects a slot named like the snapshot's own field. */
 type SlotNames<S extends string> = [S & "joining"] extends [never] ? unknown : "joining is the snapshot's own field: name the slot something else"
 
+/** Rejects a button action named like `join: "any"`, which would read as any button. */
+type NoAnyAction<A extends string> = [A & "any"] extends [never] ? unknown : "an action named any reads as join: \"any\" (any button): rename the action"
+
 /**
  * Declares the players of a local multiplayer game over `actions`: the
  * `slots` (the most players at once, in join order), the button action
@@ -581,7 +584,9 @@ type SlotNames<S extends string> = [S & "joining"] extends [never] ? unknown : "
  * snapshot reports `event: "joined"` with the player's input idle, so the
  * press does nothing else. A slot keeps its name when another empties. A
  * pad that disconnects keeps its slot (`connected: false`) and returns to
- * it when it comes back. Leaving by button works only while joining is
+ * it when it comes back (two pads of one model share an id, so they are
+ * told apart by their place in the pad list: each returns to the slot
+ * holding that place). Leaving by button works only while joining is
  * open; otherwise `leave` is an ordinary action (a pause menu), and
  * `pool.leave(slot)` frees the slot. `pool.seat(slot, device)` puts a
  * player in without a press: one who is in from the start.
@@ -608,7 +613,7 @@ export const players = <
   const J extends A | "any",
   const L extends A = never
 >(
-  actions: ActionSet<A, V>,
+  actions: ActionSet<A, V> & NoAnyAction<A>,
   options: { readonly slots: S & SlotNames<S[number]>; readonly join: J; readonly leave?: L }
 ): PlayerSet<A, V, S[number], Exclude<J, "any">> => {
   type Snap = DeviceSnapshot<string, string>
@@ -675,6 +680,8 @@ export const players = <
           }
           if (joining && leaveAction !== undefined) {
             for (const [slot, holder] of held) {
+              // A slot seated since the last snapshot reports its join first; its input is idle there.
+              if (events.get(slot) === "joined") continue
               const unit = byKey.get(holder.key)
               const pressed = (unit?.snapshot.actions as Readonly<Record<string, ActionState | undefined>> | undefined)?.[leaveAction]?.pressed
               if (unit?.connected === true && pressed === true) {

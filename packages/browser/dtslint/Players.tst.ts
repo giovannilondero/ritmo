@@ -74,6 +74,8 @@ describe("Controls.players", () => {
     // @ts-expect-error Type '[]' is not assignable
     Controls.players(Actions, { slots: [], join: "join" })
     expect(Controls.players(Actions, { slots: ["p1"], join: "any" }).slots).type.toBe<ReadonlyArray<"p1">>()
+    // @ts-expect-error an action named any reads as join
+    Controls.players(Controls.actions({ buttons: ["any", "back"] }), { slots: ["p1"], join: "back" })
   })
 
   it("captures into a resource initialized with idle, and keeps snapshot() to the capture", () => {
