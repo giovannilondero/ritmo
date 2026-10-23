@@ -114,13 +114,40 @@ import type { CommandAccess, CommandsApi, NotDeclared } from "./Command.ts"
  * ```
  */
 
+declare const consumedMethods: unique symbol
+
+/**
+ * Marks the methods of a service type that drain it, for
+ * {@link consumeService}: `interface Source extends System.Consumes<"snapshot">`.
+ * A system that declares the service with {@link service} sees those methods
+ * as a compile error naming the fix; one that declares it with
+ * {@link consumeService} calls them. The mark is type-only (an optional
+ * property no value sets). Use it in packages that author draining services
+ * (input sources, queues); game code does not need it.
+ */
+export interface Consumes<Methods extends string> {
+  readonly [consumedMethods]?: Methods
+}
+
+/**
+ * A service value as a system sees it: with {@link service}, the methods a
+ * {@link Consumes} mark names become an error naming {@link consumeService}.
+ */
+type ServiceView<V, Name extends string, Consumed extends boolean> = Consumed extends true ? V
+  : V extends { readonly [consumedMethods]?: infer Methods extends string } ? {
+    readonly [P in keyof V]: P extends Methods
+      ? (this: `${P & string}() drains ${Name}: declare it with Game.System.consumeService, or read the resource its capture writes`) => never
+      : V[P]
+  }
+  : V
+
 /**
  * Declares a dependency-injected service requirement for a system.
  */
-export interface ServiceRead<D extends Descriptor<"service", string, any>> {
+export interface ServiceRead<D extends Descriptor<"service", string, any>, Consumed extends boolean = boolean> {
   readonly descriptor: D
   /** Set by {@link consumeService}: each run takes what arrived since the previous one. */
-  readonly consumes?: true
+  readonly consumes?: Consumed
 }
 
 /**
@@ -136,7 +163,7 @@ export interface ServiceRead<D extends Descriptor<"service", string, any>> {
  */
 export const service = <D extends Descriptor<"service", string, any>>(
   descriptor: D
-): ServiceRead<D> => ({
+): ServiceRead<D, false> => ({
   descriptor
 })
 
@@ -144,14 +171,15 @@ export const service = <D extends Descriptor<"service", string, any>>(
  * Declares a service the system drains: each run takes what arrived since
  * the previous one, so a second reader would see only what the first left
  * (an input source's `snapshot()`, a message queue). It gives the same
- * access as {@link service}; `describe()` warns with
+ * access as {@link service}, plus the methods a {@link Consumes} mark names
+ * (which {@link service} rejects); `describe()` warns with
  * `service-consumed-twice` when the service is consumed at more than one
  * placement. Drain it in one system and share the result through a
  * resource. Use {@link service} for services a system only calls.
  */
 export const consumeService = <D extends Descriptor<"service", string, any>>(
   descriptor: D
-): ServiceRead<D> => ({
+): ServiceRead<D, true> => ({
   descriptor,
   consumes: true
 })
@@ -1021,7 +1049,9 @@ type EventContext<Spec extends AnySystemSpec> = {
  */
 type ServiceContext<Spec extends AnySystemSpec> = {
   readonly [K in keyof Spec["services"]]:
-    Spec["services"][K] extends ServiceRead<infer D> ? Descriptor.Value<D> : never
+    Spec["services"][K] extends ServiceRead<infer D, infer Consumed>
+      ? ServiceView<Descriptor.Value<D>, Descriptor.Name<D>, Consumed>
+      : never
 }
 
 /**

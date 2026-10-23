@@ -285,6 +285,8 @@ export interface DescribeInput {
   readonly commandUses: ReadonlyMap<string, ReadonlySet<string>>
   /** Systems that ran in this session. */
   readonly ranSystems: ReadonlySet<string>
+  /** Where systems that consume a service ran in this session, by service. */
+  readonly consumedPlacements: ReadonlyArray<readonly [string, ReadonlyArray<string>]>
   /** Commands skipped because they would have broken a `Schema.requires` requirement. */
   readonly requirementViolations: ReadonlyArray<Debug.RequirementViolation>
   readonly nextStateReplacements: ReadonlyArray<Debug.NextStateReplacement>
@@ -504,6 +506,18 @@ export const describe = (input: DescribeInput): Debug.Description => {
         })
       }
     }
+  }
+  // Observed with debug, whether or not schedules are named: a consumer in
+  // an unnamed schedule (or one the named set leaves out) is seen once it runs.
+  const consumedStatically = new Set(lints.filter((lint) => lint.code === "service-consumed-twice").map((lint) => lint.subject))
+  for (const [name, where] of input.consumedPlacements) {
+    if (where.length < 2 || consumedStatically.has(name)) continue
+    lints.push({
+      severity: "warning",
+      code: "service-consumed-twice",
+      subject: name,
+      message: `${name} was consumed by ${where.join(" and ")} in this session: each run takes what arrived since the previous one, so each sees only what the others left (an input press reaches one of them)`
+    })
   }
   // Observed with debug, whether or not schedules are named.
   for (const violation of input.requirementViolations) {

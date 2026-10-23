@@ -58,6 +58,7 @@
  * }
  * ```
  */
+import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
 import { anyUsed } from "./internal/used.ts"
@@ -159,7 +160,7 @@ export type OnlyActionsOf<R, B extends Bindings> = {
   readonly [Name in Exclude<keyof R, keyof B>]: `${Name & string} is not an action of these bindings`
 }
 
-export interface Actions<B extends Bindings> {
+export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
   /**
    * Returns every action's state and starts a new press/release window.
    */
@@ -343,7 +344,7 @@ export interface KeyPress {
 }
 
 /** Every key press on a host, bound or not; see {@link presses}. */
-export interface Presses {
+export interface Presses extends System.Consumes<"snapshot"> {
   /** The keys that went down since the previous snapshot, in order, without auto-repeats. */
   snapshot(): ReadonlyArray<KeyPress>
   /** Removes the event listener. */

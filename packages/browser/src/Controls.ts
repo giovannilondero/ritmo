@@ -56,6 +56,7 @@
  * const prompt = input.lastUsed === "gamepad" ? "Ⓐ" : "Space"
  * ```
  */
+import type * as System from "@typeonce/ritmo/System"
 import * as Debug from "@typeonce/ritmo/Debug"
 
 import type { ActionState } from "./Keyboard.ts"
@@ -70,7 +71,7 @@ export interface DeviceSnapshot<A extends string> {
 }
 
 /** A device `Controls` can merge: `Keyboard.actions`, `Gamepad.actions`, `Touch.track`, or their scripted forms. */
-export interface Device<A extends string = string> {
+export interface Device<A extends string = string> extends System.Consumes<"snapshot"> {
   snapshot(): DeviceSnapshot<A>
   dispose(): void
 }
@@ -143,7 +144,7 @@ export interface Snapshot<A extends string, Devices> {
 }
 
 /** The merged source, for `InputCapture.system(...)`. */
-export interface Controls<A extends string, R> {
+export interface Controls<A extends string, R> extends System.Consumes<"snapshot"> {
   /** Takes every device's snapshot, starting a new press window on each, and merges them. */
   snapshot(): Snapshot<A, DevicesOf<R>>
   /** Each merged device's `rebind`, for a settings screen; devices without one (touch) are not listed. */

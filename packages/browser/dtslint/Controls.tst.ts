@@ -95,6 +95,25 @@ describe("Controls", () => {
     })
   })
 
+  it("rejects snapshot() through a plain service, and keeps the other methods", () => {
+    const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings> }) => Actions.merge(devices)
+    const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTypes/Plain")
+    const Game = Schema.bind(Schema.fragment({}))
+    Game.System("ControlsTypes/Settings", { services: { controls: Game.System.service(ControlsInput) } }, ({ services }) => {
+      expect(services.controls.rebind.keyboard({ jump: ["w"], pause: ["p"] })).type.toBe<void>()
+      // @ts-expect-error snapshot() drains ControlsTypes/Plain: declare it with Game.System.consumeService, or read the resource its capture writes
+      services.controls.snapshot()
+    })
+    Game.System("ControlsTypes/Drain", { services: { controls: Game.System.consumeService(ControlsInput) } }, ({ services }) => {
+      expect(services.controls.snapshot().actions.jump.pressed).type.toBe<boolean>()
+    })
+    const KeysInput = Descriptor.Service<Keyboard.Actions<typeof keyBindings>>()("ControlsTypes/Keys")
+    Game.System("ControlsTypes/Keys", { services: { keys: Game.System.service(KeysInput) } }, ({ services }) => {
+      // @ts-expect-error snapshot() drains ControlsTypes/Keys
+      services.keys.snapshot()
+    })
+  })
+
   it("declares at least one action", () => {
     // @ts-expect-error Argument of type '[]' is not assignable
     Controls.actions([])

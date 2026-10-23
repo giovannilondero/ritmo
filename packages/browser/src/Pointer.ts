@@ -36,6 +36,7 @@
  * capture the timeline a session produced. `parseTimeline(...)` validates a
  * timeline loaded from JSON.
  */
+import type * as System from "@typeonce/ritmo/System"
 import * as Result from "@typeonce/ritmo/Result"
 
 import type { ActionState } from "./Keyboard.ts"
@@ -66,7 +67,7 @@ export interface Snapshot {
   readonly middle: ActionState
 }
 
-export interface Pointer {
+export interface Pointer extends System.Consumes<"snapshot"> {
   /**
    * Returns the pointer state and starts a new press/release window.
    */
