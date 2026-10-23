@@ -1,0 +1,130 @@
+---
+layout: ../../layouts/Docs.astro
+title: Replays that become tests
+description: Keep the last seconds of play as a file, open it headless, ask what happened, and keep the moment that matters as a test.
+---
+
+import Game from "../../components/Game.astro"
+
+Move and dash for a few seconds, then press **Replay** in the corner. The
+last ten seconds open as a fresh world, right in this tab, play back tick
+by tick, and answer questions about what happened.
+
+<Game id="replay" />
+
+A bug seen once in a playtest is the hardest kind to fix: by the time
+someone reads the report, the moment is gone. A replay keeps it. It is
+small (plain JSON, a few kilobytes a second), it plays back exactly, and
+once the bug is found the few ticks that show it become an ordinary test.
+
+## Recording
+
+In a development build, a recorder keeps a rolling window of the
+simulation's updates. It saves on demand, when a tick fails, or when a
+rule you wrote breaks.
+
+```ts twoslash title="dev.ts"
+import { Clock, Decode, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Invariant, Replay } from "@typeonce/ritmo-devtools"
+import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
+const Score = Descriptor.ConstructedResource(Decode.number)("Game/Score")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const update = Game.Schedule()
+const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.standard } })
+if (!made.ok) throw new Error("setup")
+const runtime = made.value
+declare const ScoreNeverDrops: Invariant.Invariant
+// ---cut---
+const recorder = Replay.recorder(runtime, {
+  schedule: update,
+  name: "update",
+  keep: 30, // seconds
+  step: Clock.hz(60),
+  // Posts each replay to the dev server, which writes it to .replays/
+  sink: ReplayViteSink.make({ fetch }),
+  hostClock: HostClock.standard,
+  saveOn: { failure: true, invariants: [ScoreNeverDrops] } // [!code highlight]
+})
+
+recorder.save("the boss walked through the wall") // a key in the dev build
+```
+
+`ReplayVitePlugin.plugin()` in the Vite config receives the files and
+prints where it wrote each one.
+
+## Asking it what happened
+
+The replay opens in Node as a normal headless world. The game builds itself
+with the recorded input in place of the devices, and a debug session runs
+over the replayed ticks:
+
+```ts twoslash title="debug.ts"
+import { Decode, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Replay } from "@typeonce/ritmo-devtools"
+declare const readFileSync: (path: string, encoding: "utf8") => string
+type Input = { readonly dash: boolean }
+const Controls = Descriptor.Service<Replay.Source<Input>>()("Game/Controls")
+const Dashes = Descriptor.ConstructedResource(Decode.number)("Game/Dashes")
+const Game = Schema.bind(Schema.fragment({ resources: { Dashes } }))
+const update = Game.Schedule()
+const makeGame = (controls: Replay.Source<Input>, hostClock: HostClock.HostClock) => {
+  const made = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Controls, controls)), resources: { Dashes: 0 }, debug: { hostClock } })
+  if (!made.ok) throw new Error("setup")
+  return made.value
+}
+// ---cut---
+// The same world, fed what the devices said back then
+const make = (playback: Replay.Playback) => {
+  const hostClock = HostClock.test()
+  const runtime = makeGame(playback.source(Controls), hostClock) // [!code highlight]
+  return { runtime, schedules: { update }, hostClock }
+}
+
+const file = Replay.parse(JSON.parse(readFileSync(".replays/boss.json", "utf8")))
+const replay = file.ok ? Replay.session(make, file.value) : file
+if (replay.ok) {
+  console.log(replay.value.play())
+  console.log(replay.value.session.whyResource(Dashes))
+}
+```
+
+```text
+run update: 168 frames (f1-f168) in 0ms, completed
+checkpoints match
+
+Controls/Dashes is now 2; last 2 changes (oldest first):
+f82 update  Controls/MoveBall  resource Controls/Dashes 0 -> 1
+f137 update  Controls/MoveBall  resource Controls/Dashes 1 -> 2
+```
+
+"Checkpoints match" is the replay checking itself: the file holds hashes of
+the world as it was recorded, and the replayed world matched every one.
+All the questions of [headless debugging](/docs/devtools/) work here:
+`why`, `journal`, invariants that stop the run on the first bad frame.
+
+## From replay to test
+
+A replay is something to read, not to keep. Once the bug is found, cut the
+ticks that show it into a small replay of its own, with its own start, and
+keep that next to a test:
+
+```ts twoslash title="debug.ts"
+import { Replay } from "@typeonce/ritmo-devtools"
+declare const make: Parameters<typeof Replay.session>[0]
+declare const file: Replay.ReplayFile
+// ---cut---
+// Ticks 1400 to 1412 only: a few kilobytes for the test folder
+const small = Replay.extract(make, file, { from: 1400, to: 1412 })
+
+// Plays twice and compares: a difference means something outside the world leaks in
+const same = Replay.verify(make, file)
+```
+
+## Why it can work at all
+
+The simulation reads only what is in the world (time from its clock,
+randomness from a seeded generator) and input through services that hand
+out plain snapshots. So the input is all a replay needs to store. A service
+that is not plain data, and so could not be replayed, is a compile error
+that names it, not a replay that silently goes wrong. The same property is
+what makes the game play the [same on every device](/features/determinism/).

@@ -1,0 +1,101 @@
+---
+layout: ../../layouts/Docs.astro
+title: Local multiplayer
+description: Couch co-op in the browser. Players join by pressing a button on a free keyboard half or gamepad, and can leave and come back.
+---
+
+import Game from "../../components/Game.astro"
+
+Player one walks with the arrows. For a second player, press any key on
+WASD, or any button on a gamepad, and they appear next to you. Q (or Ⓑ)
+leaves.
+
+<Game id="town" ratio="3 / 2" />
+
+A single player on many devices is a merge. Several players is a **pool**:
+each device belongs to whoever joined with it, and the game reads each
+player on their own.
+
+## Players are slots
+
+The game names its slots. A device nobody holds joins the first free slot
+when someone presses a button on it, and that press does nothing else, so
+joining never also jumps.
+
+```ts twoslash title="players.ts"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+// ---cut---
+const Actions = Controls.actions({ buttons: ["talk", "back"], vectors: ["move"] })
+const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" }) // [!code highlight]
+
+const wasd = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), talk: [" "], back: ["q"] } as const
+const arrows = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), talk: ["Enter"], back: ["Backspace"] } as const
+const pad = { move: Gamepad.vector({ stick: "left" }), talk: ["south"], back: ["east"] } as const
+
+const players = Players.pool({
+  left: Keyboard.actions(window, wasd), // two players on one keyboard
+  right: Keyboard.actions(window, arrows),
+  pads: Gamepad.pads(window, pad, 4) // every pad on its own
+})
+```
+
+Each slot has its own actions, and tells the game when someone arrives or
+goes:
+
+```ts twoslash title="players.ts"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+const Actions = Controls.actions({ buttons: ["talk", "back"], vectors: ["move"] })
+const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" })
+const wasd = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), talk: [" "], back: ["q"] } as const
+const arrows = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), talk: ["Enter"], back: ["Backspace"] } as const
+const pad = { move: Gamepad.vector({ stick: "left" }), talk: ["south"], back: ["east"] } as const
+const players = Players.pool({ left: Keyboard.actions(window, wasd), right: Keyboard.actions(window, arrows), pads: Gamepad.pads(window, pad, 4) })
+declare const input: ReturnType<typeof players.snapshot>
+declare const spawnSecondPlayer: () => void
+// ---cut---
+// In a system: input = resources.input.get()
+if (input.p2.event === "joined") spawnSecondPlayer()
+const walk = input.p2.vectors.move
+
+if (input.p2.joined && input.p2.device === "pads") {
+  const connected = input.p2.connected // the pad was unplugged, the seat is kept
+}
+```
+
+There are two slots, so a third player is an error, not an `undefined` at
+run time:
+
+```ts twoslash title="players.ts"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+const Actions = Controls.actions({ buttons: ["talk", "back"], vectors: ["move"] })
+const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" })
+const pad = { move: Gamepad.vector({ stick: "left" }), talk: ["south"], back: ["east"] } as const
+const players = Players.pool({ pads: Gamepad.pads(window, pad, 4) })
+declare const input: ReturnType<typeof players.snapshot>
+// ---cut---
+// @errors: 2339
+input.p3.actions.talk
+```
+
+## What the pool takes care of
+
+- **Joining and leaving.** Joining is open when the game says so
+  (`setJoining`), once for drop-in play or only on a join screen. A pause
+  menu frees a slot with `leave("p2")`.
+- **Seats from the start.** A player who is in before anyone presses
+  anything is seated by the game: `seat("p1", "right")`, or the first pad
+  with `seat("p1", { pads: 0 })`. Taken seats come back as a reason, not a
+  crash.
+- **Unplugged pads.** A pad that disconnects keeps its slot, and the player
+  is back in the moment it reconnects.
+- **Touch and rebinding** work as they do for one player: the town seats
+  player one on on-screen buttons on a phone.
+
+Every part of this is tested headless with scripted keyboards and pads
+(`Gamepad.scriptedPads`), with no controller in reach.
+
+Ritmo plays local multiplayer: everyone on one machine. Online play is not
+something it ships, though its rules running the
+[same everywhere](/features/determinism/) are the footing that kind of
+netcode stands on. The setup in full is in
+[Loop, input, rendering](/docs/browser/#local-multiplayer).

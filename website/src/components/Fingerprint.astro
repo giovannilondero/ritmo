@@ -1,0 +1,151 @@
+---
+// The same scripted run, fingerprinted twice: in Node when the site was built,
+// and in the reader's browser when they press the button. The rules are the
+// controls demo's (src/demos/controls), with scripted devices.
+import { fingerprint, FRAMES, trigonometry } from "../demos/controls/fingerprint.ts"
+
+const built = fingerprint()
+const math = trigonometry()
+---
+
+<figure class="fingerprint" data-run={built.hash} data-ops={math.ops} data-math={math.math}>
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Built in Node</th>
+        <th>In your browser</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">The ball, {FRAMES} updates <span class="muted">every position</span></th>
+        <td><code>{built.hash}</code></td>
+        <td data-cell="run"><span class="muted">not run yet</span></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>Ops</code> trigonometry <span class="muted">sin, cos, atan2 ×1000</span></th>
+        <td><code>{math.ops}</code></td>
+        <td data-cell="ops"><span class="muted">not run yet</span></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>Math</code> trigonometry <span class="muted">the same calls</span></th>
+        <td><code>{math.math}</code></td>
+        <td data-cell="math"><span class="muted">not run yet</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <figcaption>
+    <button type="button" class="run">Run it in this browser</button>
+    <span class="verdict muted" aria-live="polite"></span>
+  </figcaption>
+</figure>
+
+<script>
+  import { fingerprint, trigonometry } from "../demos/controls/fingerprint.ts"
+
+  for (const figure of document.querySelectorAll<HTMLElement>("figure.fingerprint")) {
+    const button = figure.querySelector<HTMLButtonElement>(".run")!
+    const verdict = figure.querySelector<HTMLElement>(".verdict")!
+    const show = (cell: string, value: string, expected: string | undefined, strict: boolean) => {
+      const target = figure.querySelector<HTMLElement>(`[data-cell="${cell}"]`)!
+      const same = value === expected
+      target.innerHTML = ""
+      const code = document.createElement("code")
+      code.textContent = value
+      const mark = document.createElement("span")
+      mark.className = same ? "same" : strict ? "differs" : "muted"
+      mark.textContent = same ? " ✓ same" : strict ? " ✗ differs" : " differs here"
+      target.append(code, mark)
+      return same
+    }
+    button.addEventListener("click", () => {
+      button.disabled = true
+      const started = performance.now()
+      const run = fingerprint()
+      const math = trigonometry()
+      const took = Math.round(performance.now() - started)
+      const runSame = show("run", run.hash, figure.dataset.run, true)
+      const opsSame = show("ops", math.ops, figure.dataset.ops, true)
+      const mathSame = show("math", math.math, figure.dataset.math, false)
+      verdict.textContent = runSame && opsSame
+        ? `Same bits as the build, in ${took} ms.${mathSame ? "" : " Math did not match: that is why the rules use Ops."}`
+        : "This browser played it differently. Please open an issue with your browser and device."
+      button.disabled = false
+    })
+  }
+</script>
+
+<style>
+  .fingerprint {
+    margin: 0 0 1.6em;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 16px 14px;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 10px 12px 10px 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  thead th {
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  tbody th {
+    font-weight: 500;
+  }
+
+  tbody th .muted {
+    display: block;
+    font-weight: 400;
+    font-size: 0.78rem;
+  }
+
+  figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding-top: 12px;
+    font-size: 0.85rem;
+  }
+
+  .run {
+    font: inherit;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    padding: 6px 12px;
+    color: var(--fg);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .run:hover {
+    border-color: var(--accent);
+  }
+
+  :global(.fingerprint .same) {
+    color: var(--accent);
+  }
+
+  :global(.fingerprint .differs) {
+    color: #e5484d;
+  }
+</style>

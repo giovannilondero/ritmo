@@ -29,7 +29,8 @@ const fixes = [
   /Fix<"((?:[^"\\]|\\.)*)">/,
   /__fix\w+__: "((?:[^"\\]|\\.)*)"/,
   /__schemaConflicts__: "((?:[^"\\]|\\.)*)"/,
-  /parameter of type '"((?:[^"\\]|\\.)*)"'/
+  /parameter of type '"((?:[^"\\]|\\.)*)"'/,
+  /to type '"((?:[^"\\]|\\.)*)"'/
 ]
 
 const condense = (text) => {
