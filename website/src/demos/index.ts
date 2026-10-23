@@ -16,6 +16,27 @@ export const demos = {
     controls: "WASD or arrows to walk, E, Space, or a click to pick up. A gamepad works too.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/integration/top-down",
     load: () => import("./top-down/game.ts")
+  },
+  controls: {
+    title: "Controls",
+    description: "One ball, moved and dashed with whatever you pick up: keyboard, mouse, gamepad, or touch.",
+    controls: "WASD or arrows to move, Space or a click to dash, Esc to pause. Pick up a gamepad, or touch the screen, at any time.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
+    load: () => import("./controls/game.ts")
+  },
+  rebind: {
+    title: "Controls, rebindable",
+    description: "The same ball, with a controls panel that rebinds the keyboard and the gamepad.",
+    controls: "Open Controls in the corner, click a binding, then press the new key or pad button.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
+    load: () => import("./controls/rebind.ts")
+  },
+  replay: {
+    title: "Controls, recorded",
+    description: "The same ball, recording the last ten seconds as a replay you can open on the spot.",
+    controls: "Move and dash for a while, then press Replay in the corner.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
+    load: () => import("./controls/replay.ts")
   }
 } as const
 

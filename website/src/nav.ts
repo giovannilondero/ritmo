@@ -22,6 +22,16 @@ export const sections = [
     ]
   },
   {
+    title: "Features",
+    pages: [
+      { href: "/features/devices/", title: "Every device, one player" },
+      { href: "/features/rebinding/", title: "Rebinding" },
+      { href: "/features/multiplayer/", title: "Local multiplayer" },
+      { href: "/features/replays/", title: "Replays that become tests" },
+      { href: "/features/determinism/", title: "Same game everywhere" }
+    ]
+  },
+  {
     title: "More",
     pages: [
       { href: "/examples/", title: "Examples" },
