@@ -4,27 +4,14 @@ title: States that can't go wrong
 description: Each state holds only its own data, so a value cannot describe something that cannot happen.
 ---
 
-A fighter in a test game started drifting up after a guard, with nobody
-touching the controls. Its body was one flat record:
+A fighter in a test game started drifting up after a guard. One write
+gave it a speed but never took it off the ground:
 
-```ts title="before"
-interface Body {
-  readonly grounded: boolean
-  readonly vy: number
-}
-
-// The guard breaker pops the fighter up...
-body = { ...body, vy: 2 } // [!code highlight]
-// ...but forgets to say it left the ground: `grounded` is still true
-
-// Every frame after that:
-if (!body.grounded) vy -= gravity // grounded, so no gravity
-y += vy // [!code highlight]
-// y grows by 2, forever
+```ts
+const body = { grounded: true, vy: 2 } // on the ground, and moving up // [!code highlight]
 ```
 
-`grounded: true` next to `vy: 2` is a body that cannot exist, and the
-record let one write it.
+Gravity skips a grounded body, so nothing pulled it back down.
 
 ## One state, its own fields
 
