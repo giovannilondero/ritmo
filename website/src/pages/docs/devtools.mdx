@@ -26,8 +26,8 @@ import { createTopDownSimulation } from "@typeonce/ritmo-integration-top-down/si
 import { inputBindings, mouseBindings, padBindings } from "@typeonce/ritmo-integration-top-down/types.ts"
 
 const keyboard = Keyboard.scripted(inputBindings, [
-  { frame: 0, press: ["up", "left"] },
-  { frame: 40, release: ["up"] },
+  { frame: 0, press: ["move.up", "move.left"] },
+  { frame: 40, release: ["move.up"] },
   { frame: 50, press: ["interact"], release: ["interact"] }
 ])
 

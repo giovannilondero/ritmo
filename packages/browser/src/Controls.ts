@@ -2,13 +2,15 @@
  * One input source merged from several devices, so gameplay reads each
  * action once whatever the player uses.
  *
- * Declare the game's actions once with `Controls.actions([...])`, bind them
+ * Declare the game's actions once with `Controls.actions({ buttons: [...] })`, bind them
  * on every device (`Keyboard.actions`, `Gamepad.actions`, `Pointer.actions`,
  * `Touch.actions`), and merge the devices with the declaration's `merge`.
  * Merged devices
  * behave like one device with all their bindings: an action is `held` while
  * any device holds it, `pressed` when any device pressed it, and `released`
- * when a device released it and none holds it now. Device-specific data
+ * when a device released it and none holds it now. A vector action (movement)
+ * is the longest direction any device reports, so a stick and keys never add
+ * up past length 1 or cancel each other. Device-specific data
  * (sticks, triggers, touch aim) stays in `devices`, under the names given to
  * `merge`; `lastUsed` names the device the player used last, for button
  * prompts.
@@ -34,10 +36,18 @@
  *
  * @example
  * ```ts
- * const Actions = Controls.actions(["left", "right", "jump", "pause"])
+ * const Actions = Controls.actions({ buttons: ["jump", "pause"], vectors: ["move"] })
  *
- * const keyBindings = { left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"], jump: [" "], pause: ["Escape"] } as const
- * const padBindings = { left: ["dpadLeft"], right: ["dpadRight"], jump: ["south"], pause: ["start"] } as const
+ * const keyBindings = {
+ *   move: Keyboard.vector({ up: ["ArrowUp", "w"], down: ["ArrowDown", "s"], left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"] }),
+ *   jump: [" "],
+ *   pause: ["Escape"]
+ * } as const
+ * const padBindings = {
+ *   move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+ *   jump: ["south"],
+ *   pause: ["start"]
+ * } as const
  *
  * // One function builds the controls, for the browser and for tests.
  * export const makeControls = (devices: {
@@ -59,6 +69,7 @@
  *
  * // In a system:
  * const input = resources.input.get()
+ * walk(input.vectors.move) // length at most 1: keys, d-pad, or stick
  * if (input.actions.jump.pressed) jump()
  * const prompt = input.lastUsed === "gamepad" ? "Ⓐ" : "Space"
  * ```
@@ -67,19 +78,25 @@ import type * as System from "@typeonce/ritmo/System"
 import * as Debug from "@typeonce/ritmo/Debug"
 
 import type { ActionState } from "./Keyboard.ts"
+import { longer, zero } from "./internal/vectors.ts"
+import type { Vector } from "./internal/vectors.ts"
+
+export type { Vector }
 
 /**
- * The part of a device's snapshot `Controls` merges: every action's state,
- * and whether the player used the device in this window.
+ * The part of a device's snapshot `Controls` merges: every button action's
+ * state, every vector action's direction, and whether the player used the
+ * device in this window.
  */
-export interface DeviceSnapshot<A extends string> {
+export interface DeviceSnapshot<A extends string, V extends string = never> {
   readonly actions: { readonly [K in A]: ActionState }
+  readonly vectors: { readonly [K in V]: Vector }
   readonly used: boolean
 }
 
 /** A device `Controls` can merge: `Keyboard.actions`, `Gamepad.actions`, `Pointer.actions`, `Touch.actions`, or their scripted forms. */
-export interface Device<A extends string = string> extends System.Consumes<"snapshot"> {
-  snapshot(): DeviceSnapshot<A>
+export interface Device<A extends string = string, V extends string = string> extends System.Consumes<"snapshot"> {
+  snapshot(): DeviceSnapshot<A, V>
   dispose(): void
 }
 
@@ -106,10 +123,29 @@ type Unit = Device | Group<Readonly<Record<string, Device>>>
 
 type Entry = Unit | Lacking<Unit, string>
 
-/** The actions a device, or the devices of a group, bind. */
+/** The button actions a device, or the devices of a group, bind. */
 type ActionsOf<D> = D extends Group<infer M> ? { [K in keyof M]: ActionsOf<M[K]> }[keyof M]
   : D extends { snapshot(): { readonly actions: infer Actions } } ? keyof Actions & string
   : never
+
+/** The vector actions a device, or the devices of a group, bind. */
+type VectorsOf<D> = D extends Group<infer M> ? { [K in keyof M]: VectorsOf<M[K]> }[keyof M]
+  : D extends { snapshot(): { readonly vectors: infer Vectors } } ? keyof Vectors & string
+  : never
+
+/** Every action a device binds, of either kind. */
+type BoundOf<D> = ActionsOf<D> | VectorsOf<D>
+
+/**
+ * Why a device's bindings do not fit the declared buttons `A` and vectors
+ * `V` (an action of the wrong kind, or one not declared), or `never`.
+ */
+type KindIssue<A extends string, V extends string, Name extends string, D> = [ActionsOf<D> & V] extends [never]
+  ? [VectorsOf<D> & A] extends [never]
+    ? [Exclude<BoundOf<D>, A | V>] extends [never] ? never
+    : `${Name} binds ${Exclude<BoundOf<D>, A | V>}, which is not one of the actions`
+    : `${Name} binds ${VectorsOf<D> & A} as a vector, but it is a button action: bind it to keys or buttons`
+  : `${Name} binds ${ActionsOf<D> & V} as a button, but it is a vector action: bind it with vector(...)`
 
 type DeviceOf<E> = E extends Lacking<infer D, string> ? D : E
 
@@ -150,11 +186,11 @@ type UniqueNames<R> = [Repeated<R>] extends [never]
   : `the name ${Repeated<R>} is used twice: give every device and group its own name`
 
 /** A group member when it is a plain device binding only declared actions, otherwise an error naming the fix. */
-type CheckMember<A extends string, Name extends string, D> = D extends Lacking<Unit, string>
+type CheckMember<A extends string, V extends string, Name extends string, D> = D extends Lacking<Unit, string>
   ? "lacking applies to the whole group: pass lacking(group(...), [...])"
   : D extends Group<unknown> ? "groups do not nest: list every device in one group"
-  : [Exclude<ActionsOf<D>, A>] extends [never] ? D
-  : `${Name} binds ${Exclude<ActionsOf<D>, A>}, which is not one of the actions`
+  : [KindIssue<A, V, Name, D>] extends [never] ? D
+  : KindIssue<A, V, Name, D>
 
 /** Rejects a group of fewer than two devices. */
 type TwoOrMore<M> = [keyof M] extends [never]
@@ -163,21 +199,21 @@ type TwoOrMore<M> = [keyof M] extends [never]
     ? [Alone] extends [never] ? unknown : `a group needs at least two devices: pass ${Alone} to merge directly`
     : unknown
 
-/** The entry when it covers exactly the actions `A`, otherwise an error naming the device and the fix. */
-type CheckEntry<A extends string, Name extends string, E> = E extends Lacking<infer D, infer Missing>
-  ? [Exclude<ActionsOf<D>, A>] extends [never]
-    ? [Exclude<A, ActionsOf<D> | Missing>] extends [never]
+/** The entry when it covers exactly the declared actions, otherwise an error naming the device and the fix. */
+type CheckEntry<A extends string, V extends string, Name extends string, E> = E extends Lacking<infer D, infer Missing>
+  ? [KindIssue<A, V, Name, D>] extends [never]
+    ? [Exclude<A | V, BoundOf<D> | Missing>] extends [never]
       ? E
-      : `${Name} has no action ${Exclude<A, ActionsOf<D> | Missing>}: bind it on ${Name}, or list it in its lacking(...)`
-    : `${Name} binds ${Exclude<ActionsOf<D>, A>}, which is not one of the actions`
-  : [Exclude<ActionsOf<E>, A>] extends [never]
-    ? [Exclude<A, ActionsOf<E>>] extends [never]
+      : `${Name} has no action ${Exclude<A | V, BoundOf<D> | Missing>}: bind it on ${Name}, or list it in its lacking(...)`
+    : KindIssue<A, V, Name, D>
+  : [KindIssue<A, V, Name, E>] extends [never]
+    ? [Exclude<A | V, BoundOf<E>>] extends [never]
       ? E
-      : `${Name} has no action ${Exclude<A, ActionsOf<E>>}: bind it on ${Name}, or pass lacking(${Name}, [...]) from the action set`
-    : `${Name} binds ${Exclude<ActionsOf<E>, A>}, which is not one of the actions`
+      : `${Name} has no action ${Exclude<A | V, BoundOf<E>>}: bind it on ${Name}, or pass lacking(${Name}, [...]) from the action set`
+    : KindIssue<A, V, Name, E>
 
 /** The actions some merged device binds. */
-type BoundBy<R> = { [K in keyof R]: ActionsOf<DeviceOf<R[K]>> }[keyof R]
+type BoundBy<R> = { [K in keyof R]: BoundOf<DeviceOf<R[K]>> }[keyof R]
 
 /** Rejects a merge where no device binds an action. */
 type EveryActionBound<A extends string, R> = [Exclude<A, BoundBy<R>>] extends [never]
@@ -188,15 +224,21 @@ type EveryActionBound<A extends string, R> = [Exclude<A, BoundBy<R>>] extends [n
  * The merged input. `actions` merges every device; `devices` holds each
  * device's own snapshot under the name it was merged under.
  */
-export interface Snapshot<A extends string, Devices, Used extends string = keyof Devices & string> {
+export interface Snapshot<A extends string, V extends string, Devices, Used extends string = keyof Devices & string> {
   readonly actions: { readonly [K in A]: ActionState }
+  /**
+   * Each vector action (movement) as a direction with length at most 1, `y`
+   * growing down: the longest any device reports, so devices never add up
+   * past 1 or cancel each other.
+   */
+  readonly vectors: { readonly [K in V]: Vector }
   /**
    * Whether the last used device binds each action: `false` for the actions
    * it was merged as lacking, so the game can offer them another way (an
    * on-screen pause button). Every action is available before any device is
    * used.
    */
-  readonly available: { readonly [K in A]: boolean }
+  readonly available: { readonly [K in A | V]: boolean }
   readonly devices: Devices
   /**
    * The device (or group) that reported input most recently, or `null`
@@ -208,9 +250,9 @@ export interface Snapshot<A extends string, Devices, Used extends string = keyof
 }
 
 /** The merged source, for `InputCapture.system(...)`. */
-export interface Controls<A extends string, R> extends System.Consumes<"snapshot"> {
+export interface Controls<A extends string, V extends string, R> extends System.Consumes<"snapshot"> {
   /** Takes every device's snapshot, starting a new press window on each, and merges them. */
-  snapshot(): Snapshot<A, DevicesOf<R>, keyof R & string>
+  snapshot(): Snapshot<A, V, DevicesOf<R>, keyof R & string>
   /** Each merged device's `rebind`, for a settings screen; devices without one (touch) are not listed. */
   readonly rebind: RebindOf<R>
   /** Disposes every merged device. */
@@ -221,21 +263,23 @@ export interface Controls<A extends string, R> extends System.Consumes<"snapshot
  * The game's actions, declared once. Every merge, gap, and idle snapshot is
  * built from it, so action names are checked against one list.
  */
-export interface ActionSet<A extends string> {
-  /** The declared actions, in order, for listing them on a settings screen. */
-  readonly names: ReadonlyArray<A>
+export interface ActionSet<A extends string, V extends string = never> {
+  /** The declared button actions, in order, for listing them on a settings screen. */
+  readonly buttons: ReadonlyArray<A>
+  /** The declared vector actions, in order. */
+  readonly vectors: ReadonlyArray<V>
   /**
    * Marks the actions `device` cannot report, for {@link merge}. List
    * exactly the declared actions it does not bind: autocomplete offers them,
    * and a missing or extra name does not compile.
    */
-  lacking<D extends Unit, const Missing extends ReadonlyArray<Exclude<A, ActionsOf<D>>>>(
+  lacking<D extends Unit, const Missing extends ReadonlyArray<Exclude<A | V, BoundOf<D>>>>(
     device: D & (
-      [Exclude<ActionsOf<D>, A>] extends [never]
-        ? [Exclude<A, ActionsOf<D>>] extends [never] ? "This device binds every action: pass it to merge without lacking" : unknown
-        : `This device binds ${Exclude<ActionsOf<D>, A>}, which is not one of the actions`
+      [KindIssue<A, V, "This device", D>] extends [never]
+        ? [Exclude<A | V, BoundOf<D>>] extends [never] ? "This device binds every action: pass it to merge without lacking" : unknown
+        : KindIssue<A, V, "This device", D>
     ),
-    lacking: Missing & ([Exclude<A, ActionsOf<D> | Missing[number]>] extends [never] ? unknown : `This device also lacks ${Exclude<A, ActionsOf<D> | Missing[number]>}: bind it, or list it here`)
+    lacking: Missing & ([Exclude<A | V, BoundOf<D> | Missing[number]>] extends [never] ? unknown : `This device also lacks ${Exclude<A | V, BoundOf<D> | Missing[number]>}: bind it, or list it here`)
   ): Lacking<D, Missing[number]>
   /**
    * Groups devices the player uses together (keyboard and mouse), for
@@ -246,7 +290,7 @@ export interface ActionSet<A extends string> {
    * group to {@link lacking} for the actions none of them binds.
    */
   group<const M extends Readonly<Record<string, Entry | Group<unknown>>>>(
-    members: { readonly [K in keyof M]: CheckMember<A, K & string, M[K]> } & TwoOrMore<M>
+    members: { readonly [K in keyof M]: CheckMember<A, V, K & string, M[K]> } & TwoOrMore<M>
   ): Group<M>
   /**
    * Merges `devices` into one source. Each entry (a device or a
@@ -256,14 +300,14 @@ export interface ActionSet<A extends string> {
    * key `devices` and `rebind`.
    */
   merge<const R extends Readonly<Record<string, Entry>>>(
-    devices: { readonly [K in keyof R]: CheckEntry<A, K & string, R[K]> } & EveryActionBound<A, R> & UniqueNames<R>
-  ): Controls<A, R>
+    devices: { readonly [K in keyof R]: CheckEntry<A, V, K & string, R[K]> } & EveryActionBound<A | V, R> & UniqueNames<R>
+  ): Controls<A, V, R>
   /**
    * A merged snapshot with nothing held and no device used yet, for
    * initializing the input resource: pass each device's idle snapshot
    * (`Keyboard.idle(...)`, ...) under its device name.
    */
-  idle<const Devices extends Readonly<Record<string, DeviceSnapshot<string>>>>(devices: Devices): Snapshot<A, Devices, never>
+  idle<const Devices extends Readonly<Record<string, DeviceSnapshot<string, string>>>>(devices: Devices): Snapshot<A, V, Devices, never>
 }
 
 const idleState: ActionState = { held: false, pressed: false, released: false }
@@ -279,15 +323,32 @@ const membersOf = (name: string, unit: Unit): ReadonlyArray<{ readonly name: str
     ? Object.entries(unit.members).map(([member, device]) => ({ name: member, device }))
     : [{ name, device: unit }]
 
+/** Rejects a name declared both as a button and as a vector. */
+type DistinctKinds<A extends string, V extends string> = [A & V] extends [never]
+  ? unknown
+  : `${A & V} is declared as both a button and a vector action: give it one kind`
+
 /**
- * Declares the game's actions. Build the merged source with the returned
- * set's `merge`.
+ * Declares the game's actions: `buttons` (pressed and held: jump, pause)
+ * and `vectors` (a direction with length at most 1: move), each bound on
+ * every device. Build the merged source with the returned set's `merge`.
+ *
+ * @example
+ * ```ts
+ * const Actions = Controls.actions({ buttons: ["jump", "pause"], vectors: ["move"] })
+ * ```
  */
-export const actions = <const A extends readonly [string, ...Array<string>]>(names: A): ActionSet<A[number]> => {
-  const list: ReadonlyArray<A[number]> = [...new Set(names)]
-  const everyAvailable = (): Record<string, boolean> => Object.fromEntries(list.map((name) => [name, true]))
+export const actions = <const Buttons extends readonly [string, ...Array<string>], const Vectors extends ReadonlyArray<string> = readonly []>(
+  names: { readonly buttons: Buttons; readonly vectors?: Vectors } & DistinctKinds<Buttons[number], Vectors[number]>
+): ActionSet<Buttons[number], Vectors[number]> => {
+  type A = Buttons[number]
+  type V = Vectors[number]
+  const list: ReadonlyArray<A> = [...new Set(names.buttons)]
+  const vectorList: ReadonlyArray<V> = [...new Set(names.vectors ?? [])]
+  const everyAvailable = (): Record<string, boolean> => Object.fromEntries([...list, ...vectorList].map((name) => [name, true]))
   return {
-    names: list,
+    buttons: list,
+    vectors: vectorList,
     lacking: (device, lacking) => ({ _tag: "Lacking", device, lacking }),
     group: (members) => ({ _tag: "Group", members }) as never,
     merge(devices) {
@@ -304,7 +365,7 @@ export const actions = <const A extends readonly [string, ...Array<string>]>(nam
       }
       const controls = {
         snapshot() {
-          const snapshots: Record<string, DeviceSnapshot<string>> = {}
+          const snapshots: Record<string, DeviceSnapshot<string, string>> = {}
           for (const { name, device } of all) snapshots[name] = device.snapshot()
           const used = entries.filter(({ members }) => members.some(({ name }) => snapshots[name]!.used))
           if (used.length > 0 && !used.some(({ name }) => name === lastUsed)) lastUsed = used[0]!.name
@@ -325,7 +386,17 @@ export const actions = <const A extends readonly [string, ...Array<string>]>(nam
             merged[action] = held || pressed || released ? { held, pressed, released: released && !held } : idleState
             available[action] = current === undefined || !current.lacking.has(action)
           }
-          return { actions: merged, available, devices: snapshots, lastUsed }
+          const vectors: Record<string, Vector> = {}
+          for (const action of vectorList) {
+            let longest = zero
+            for (const { name } of all) {
+              const vector = (snapshots[name]!.vectors as Readonly<Record<string, Vector | undefined>>)[action]
+              if (vector !== undefined) longest = longer(longest, vector)
+            }
+            vectors[action] = longest
+            available[action] = current === undefined || !current.lacking.has(action)
+          }
+          return { actions: merged, vectors, available, devices: snapshots, lastUsed }
         },
         rebind,
         dispose() {
@@ -343,8 +414,9 @@ export const actions = <const A extends readonly [string, ...Array<string>]>(nam
       return controls as never
     },
     idle: (devices) => ({
-      actions: Object.fromEntries(list.map((name) => [name, idleState])) as Snapshot<A[number], never>["actions"],
-      available: everyAvailable() as Snapshot<A[number], never>["available"],
+      actions: Object.fromEntries(list.map((name) => [name, idleState])) as Snapshot<A, V, never>["actions"],
+      vectors: Object.fromEntries(vectorList.map((name) => [name, zero])) as Snapshot<A, V, never>["vectors"],
+      available: everyAvailable() as Snapshot<A, V, never>["available"],
       devices,
       lastUsed: null
     })

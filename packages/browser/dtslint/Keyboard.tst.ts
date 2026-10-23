@@ -75,4 +75,17 @@ describe("Keyboard.parseRebinding", () => {
       Keyboard.actions(host, { jump: [" "], left: ["a"] }).rebind(parsed.value)
     }
   })
+
+  it("splits button and vector actions, and scripts vectors by direction", () => {
+    const bindings = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
+    const input = Keyboard.scripted(bindings, [{ frame: 0, press: ["move.right", "jump"] }]).snapshot()
+    expect(input.vectors.move).type.toBe<Keyboard.Vector>()
+    expect(input.actions.jump).type.toBe<Keyboard.ActionState>()
+    // @ts-expect-error Property 'move' does not exist
+    input.actions.move
+    // @ts-expect-error Type '"move"' is not assignable
+    Keyboard.scripted(bindings, [{ frame: 0, press: ["move"] }])
+    // @ts-expect-error Property 'right' is missing
+    Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"] })
+  })
 })

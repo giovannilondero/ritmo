@@ -1,7 +1,7 @@
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 
 import { PLAYER_SPEED } from "../constants.ts"
-import { normalizeMovement, resolveHorizontalMovement, resolveVerticalMovement } from "../math.ts"
+import { resolveHorizontalMovement, resolveVerticalMovement } from "../math.ts"
 import { PlayerMovementQuery, WallCollisionQuery } from "../queries.ts"
 import { DeltaTime, Game, InputState } from "../schema.ts"
 
@@ -22,7 +22,8 @@ export const PlanPlayerVelocitySystem = Game.System(
         return
       }
 
-      const direction = normalizeMovement(resources.input.get())
+      // Length at most 1: keys and the d-pad give a unit direction, the stick keeps its tilt.
+      const direction = resources.input.get().vectors.move
       player.value.data.velocity.updateRaw(() =>
         ({
           x: direction.x * PLAYER_SPEED,

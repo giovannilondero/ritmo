@@ -75,4 +75,14 @@ describe("Gamepad.parseRebinding", () => {
       Gamepad.actions(host, { attack: ["west"], dash: ["south"] }).rebind(parsed.value)
     }
   })
+
+  it("binds a vector to a stick, the four directions, or both", () => {
+    const input = Gamepad.actions(host, { move: Gamepad.vector({ stick: "left" }), jump: ["south"] }).snapshot()
+    expect(input.vectors.move).type.toBe<Gamepad.Vector>()
+    expect(Gamepad.vector({ up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] })).type.toBe<Gamepad.VectorBinding>()
+    // @ts-expect-error Type '"middle"' is not assignable
+    Gamepad.vector({ stick: "middle" })
+    // @ts-expect-error Property 'left' is missing
+    Gamepad.vector({ up: ["dpadUp"], down: ["dpadDown"], right: ["dpadRight"] })
+  })
 })

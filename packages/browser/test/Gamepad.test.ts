@@ -411,3 +411,54 @@ describe("Gamepad.isButton", () => {
     expect(Gamepad.isButton("A")).toBe(false)
   })
 })
+
+describe("Gamepad vector actions", () => {
+  const bindings = {
+    move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+    jump: ["south"]
+  } as const
+
+  it("reports the longer of the stick and the d-pad", () => {
+    const one = makePad()
+    const { host } = makeHost(one)
+    const pad = Gamepad.actions(host, bindings)
+    expect(pad.snapshot().vectors.move).toEqual({ x: 0, y: 0 })
+    one.tilt("left", 0.5, 0)
+    const tilted = pad.snapshot().vectors.move
+    expect(tilted.y).toBe(0)
+    expect(tilted.x).toBeGreaterThan(0.3)
+    expect(tilted.x).toBeLessThan(0.5)
+    one.down("dpadUp")
+    expect(pad.snapshot().vectors.move).toEqual({ x: 0, y: -1 })
+    expect(pad.snapshot().actions).toEqual({ jump: idle })
+  })
+
+  it("rebinds a vector to the other stick", () => {
+    const one = makePad()
+    const { host } = makeHost(one)
+    const pad = Gamepad.actions(host, bindings)
+    pad.rebind({ move: Gamepad.vector({ stick: "right" }), jump: ["south"] })
+    one.tilt("left", 1, 0)
+    expect(pad.snapshot().vectors.move).toEqual({ x: 0, y: 0 })
+    one.tilt("right", 0, 1)
+    expect(pad.snapshot().vectors.move).toEqual({ x: 0, y: 1 })
+    one.down("dpadUp")
+    expect(pad.snapshot().vectors.move).toEqual({ x: 0, y: 1 })
+  })
+
+  it("scripts a vector from the stick and the d-pad", () => {
+    const pad = Gamepad.scripted(bindings, [{ frame: 0, left: { x: 0, y: 0.4 } }, { frame: 1, press: ["dpadRight"] }])
+    expect(pad.snapshot().vectors.move).toEqual({ x: 0, y: 0.4 })
+    expect(pad.snapshot().vectors.move).toEqual({ x: 1, y: 0 })
+  })
+
+  it("parses a saved vector binding", () => {
+    expect(Gamepad.parseRebinding(bindings, JSON.parse(JSON.stringify({ move: Gamepad.vector({ stick: "right" }), jump: ["east"] })))).toEqual({
+      ok: true,
+      value: { move: { _tag: "Vector", stick: "right" }, jump: ["east"] }
+    })
+    expect(Gamepad.parseRebinding(bindings, { move: { stick: "middle" }, jump: ["east"] })).toMatchObject({ ok: false, error: { path: "move.stick" } })
+    expect(Gamepad.parseRebinding(bindings, { move: { up: ["dpadUp"] }, jump: ["east"] })).toMatchObject({ ok: false, error: { path: "move.down" } })
+    expect(Gamepad.parseRebinding(bindings, { move: {}, jump: ["east"] })).toMatchObject({ ok: false, error: { path: "move" } })
+  })
+})

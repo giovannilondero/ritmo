@@ -45,8 +45,9 @@ A renderer with its own ticker plugs in through `FixedLoop.source`.
 
 ## Input
 
-Systems see **actions**, never keys. Each device binds them, and the devices
-merge into one source.
+Systems see **actions**, never keys. A button action is pressed and held
+(jump); a vector action is a direction of length at most 1 (move). Each
+device binds them, and the devices merge into one source.
 
 ```ts twoslash title="input.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -54,16 +55,17 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 
 // What the player can do, whatever the device
-const Actions = Controls.actions(["left", "right", "jump"]) // [!code highlight]
+const Actions = Controls.actions({ buttons: ["jump"], vectors: ["move"] }) // [!code highlight]
 
 // How each device triggers it
-
 const keys = {
-  left: ["ArrowLeft", "a"],
-  right: ["ArrowRight", "d"],
-  jump: [" ", "w"]
+  move: Keyboard.vector({ up: ["ArrowUp", "w"], down: ["ArrowDown", "s"], left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"] }),
+  jump: [" "]
 } as const
-const buttons = { left: ["dpadLeft"], right: ["dpadRight"], jump: ["south"] } as const
+const buttons = {
+  move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+  jump: ["south"]
+} as const
 
 
 // Keyboard and gamepad merged into one source
@@ -84,9 +86,9 @@ One snapshot per update, so every system sees the same input:
 ```ts twoslash title="jump.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
-const Actions = Controls.actions(["left", "right", "jump"])
-const keys = { left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"], jump: [" ", "w"] } as const
-const buttons = { left: ["dpadLeft"], right: ["dpadRight"], jump: ["south"] } as const
+const Actions = Controls.actions({ buttons: ["jump"], vectors: ["move"] })
+const keys = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
+const buttons = { move: Gamepad.vector({ stick: "left" }), jump: ["south"] } as const
 const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof buttons> }) => Actions.merge(devices)
 const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
 const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Example/Input")
@@ -106,13 +108,16 @@ const Jump = Game.System(
     if (input.actions.jump.pressed) {
       //                  ^?
     }
+    // Keys, d-pad, or stick: length at most 1, diagonals not faster
+    const move = input.vectors.move
+    //                         ^?
   }
 )
 ```
 
 ```ts
 const keyboard = Keyboard.actions(window, keys) // in the page
-const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump"] }]) // in a test
+const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump", "move.right"] }]) // in a test
 ```
 
 `Pointer` and `Touch` work the same way.

@@ -8,7 +8,7 @@ declare const canvas: Pointer.PointerTarget
 
 const keyBindings = { jump: [" "], pause: ["Escape"] } as const
 const padBindings = { jump: ["south"], pause: ["start"] } as const
-const Actions = Controls.actions(["jump", "pause"])
+const Actions = Controls.actions({ buttons: ["jump", "pause"] })
 
 const keyboard = Keyboard.actions(host, keyBindings)
 const gamepad = Gamepad.actions(host, padBindings)
@@ -21,7 +21,7 @@ describe("Controls", () => {
     const input = Actions.merge({ keyboard, gamepad }).snapshot()
     expect(input.actions.jump).type.toBe<Keyboard.ActionState>()
     expect(input.available.pause).type.toBe<boolean>()
-    expect(Actions.names).type.toBe<ReadonlyArray<"jump" | "pause">>()
+    expect(Actions.buttons).type.toBe<ReadonlyArray<"jump" | "pause">>()
     // @ts-expect-error Property 'junp' does not exist
     input.actions.junp
   })
@@ -118,10 +118,6 @@ describe("Controls", () => {
     })
   })
 
-  it("declares at least one action", () => {
-    // @ts-expect-error Argument of type '[]' is not assignable
-    Controls.actions([])
-  })
 
   it("groups devices into one entry: lastUsed by entry, devices and rebind by device", () => {
     const controls = Actions.merge({ desktop: Actions.group({ keyboard, mouse }), gamepad, touch: Actions.lacking(touch, ["pause"]) })
@@ -181,5 +177,37 @@ describe("Controls", () => {
       // @ts-expect-error Property 'mouse' is missing
       resources: { Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings) }) }
     })
+  })
+
+  it("declares vector actions next to buttons, and checks each device binds each with its kind", () => {
+    const Moving = Controls.actions({ buttons: ["jump"], vectors: ["move"] })
+    const keys = Keyboard.actions(host, { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] })
+    const pad = Gamepad.actions(host, { move: Gamepad.vector({ stick: "left" }), jump: ["south"] })
+    const input = Moving.merge({ keyboard: keys, gamepad: pad }).snapshot()
+    expect(input.vectors.move).type.toBe<Controls.Vector>()
+    expect(input.available.move).type.toBe<boolean>()
+    expect(input.devices.keyboard.vectors.move).type.toBe<Keyboard.Vector>()
+    // @ts-expect-error Property 'jump' does not exist
+    input.vectors.jump
+    // @ts-expect-error Property 'move' does not exist
+    input.actions.move
+
+    const moveAsButton = Keyboard.actions(host, { move: ["w"], jump: [" "] })
+    // @ts-expect-error keyboard binds move as a button, but it is a vector action: bind it with vector(...)
+    Moving.merge({ keyboard: moveAsButton, gamepad: pad })
+    const jumpAsVector = Gamepad.actions(host, { move: Gamepad.vector({ stick: "left" }), jump: Gamepad.vector({ stick: "right" }) })
+    // @ts-expect-error gamepad binds jump as a vector, but it is a button action: bind it to keys or buttons
+    Moving.merge({ keyboard: keys, gamepad: jumpAsVector })
+    const noMove = Keyboard.actions(host, { jump: [" "] })
+    // @ts-expect-error keyboard has no action move: bind it on keyboard, or pass lacking(keyboard, [...]) from the action set
+    Moving.merge({ keyboard: noMove, gamepad: pad })
+    expect(Moving.merge({ keyboard: Moving.lacking(noMove, ["move"]), gamepad: pad }).snapshot().available.move).type.toBe<boolean>()
+  })
+
+  it("rejects a name declared as both kinds", () => {
+    // @ts-expect-error move is declared as both a button and a vector action: give it one kind
+    Controls.actions({ buttons: ["jump", "move"], vectors: ["move"] })
+    // @ts-expect-error Type '[]' is not assignable
+    Controls.actions({ buttons: [] })
   })
 })

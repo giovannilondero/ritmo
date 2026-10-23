@@ -23,8 +23,8 @@ import { inputBindings, mouseBindings, padBindings } from "./types.ts"
 // Frame 0 is the first update. Press and release are applied before that
 // frame's input capture; a press and release in one frame is a tap.
 const keyboard = Keyboard.scripted(inputBindings, [
-  { frame: 0, press: ["up", "left"] },
-  { frame: 40, release: ["up"] },
+  { frame: 0, press: ["move.up", "move.left"] },
+  { frame: 40, release: ["move.up"] },
   { frame: 50, press: ["interact"], release: ["interact"] }
 ])
 

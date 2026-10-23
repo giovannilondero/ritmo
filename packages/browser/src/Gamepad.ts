@@ -31,18 +31,18 @@
  * @example
  * ```ts
  * const pad = Gamepad.actions(window, {
+ *   move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
  *   attack: ["west"],
- *   dash: ["south"],
  *   pause: ["start"]
  * })
  *
  * // Once per update:
  * const snapshot = pad.snapshot()
- * move(snapshot.left)
+ * move(snapshot.vectors.move) // the stick's tilt, or the d-pad's direction
  * if (snapshot.actions.attack.pressed) attack()
  *
  * // In a settings screen, rebinding keeps the action names:
- * pad.rebind({ attack: ["north"], dash: ["south"], pause: ["start"] })
+ * pad.rebind({ move: Gamepad.vector({ stick: "right" }), attack: ["north"], pause: ["start"] })
  * ```
  *
  * For tests, replays, and headless runs, `scripted(...)` plays a timeline of
@@ -56,7 +56,8 @@ import * as Result from "@typeonce/ritmo/Result"
 import type * as BrowserTickSource from "./BrowserTickSource.ts"
 import type { ActionState } from "./Keyboard.ts"
 import * as ButtonsInternal from "./internal/buttons.ts"
-import { buttonTracker, idleActions, idleButtons } from "./internal/buttons.ts"
+import { buttonTracker, flattenButtons, idleActions, idleButtons, idleVectors, splitActions } from "./internal/buttons.ts"
+import { digital, isVectorBinding, longer } from "./internal/vectors.ts"
 import { anyUsed } from "./internal/used.ts"
 
 /**
@@ -87,17 +88,63 @@ export const buttonNames = [
 /** One button of the standard mapping, see {@link buttonNames}. */
 export type Button = (typeof buttonNames)[number]
 
-/**
- * Action name to the buttons that trigger it. Every action needs at least
- * one button.
- */
-export type Bindings = Readonly<Record<string, readonly [Button, ...Array<Button>]>>
+/** The buttons of one action: at least one. */
+export type Buttons = readonly [Button, ...Array<Button>]
+
+/** The two sticks a vector action can read. */
+export type StickName = "left" | "right"
 
 /**
- * New buttons for the same actions, for {@link Actions.rebind}. Load saved
- * ones with {@link parseRebinding}.
+ * A vector action (movement) on the pad, built with {@link vector}: a
+ * stick, buttons for the four directions (the d-pad), or both.
  */
-export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: readonly [Button, ...Array<Button>] }
+export interface VectorBinding {
+  readonly _tag: "Vector"
+  readonly stick?: StickName
+  readonly up?: Buttons
+  readonly down?: Buttons
+  readonly left?: Buttons
+  readonly right?: Buttons
+}
+
+/**
+ * Action name to the buttons that trigger it (at least one), or to a
+ * {@link vector} binding for a direction such as movement.
+ */
+export type Bindings = Readonly<Record<string, Buttons | VectorBinding>>
+
+/** The bound button actions: the names bound to buttons. */
+export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? never : K }[keyof B] & string
+
+/** The bound vector actions: the names bound with {@link vector}. */
+export type VectorNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? K : never }[keyof B] & string
+
+/**
+ * Binds a vector action to a stick, to buttons for its four directions, or
+ * to both. The snapshot's `vectors` reports the longer of the two: the
+ * stick keeps its tilt (after the dead zone), and the buttons give length 1
+ * (a diagonal is not faster).
+ *
+ * @example
+ * ```ts
+ * const bindings = {
+ *   move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+ *   jump: ["south"]
+ * } as const
+ * ```
+ */
+export const vector = (
+  binding:
+    | { readonly stick: StickName }
+    | { readonly stick?: StickName; readonly up: Buttons; readonly down: Buttons; readonly left: Buttons; readonly right: Buttons }
+): VectorBinding => ({ _tag: "Vector", ...binding })
+
+/**
+ * New buttons for the same actions, for {@link Actions.rebind}: buttons for
+ * a button action, a {@link vector} for a vector action. Load saved ones
+ * with {@link parseRebinding}.
+ */
+export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : Buttons }
 
 /** One button's reading, the subset of the browser's `GamepadButton` the module reads. */
 export interface ButtonReading {
@@ -135,8 +182,10 @@ export interface Vector {
 }
 
 export interface Snapshot<B extends Bindings> {
-  /** Every bound action's state. */
-  readonly actions: { readonly [Action in keyof B]: ActionState }
+  /** Every bound button action's state. */
+  readonly actions: { readonly [Action in ButtonNames<B>]: ActionState }
+  /** Each vector action's direction, length at most 1, `y` growing down. */
+  readonly vectors: { readonly [Action in VectorNames<B>]: Vector }
   /** Every button's state by name, whatever the bindings. */
   readonly buttons: { readonly [Name in Button]: ActionState }
   readonly left: Vector
@@ -195,7 +244,7 @@ const zero: Vector = { x: 0, y: 0 }
  * resource before the first capture.
  */
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  return { actions: idleActions(bindings), buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, connected: false, id: null }
+  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, connected: false, id: null }
 }
 
 const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
@@ -210,17 +259,31 @@ const stick = (x: number, y: number, deadZone: number): Vector => {
 
 /** The button tracker with the pad's analog state, shared by live and scripted actions. */
 const tracker = <B extends Bindings>(initial: B) => {
-  const buttons = buttonTracker(buttonNames, initial)
+  // Vector actions are tracked as their four directions, next to the button actions.
+  let bindings: Bindings = initial
+  const buttons = buttonTracker(buttonNames, flattenButtons<Button>(initial))
   return {
     held: buttons.held,
     down: buttons.down,
     up: buttons.up,
     upAll: buttons.upAll,
-    rebind: buttons.rebind,
-    snapshot(analog: Omit<Snapshot<B>, "actions" | "buttons" | "used">): Snapshot<B> {
+    rebind(next: Rebinding<B>) {
+      bindings = next
+      buttons.rebind(flattenButtons<Button>(next))
+    },
+    snapshot(analog: Omit<Snapshot<B>, "actions" | "vectors" | "buttons" | "used">): Snapshot<B> {
       const taken = buttons.take()
+      // The actions are fixed at creation; a rebind only changes how each is bound.
+      const { actions, held } = splitActions(initial, taken.actions)
+      const vectors: Record<string, Vector> = {}
+      for (const [name, entry] of Object.entries(initial)) {
+        if (!isVectorBinding(entry)) continue
+        const binding = bindings[name] as VectorBinding
+        const pad = digital(held(name, "up"), held(name, "down"), held(name, "left"), held(name, "right"))
+        vectors[name] = binding.stick === undefined ? pad : longer(analog[binding.stick], pad)
+      }
       const used = anyUsed(taken.buttons) || !sameVector(analog.left, zero) || !sameVector(analog.right, zero)
-      return { ...taken, ...analog, used }
+      return { actions, vectors, buttons: taken.buttons, ...analog, used } as Snapshot<B>
     }
   }
 }
@@ -417,7 +480,7 @@ export interface Recording<B extends Bindings> extends Actions<B> {
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Omit<Snapshot<B>, "actions" | "id" | "used"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
+  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "id" | "used"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
   let frame = 0
   return {
     snapshot() {
@@ -524,7 +587,9 @@ export type InvalidRebinding = ButtonsInternal.InvalidRebinding
 /**
  * Validates untrusted data, such as saved settings parsed from JSON, as new
  * buttons for `bindings`: an object with exactly the same action names, each
- * mapped to a non-empty array of button names. Pass the result to
+ * mapped to a non-empty array of button names (for a vector action, an
+ * object with an optional `stick` and buttons for all four directions or
+ * none, as `Gamepad.vector` saves). Pass the result to
  * {@link Actions.rebind}; on failure, keep the defaults.
  *
  * @example
@@ -538,4 +603,4 @@ export const parseRebinding = <const B extends Bindings>(
   data: unknown
 ): Result.Result<Rebinding<B>, InvalidRebinding> =>
   // The checked names and buttons are exactly `Rebinding<B>`.
-  ButtonsInternal.parseButtonRebinding(buttonNames, bindings, data) as Result.Result<Rebinding<B>, InvalidRebinding>
+  ButtonsInternal.parseButtonRebinding(buttonNames, bindings, data, ["left", "right"]) as Result.Result<Rebinding<B>, InvalidRebinding>

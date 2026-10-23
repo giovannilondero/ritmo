@@ -131,7 +131,7 @@ const hostClock = HostClock.test()
 const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
 const session = Session.make(runtime, { hostClock, schedules: { setup: Game.Schedule(Spawn, Game.Schedule.applyDeferred()) } })
 const ran = session.run("setup")
-const controls = Controls.actions(["jump"]).merge({ keyboard: Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }]) })
+const controls = Controls.actions({ buttons: ["jump"] }).merge({ keyboard: Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }]) })
 const registry = NodeRegistry.make<string>({ attach: () => {}, detach: () => {} })
 const sprites = PixiNodeRegistry.make<{ destroy(): void }>({ addChild: () => {}, removeChild: () => {} })
 const cell = Scalar.Positive.result(8)

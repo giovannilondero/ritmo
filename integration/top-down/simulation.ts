@@ -6,7 +6,7 @@
  * Tests, benchmarks, and coding agents drive it directly:
  *
  * ```ts
- * const keyboard = Keyboard.scripted(inputBindings, [{ frame: 0, press: ["right"] }])
+ * const keyboard = Keyboard.scripted(inputBindings, [{ frame: 0, press: ["move.right"] }])
  * const mouse = Pointer.scripted(mouseBindings, [])
  * const gamepad = Gamepad.scripted(padBindings, [])
  * const simulation = createTopDownSimulation({ keyboard, mouse, gamepad, hostClock: HostClock.test() })
