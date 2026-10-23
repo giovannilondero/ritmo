@@ -382,72 +382,148 @@ export const Tag = <const Name extends string>(
 ): DecodableDescriptor<"component", Name, {}, {}, DecodeModule.DecodeError> =>
   ConstructedComponent(DecodeModule.struct({}))(name)
 
-/** One state of a {@link EntityState} component: a string or number literal. */
-export type EntityStateValue = string | number
+/**
+ * The fields of one state of a {@link EntityState} component: each field's
+ * codec, by name. A state without data has no fields (`{}`).
+ */
+export type EntityStateFields = Readonly<Record<string, DecodeModule.Codec<any>>>
+
+/** Every state of a {@link EntityState} component: each state's fields, by state name. */
+export type EntityStateDefinitions = Readonly<Record<string, EntityStateFields>>
+
+/** The name of a state in `States`. */
+export type EntityStateName<States extends EntityStateDefinitions> = keyof States & string
+
+/** The value of state `State`: its name in `_tag`, and its fields. */
+export type EntityStateValueOf<States extends EntityStateDefinitions, State extends EntityStateName<States>> = State extends unknown
+  ? { readonly _tag: State } & { readonly [Field in keyof States[State]]: DecodeModule.Type<States[State][Field]> } extends infer Value
+    ? { readonly [Key in keyof Value]: Value[Key] }
+    : never
+  : never
 
 /**
  * The allowed moves of a {@link EntityState} component: for every state, the
  * states it may move to (`[]` for a state with no way out).
  */
-export type EntityStateTransitions<States extends readonly [EntityStateValue, ...Array<EntityStateValue>]> = {
-  readonly [From in States[number]]: ReadonlyArray<States[number]>
+export type EntityStateTransitions<States extends EntityStateDefinitions> = {
+  readonly [From in keyof States & string]: ReadonlyArray<keyof States & string>
 }
 
 /**
- * A component whose value is one of a closed set of states, with an optional
- * graph of allowed moves. Built with {@link EntityState}.
+ * A component whose value is one of a closed set of states, each with its own
+ * data, and an optional graph of allowed moves. Built with {@link EntityState}.
  */
 export interface EntityStateDescriptor<
   out Name extends string,
-  in out States extends readonly [EntityStateValue, ...Array<EntityStateValue>],
+  in out States extends EntityStateDefinitions,
   in out Transitions extends EntityStateTransitions<States> | undefined
-> extends DecodableDescriptor<"component", Name, States[number], States[number], DecodeModule.DecodeError> {
+> extends DecodableDescriptor<
+  "component",
+  Name,
+  EntityStateValueOf<States, EntityStateName<States>>,
+  EntityStateValueOf<States, EntityStateName<States>>,
+  DecodeModule.DecodeError
+> {
   readonly states: States
   readonly transitions: Transitions
 }
 
 /**
- * Defines a per-entity state: a component whose value is one of `states`,
- * validated (so snapshots reject unknown states), that behaves like any other
- * component (storage, change detection, rollback, traces).
- *
- * Use this when each entity has its own state: an enemy's attack windup, a
- * door's open/closed, a unit's AI mode. Use `Game.StateMachine(...)` instead
- * for one game-wide mode (menu, playing, paused, game over): machines change
- * only at `applyStateTransitions(...)`, run `onEnter`/`onExit` schedules, and
- * gate systems with `Game.Condition.inState(...)`. An entity state does none
- * of that; it is data on an entity.
- *
- * With `transitions`, its write cell gains `transition(from, to)`: the pair
- * is checked against the graph at compile time, and at runtime the move
- * happens only if the current state is still `from`, otherwise it returns an
- * `EntityStateMismatch` failure. Transitions are ordinary component writes:
- * immediate, visible to later systems, rolled back with a failed system.
- * The graph lists every state (`[]` for one with no way out). There are no
- * per-state schedules: branch on `get()` in the system that owns the
- * component, and emit an event on a transition other systems must react to.
+ * The value of an entity state component, or of one of its states: what
+ * game functions that work on the state take and return.
  *
  * @example
  * ```ts
- * const Attack = Descriptor.EntityState("Game/Attack", ["ready", "windup", "active"] as const, {
- *   transitions: { ready: ["windup"], windup: ["active", "ready"], active: ["ready"] }
- * })
- * // in a system with a write slot `attack`:
- * const moved = data.attack.transition("windup", "active")   // "ready" -> "active" does not compile
+ * const fall = (air: Descriptor.EntityStateOf<typeof Contact, "air">, gravity: number) => air.vy - gravity
+ * const describe = (contact: Descriptor.EntityStateOf<typeof Contact>) => contact._tag
+ * ```
+ */
+export type EntityStateOf<
+  D extends EntityStateDescriptor<string, any, any>,
+  State extends keyof D["states"] & string = keyof D["states"] & string
+> = EntityStateValueOf<D["states"], State>
+
+/** The `states` argument, or the message naming what is wrong with it. */
+type CheckedStates<States extends EntityStateDefinitions> = [EntityStateName<States>] extends [never]
+  ? { readonly "an entity state needs at least one state": EntityStateFields }
+  : {
+    readonly [State in keyof States]: "_tag" extends keyof States[State]
+      ? { readonly _tag: "`_tag` holds the state's name: give this field another name" }
+      : unknown
+  }
+
+/** The codec of every value of `states`: its `_tag` names a state, and the rest decodes as that state's fields. */
+const entityStateCodec = (states: EntityStateDefinitions): DecodeModule.Codec<{ readonly _tag: string }> => {
+  const names = Object.keys(states) as [string, ...Array<string>]
+  const tag = DecodeModule.literal(...names)
+  const fields = new Map(names.map((name) => [name, DecodeModule.struct(states[name]!)]))
+  const decode = (raw: unknown): ResultModule.Result<{ readonly _tag: string }, DecodeModule.DecodeError> => {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return ResultModule.failure({ _tag: "DecodeError", path: "$", expected: "object", actual: raw })
+    }
+    const name = tag.decode((raw as { readonly _tag?: unknown })._tag)
+    if (!name.ok) return ResultModule.failure({ ...name.error, path: "$._tag" })
+    const value = fields.get(name.value)!.decode(raw)
+    return value.ok ? ResultModule.success({ _tag: name.value, ...value.value }) : value
+  }
+  return { decode, result: decode }
+}
+
+/**
+ * Defines a per-entity state: a component whose value is one of `states`,
+ * each with its own fields, validated (so snapshots reject unknown states and
+ * wrong fields), that behaves like any other component (storage, change
+ * detection, rollback, traces).
+ *
+ * Use this when each entity has its own state: an enemy's attack windup, a
+ * fighter on the ground or in the air, a unit's AI mode. Give each state the
+ * data only it has (an airborne speed, a hitstun length), so a value can
+ * never pair a state with data that does not belong to it. Data every state
+ * shares stays in another component. Use `Game.StateMachine(...)` instead for
+ * one game-wide mode (menu, playing, paused, game over): machines change only
+ * at `applyStateTransitions(...)`, run `onEnter`/`onExit` schedules, and gate
+ * systems with `Game.Condition.inState(...)`. An entity state does none of
+ * that; it is data on an entity. A closed set of values with no moves (a
+ * team, a direction) is `Descriptor.ConstructedComponent(Decode.literal(...))`.
+ *
+ * The value is a tagged union: `_tag` is the state's name, next to that
+ * state's fields. Its write cell moves with `transition({ from, to, data })`,
+ * which takes all of `to`'s fields so nothing carries over from `from`, and
+ * changes the current state's fields with `update({ state, data })`. Both are
+ * a compare-and-set: they write only while the entity is still in `from` (or
+ * `state`), and otherwise return an `EntityStateMismatch` failure. With
+ * `transitions`, `to` is checked against the graph at compile time; the graph
+ * lists every state (`[]` for one with no way out). Writes are ordinary
+ * component writes: immediate, visible to later systems, rolled back with a
+ * failed system. There are no per-state schedules: branch on `get()._tag` in
+ * the system that owns the component, and emit an event on a transition
+ * other systems must react to.
+ *
+ * @example
+ * ```ts
+ * const Contact = Descriptor.EntityState("Game/Contact", {
+ *   ground: { platform: Decode.nullable(Decode.integer) },
+ *   air: { vy: Decode.number, coyote: Decode.integer }
+ * }, { transitions: { ground: ["air"], air: ["ground"] } })
+ *
+ * commands.spawn(Game.Command.spawn([Contact, { _tag: "ground", platform: null }]))
+ * // in a system with a write slot `contact`:
+ * data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
+ * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
  * ```
  */
 export const EntityState = <
   const Name extends string,
-  const States extends readonly [EntityStateValue, ...Array<EntityStateValue>],
+  const States extends EntityStateDefinitions,
   const Transitions extends EntityStateTransitions<States> | undefined = undefined
 >(
   name: Name,
-  states: States,
+  states: States & CheckedStates<States>,
   options?: {
-    readonly transitions: Transitions & { readonly [Key in Exclude<keyof Transitions, States[number]>]: never }
+    readonly transitions: Transitions & { readonly [Key in Exclude<keyof Transitions, keyof States>]: never }
   }
 ): EntityStateDescriptor<Name, States, Transitions> => ({
-  ...makeConstructedDescriptor("component", name, DecodeModule.literal(...states)),
+  ...makeConstructedDescriptor("component", name, entityStateCodec(states)),
   states,
   transitions: options?.transitions
 }) as unknown as EntityStateDescriptor<Name, States, Transitions>
@@ -455,7 +531,7 @@ export const EntityState = <
 /** Whether a descriptor was built with {@link EntityState}. */
 export const isEntityState = (
   descriptor: Descriptor.Any
-): descriptor is EntityStateDescriptor<string, readonly [EntityStateValue, ...Array<EntityStateValue>], EntityStateTransitions<readonly [EntityStateValue, ...Array<EntityStateValue>]> | undefined> =>
+): descriptor is EntityStateDescriptor<string, EntityStateDefinitions, EntityStateTransitions<EntityStateDefinitions> | undefined> =>
   "states" in descriptor
 
 /**

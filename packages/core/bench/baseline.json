@@ -29,6 +29,11 @@
         "medianMs": 0.4014,
         "score": 0.1273
       },
+      "entity-state/update-transition-10k": {
+        "minMs": 1.744,
+        "medianMs": 2.064,
+        "score": 0.597
+      },
       "query/single-in-20k-x1000": {
         "minMs": 0.2661,
         "medianMs": 0.2861,

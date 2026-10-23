@@ -34,7 +34,7 @@ type SlotPlan =
       readonly mode: "write"
       readonly ordinal: number
       readonly constructor: DescriptorModule.ResultConstructor<unknown, unknown, unknown> | undefined
-      readonly entityState: string | undefined
+      readonly entityState: Cells.EntityStatePlan | undefined
     }
   | {
       readonly slot: string
@@ -172,7 +172,7 @@ export const makeQueryEngine = (world: World) => {
               mode: "write",
               ordinal,
               constructor: DescriptorModule.constructorOf(access.descriptor),
-              entityState: DescriptorModule.isEntityState(access.descriptor) ? access.descriptor.name : undefined
+              entityState: DescriptorModule.isEntityState(access.descriptor) ? Cells.entityStatePlan(access.descriptor.name, access.descriptor.states) : undefined
             })
           } else {
             slots.push({ slot, mode: "read", ordinal })

@@ -48,20 +48,25 @@ const withConstructor = <T, Raw, Error>(
   }
 })
 
-/**
- * Adds `transition` to the write cell of an entity state component: a compare-and-set
- * that writes `to` only while the current state is still `from`.
- */
-const withTransition = (cell: WriteCellBase<unknown>, component: string) => Object.assign(cell, {
-  transition(from: unknown, to: unknown): Result.Result<void, { readonly _tag: "EntityStateMismatch"; readonly component: string; readonly expected: unknown; readonly actual: unknown }> {
-    const actual = cell.get()
-    if (actual !== from) {
-      return Result.failure({ _tag: "EntityStateMismatch", component, expected: from, actual })
-    }
-    cell.set(to)
-    return Result.success(undefined)
-  }
+/** What the write cell of an entity state component needs: its name, and the shared value of each data-less state. */
+export interface EntityStatePlan {
+  readonly component: string
+  readonly empty: ReadonlyMap<string, { readonly _tag: string }>
+}
+
+export const entityStatePlan = (component: string, states: Readonly<Record<string, object>>): EntityStatePlan => ({
+  component,
+  empty: new Map(
+    Object.entries(states)
+      .filter(([, fields]) => Object.keys(fields).length === 0)
+      .map(([state]) => [state, Object.freeze({ _tag: state })])
+  )
 })
+
+type EntityStateMismatch = { readonly _tag: "EntityStateMismatch"; readonly component: string; readonly expected: string; readonly actual: string }
+
+// Every successful move returns the same value: a per-entity move in a hot loop allocates no result.
+const moved: Result.Result<void, never> = Object.freeze(Result.success(undefined))
 
 /**
  * A required slot is empty only when its match outlived the run that produced
@@ -121,6 +126,65 @@ class ComponentWriteCell extends WriteCellBase<unknown> {
 
   set(value: unknown): void {
     if (!this.world.setComponentValue(this.record, this.ordinal, value)) staleRead(this.record, this.ordinal)
+  }
+}
+
+/**
+ * The write cell of an entity state component: `setRaw` for validated resets,
+ * and the compare-and-set moves `transition` (enter a state with all of its
+ * fields) and `update` (change the current state's fields). Its `update`
+ * replaces the unscoped one, and there is no `updateRaw`: either could write
+ * any state.
+ */
+class EntityStateWriteCell {
+  readonly values: Array<unknown>
+  readonly ordinal: number
+  readonly record: EntityRecord
+  readonly world: World
+  readonly decoder: ResultConstructor<unknown, unknown, unknown>
+  readonly plan: EntityStatePlan
+
+  constructor(record: EntityRecord, ordinal: number, world: World, decoder: ResultConstructor<unknown, unknown, unknown>, plan: EntityStatePlan) {
+    this.values = record.values
+    this.ordinal = ordinal
+    this.record = record
+    this.world = world
+    this.decoder = decoder
+    this.plan = plan
+  }
+
+  get(): unknown {
+    const value = this.values[this.ordinal]
+    return value === ABSENT ? staleRead(this.record, this.ordinal) : value
+  }
+
+  set(value: unknown): void {
+    if (!this.world.setComponentValue(this.record, this.ordinal, value)) staleRead(this.record, this.ordinal)
+  }
+
+  setRaw(raw: unknown): Result.Result<void, unknown> {
+    const value = this.decoder.result(raw)
+    if (!value.ok) return value
+    this.set(value.value)
+    return moved
+  }
+
+  transition(move: { readonly from: string; readonly to: string; readonly data?: object }): Result.Result<void, EntityStateMismatch> {
+    const actual = (this.get() as { readonly _tag: string })._tag
+    if (actual !== move.from) return this.mismatch(move.from, actual)
+    this.set(move.data === undefined ? this.plan.empty.get(move.to) ?? { _tag: move.to } : { _tag: move.to, ...move.data })
+    return moved
+  }
+
+  update(change: { readonly state: string; readonly data: (current: object) => object }): Result.Result<void, EntityStateMismatch> {
+    const current = this.get() as { readonly _tag: string }
+    if (current._tag !== change.state) return this.mismatch(change.state, current._tag)
+    this.set({ _tag: change.state, ...change.data(current) })
+    return moved
+  }
+
+  private mismatch(expected: string, actual: string): Result.Result<void, EntityStateMismatch> {
+    return Result.failure({ _tag: "EntityStateMismatch", component: this.plan.component, expected, actual })
   }
 }
 
@@ -191,11 +255,11 @@ export const componentWrite = (
   ordinal: number,
   world: World,
   constructor: ResultConstructor<unknown, unknown, unknown> | undefined,
-  entityState: string | undefined
-): WriteCellBase<unknown> => {
+  entityState: EntityStatePlan | undefined
+): object => {
+  if (entityState !== undefined && constructor !== undefined) return new EntityStateWriteCell(record, ordinal, world, constructor, entityState)
   const cell = new ComponentWriteCell(record, ordinal, world)
-  const constructed = constructor === undefined ? cell : withConstructor(cell, constructor)
-  return entityState === undefined ? constructed : withTransition(constructed, entityState)
+  return constructor === undefined ? cell : withConstructor(cell, constructor)
 }
 
 export const componentOptional = (record: EntityRecord, ordinal: number): { readonly present: boolean; get(): unknown; value(): unknown } =>
