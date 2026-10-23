@@ -1,22 +1,23 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
-const Mode = Descriptor.Component<"a" | "b">()("Identity/Mode")
+type ModeValue = { readonly _tag: "a" } | { readonly _tag: "b" }
+const Mode = Descriptor.Component<ModeValue>()("Identity/Mode")
 const Kind = Descriptor.Component<"tree" | "rock">()("Identity/Kind", { immutable: true })
 const Game = Schema.bind(Schema.fragment({ components: { Mode, Kind } }))
 
 const spawn = Game.System("Identity/Spawn", { commands: Game.System.commands(Game.System.spawns(Mode, Kind)) }, ({ commands }) => {
-  commands.spawn(Game.Command.spawn([Mode, "a"], [Kind, "tree"]))
+  commands.spawn(Game.Command.spawn([Mode, { _tag: "a" }], [Kind, "tree"]))
 })
 
 describe("a query naming a look-alike descriptor", () => {
   it("throws when the look-alike adds behaviour the schema does not declare", () => {
     // Same kind and name as the registered plain Mode, but an entity state with transitions.
-    const ModeState = Descriptor.EntityState("Identity/Mode", ["a", "b"] as const, { transitions: { a: ["b"], b: [] } })
+    const ModeState = Descriptor.EntityState("Identity/Mode", { a: {}, b: {} }, { transitions: { a: ["b"], b: [] } })
     const Flip = Game.System("Identity/Flip", {
       queries: { modes: Game.Query({ selection: { mode: Game.Query.write(ModeState) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.modes.each()) data.mode.transition("a", "b")
+      for (const { data } of queries.modes.each()) data.mode.transition({ from: "a", to: "b" })
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
@@ -32,7 +33,7 @@ describe("a query naming a look-alike descriptor", () => {
     const Retag = Game.System("Identity/Retag", {
       queries: { kinds: Game.Query({ selection: { kind: write(PlainKind) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.kinds.each()) data.kind.set("a")
+      for (const { data } of queries.kinds.each()) data.kind.set({ _tag: "a" })
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
@@ -40,12 +41,12 @@ describe("a query naming a look-alike descriptor", () => {
   })
 
   it("accepts a look-alike that behaves like the registered descriptor", () => {
-    const SameMode = Descriptor.Component<"a" | "b">()("Identity/Mode")
+    const SameMode = Descriptor.Component<ModeValue>()("Identity/Mode")
     const seen: Array<string> = []
     const Read = Game.System("Identity/Read", {
       queries: { modes: Game.Query({ selection: { mode: Game.Query.read(SameMode) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.modes.each()) seen.push(data.mode.get())
+      for (const { data } of queries.modes.each()) seen.push(data.mode.get()._tag)
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred(), Read))

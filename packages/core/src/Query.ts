@@ -68,9 +68,9 @@
  * @groupDescription Functions
  * Query authoring helpers for selecting components and declaring explicit filters.
  */
-import type { DecodeError } from "./Decode.ts"
+import type { DecodeError, Type } from "./Decode.ts"
 import * as DescriptorModule from "./Descriptor.ts"
-import type { Descriptor, EntityStateValue } from "./Descriptor.ts"
+import type { Descriptor, EntityStateDefinitions, EntityStateDescriptor, EntityStateName, EntityStateValueOf } from "./Descriptor.ts"
 import type { EntityId, EntityMut, EntityRef } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
@@ -628,57 +628,110 @@ export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
 }
 
 /**
- * A `transition(from, to)` found the entity state in another state, so
+ * A `transition` or `update` found the entity state in another state, so
  * nothing was written.
  */
-export interface EntityStateMismatchError<T> {
+export interface EntityStateMismatchError<State extends string> {
   readonly _tag: "EntityStateMismatch"
   /** Name of the `Descriptor.EntityState` component. */
   readonly component: string
-  /** The `from` state the transition expected. */
-  readonly expected: T
+  /** The state the move expected (`from`, or `update`'s `state`). */
+  readonly expected: State
   /** The state the component was actually in. */
-  readonly actual: T
+  readonly actual: State
 }
+
+/** The states every one of `From` may move to: with a union `from`, only the moves all of them allow. */
+type EntityStateTargets<Transitions, From extends keyof Transitions> =
+  (From extends unknown ? (to: Transitions[From] extends ReadonlyArray<infer To> ? To : never) => void : never) extends
+    (to: infer To) => void ? To : never
+
+/** A state's fields as a write takes them: the value without `_tag`. */
+type EntityStateData<States extends EntityStateDefinitions, State extends EntityStateName<States>> = ReadonlyValue<
+  { readonly [Field in keyof States[State]]: Type<States[State][Field]> }
+>
+
+/** `data` of a move into `To`: required with all of `To`'s fields, and absent for a state without fields. */
+type EntityStateMoveData<States extends EntityStateDefinitions, To extends EntityStateName<States>> =
+  [keyof States[To]] extends [never] ? { readonly data?: never } : { readonly data: EntityStateData<States, To> }
+
+/** What `update`'s callback returns for `State`: its fields, and optionally its own `_tag` (from a spread of the current value). */
+type EntityStateUpdateResult<States extends EntityStateDefinitions, State extends EntityStateName<States>> =
+  EntityStateData<States, State> & { readonly _tag?: State }
+
+/**
+ * Rejects `update`'s callback when its result has a field `State` does not
+ * have. A spread in a callback's result escapes TypeScript's excess property
+ * check, and a field of another state would otherwise be written next to this
+ * state's fields.
+ */
+type EntityStateExactFields<States extends EntityStateDefinitions, State extends EntityStateName<States>, Next> =
+  [Exclude<keyof Next, keyof States[State] | "_tag">] extends [never] ? unknown
+    : { readonly data: `${State} has no field ${Exclude<keyof Next, keyof States[State] | "_tag"> & string}: write only this state's fields, or move with transition` }
 
 /**
  * Writable cell for an entity state component (`Descriptor.EntityState`).
  *
- * `transition(from, to)` is a compare-and-set: it writes `to` only while the
- * current state is `from`, and otherwise returns `EntityStateMismatch` without
- * writing. With a transition graph, `to` must be one of the moves the graph
- * allows from `from`; without one, any pair of states is accepted.
+ * `transition` enters a state with all of its fields, and `update` changes the
+ * current state's fields. Both are a compare-and-set: they write only while
+ * the component is in the expected state, and otherwise return
+ * `EntityStateMismatch` without writing. With a transition graph, `to` must be
+ * one of the moves the graph allows from `from`; without one, any pair of
+ * states is accepted.
  */
-export interface EntityStateWriteCell<T, Transitions> extends ConstructedWriteCell<T, T, DecodeError> {
+export interface EntityStateWriteCell<States extends EntityStateDefinitions, Transitions>
+  extends ReadCell<EntityStateValueOf<States, EntityStateName<States>>>
+{
   /**
-   * Moves from `from` to `to` if the component is still in `from`. Use it for
-   * every move the transition table describes; `set` writes any state
-   * without checking the table, for resets that must not depend on the
-   * current state.
+   * Moves from `from` to `to` if the component is still in `from`, writing
+   * `to`'s fields from `data`: nothing carries over from `from`. A state
+   * without fields takes no `data`. Use it for every move the transition
+   * table describes.
    *
    * @example
    * ```ts
-   * const moved = data.attack.transition("windup", "active")
-   * if (!moved.ok) {
-   *   // moved.error.actual is the state some earlier write left
+   * const jumped = data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
+   * if (!jumped.ok) {
+   *   // jumped.error.actual is the state some earlier write left
    * }
+   * data.phase.transition({ from: "windup", to: "active" })
    * ```
    */
-  transition<const From extends T & keyof Transitions>(
-    from: From,
-    to: EntityStateTarget<T, Transitions, From>
-  ): Result.Result<void, EntityStateMismatchError<T>>
+  transition<const From extends keyof States & keyof Transitions & string, const To extends EntityStateTargets<Transitions, From> & keyof States & string>(
+    move: { readonly from: From; readonly to: To } & EntityStateMoveData<States, To>
+  ): Result.Result<void, EntityStateMismatchError<EntityStateName<States>>>
+  /**
+   * Changes the fields of `state` if the component is still in it, without
+   * leaving it: `data` maps the current value to the new fields.
+   *
+   * @example
+   * ```ts
+   * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+   * ```
+   */
+  update<const State extends keyof States & string, Next extends EntityStateUpdateResult<States, State>>(
+    change: {
+      readonly state: State
+      readonly data: (current: ReadonlyValue<EntityStateValueOf<States, State>>) => Next
+    } & EntityStateExactFields<States, State, Next>
+  ): Result.Result<void, EntityStateMismatchError<EntityStateName<States>>>
+  /**
+   * Writes any value without checking the transition graph or the current
+   * state: a reset, or the value a pure function computed from the current
+   * one. Use `transition` and `update` for the moves a system makes itself,
+   * so the graph and the current state are checked.
+   */
+  set(value: ReadonlyValue<EntityStateValueOf<States, EntityStateName<States>>>): void
+  /** Validates an untrusted value and writes it only on success, like `set`. */
+  setRaw(raw: EntityStateValueOf<States, EntityStateName<States>>): Result.Result<void, DecodeError>
 }
-
-type EntityStateTarget<T, Transitions, From extends keyof Transitions> =
-  Transitions[From] extends ReadonlyArray<infer To> ? To & T : never
 
 /**
  * Write-cell surface produced for one queried component descriptor.
  */
 export type WriteCellForDescriptor<D extends ComponentDescriptor> =
-  D extends import("./Descriptor.ts").EntityStateDescriptor<string, infer States extends readonly [EntityStateValue, ...Array<EntityStateValue>], any>
-    ? EntityStateWriteCell<States[number], D["transitions"] extends undefined ? { readonly [K in States[number]]: States } : D["transitions"]>
+  D extends EntityStateDescriptor<string, infer States, infer Transitions>
+    ? EntityStateWriteCell<States, Transitions extends undefined ? { readonly [State in EntityStateName<States>]: ReadonlyArray<EntityStateName<States>> } : Transitions>
     : D extends import("./Descriptor.ts").ConstructedDescriptor<"component", string, infer Value, infer Raw, infer Error>
     ? ConstructedWriteCell<Value, Raw, Error>
     : WriteCell<Descriptor.Value<D>>

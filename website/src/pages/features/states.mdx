@@ -1,0 +1,128 @@
+---
+layout: ../../layouts/Docs.astro
+title: States that can't go wrong
+description: Each state holds only its own data, so a value cannot describe something that cannot happen.
+---
+
+A fighter in a test game started drifting up after a guard. Everything
+about its body lived in one record:
+
+```ts
+interface Body {
+  readonly grounded: boolean // [!code highlight]
+  readonly vy: number // [!code highlight]
+  readonly platform: number | null
+  readonly coyote: number
+}
+```
+
+The guard set `vy: 2` and left `grounded: true`. Gravity skips a grounded
+body, so nothing pulled it back down. The record could hold a body on the
+ground and moving up.
+
+## One state, its own fields
+
+`Descriptor.EntityState` gives each state only the fields it has:
+
+```ts twoslash title="schema.ts"
+import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+
+const Contact = Descriptor.EntityState("Brawl/Contact", {
+  // On the ground: the platform underfoot (null for the floor)
+  ground: { platform: Decode.nullable(Decode.integer) },
+
+  // In the air: the only place a vertical speed exists
+  air: { vy: Decode.number, coyote: Decode.integer } // [!code highlight]
+}, {
+  // The moves allowed between states
+  transitions: { ground: ["air"], air: ["ground"] }
+})
+
+// The value is one of the states, named by `_tag`
+type ContactValue = Descriptor.EntityStateOf<typeof Contact>
+//   ^?
+```
+
+A grounded body with a `vy` no longer has a type to be. The fields are
+validators too, so a saved game is checked state by state when it loads.
+
+## Moving takes the new state's fields
+
+A system moves an entity with `transition`. It writes the target state from
+scratch: every field the target needs, and nothing from the state it
+leaves.
+
+```ts twoslash
+import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+const Contact = Descriptor.EntityState("Brawl/Contact", {
+  ground: { platform: Decode.nullable(Decode.integer) },
+  air: { vy: Decode.number, coyote: Decode.integer }
+}, { transitions: { ground: ["air"], air: ["ground"] } })
+const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
+// ---cut---
+// @errors: 2741
+Game.System("Brawl/Breaker", { queries: { bodies: Bodies } }, ({ queries }) => {
+  for (const { data } of queries.bodies.each()) {
+    // Pops the fighter up: it is in the air now, with a speed to fall from
+    data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+
+    // Landing needs the platform it lands on
+    data.contact.transition({ from: "air", to: "ground", data: {} })
+  }
+})
+```
+
+Staying in a state is `update`: it changes that state's fields, and only
+those.
+
+```ts twoslash
+import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+const Contact = Descriptor.EntityState("Brawl/Contact", {
+  ground: { platform: Decode.nullable(Decode.integer) },
+  air: { vy: Decode.number, coyote: Decode.integer }
+}, { transitions: { ground: ["air"], air: ["ground"] } })
+const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
+// ---cut---
+// @errors: 2322
+Game.System("Brawl/Fall", { queries: { bodies: Bodies } }, ({ queries }) => {
+  for (const { data } of queries.bodies.each()) {
+    data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - 0.6 }) })
+
+    // A field of another state is caught, even through a spread
+    data.contact.update({ state: "air", data: (air) => ({ ...air, platform: 1 }) })
+  }
+})
+```
+
+Both are a compare-and-set: they write only while the entity is still in
+the state they expect, and otherwise return a failure that says which state
+it was in. The editor completes each part: `from` offers every state, `to`
+only the moves the graph allows, and `data` the target's fields.
+
+## The one gap, and its lint
+
+Game code written as pure functions builds the new value itself. Spreading
+the old state and changing `_tag` compiles, because TypeScript does not
+check the fields a spread brings along, and the old fields survive. The
+lint rule names it:
+
+```text
+error ritmo(no-state-spread): This sets `_tag` over a spread of `air`: every
+field of the previous state survives at runtime, though the type of the new
+state hides it, so it comes back when the value is saved, compared, or
+spread again. Move an entity state with `cell.transition({ from, to, data })`,
+which takes the new state's fields; anywhere else, write the new state's
+fields out: `{ _tag: "air", vy, coyote }`.
+```
+
+## What it buys
+
+- Whole kinds of bug stop compiling: hitstun outside a hit, a hit flag left
+  over from the last attack, a grounded body that drifts.
+- Reading a value narrows on `_tag`, so code that uses a state's data runs
+  only in that state.
+- When the fighter test game moved its body and action records to entity
+  states, it played back bit for bit the same. The only casualty was a
+  branch that could never run, which the old record had hidden.

@@ -4,7 +4,8 @@
  * Types catch wrong calls and devtools catch wrong runs; these rules catch
  * the source patterns neither can see: simulation code that reads the wall
  * clock, `Math.random`, engine-dependent math, or the page, data that cannot
- * be saved, and runtime results that are dropped. Every report names the
+ * be saved, state values that keep a previous state's fields, and runtime
+ * results that are dropped. Every report names the
  * Ritmo API to use instead.
  *
  * Register the plugin in `.oxlintrc.json` with `"jsPlugins":
@@ -17,7 +18,8 @@
  *   `ritmo/use-random-for-randomness`, `ritmo/use-ops-for-math`,
  *   `ritmo/keep-simulation-headless`, `ritmo/no-infinity-in-simulation-data`.
  * - Every file: `ritmo/handle-tick-result`,
- *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/use-cell-value`.
+ *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/use-cell-value`,
+ *   `ritmo/no-state-spread`.
  *
  * @module oxlint-plugin-ritmo
  */
@@ -26,6 +28,7 @@ import { definePlugin } from "@oxlint/plugins"
 import handleTickResult from "./rules/handle-tick-result.ts"
 import keepSimulationHeadless from "./rules/keep-simulation-headless.ts"
 import noInfinityInSimulationData from "./rules/no-infinity-in-simulation-data.ts"
+import noStateSpread from "./rules/no-state-spread.ts"
 import prefixDescriptorAndSystemNames from "./rules/prefix-descriptor-and-system-names.ts"
 import useCellValue from "./rules/use-cell-value.ts"
 import useClockForTime from "./rules/use-clock-for-time.ts"
@@ -42,6 +45,7 @@ export default definePlugin({
     "no-infinity-in-simulation-data": noInfinityInSimulationData,
     "handle-tick-result": handleTickResult,
     "prefix-descriptor-and-system-names": prefixDescriptorAndSystemNames,
-    "use-cell-value": useCellValue
+    "use-cell-value": useCellValue,
+    "no-state-spread": noStateSpread
   }
 })

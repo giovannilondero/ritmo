@@ -6,6 +6,7 @@ Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. Thes
 
 - simulation code that reads the wall clock, `Math.random`, engine-dependent math, or the page;
 - data that cannot be saved;
+- state values that keep a previous state's fields;
 - runtime results that are dropped.
 
 Every report says what goes wrong and which Ritmo API to use instead.
@@ -26,7 +27,8 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
   "rules": {
     "ritmo/handle-tick-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
-    "ritmo/use-cell-value": "error"
+    "ritmo/use-cell-value": "error",
+    "ritmo/no-state-spread": "error"
   },
   "overrides": [
     {
@@ -63,6 +65,7 @@ const started = performance.now()
 | [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
+| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, or the new state's fields written out |
 
 ## Simulation rules
 
@@ -188,5 +191,19 @@ const dash = target.data.dash.value()
 ```
 
 Check `cell.present` alone to branch without reading.
+
+### `ritmo/no-state-spread`
+
+A tagged value, such as the value of a `Descriptor.EntityState` component, changes state with the new state's own fields. Setting `_tag` over a spread of the previous state keeps every field of that state at runtime, while the new state's type hides them: they come back when the value is saved, compared, or spread again.
+
+```ts
+const popped = { ...ground, _tag: "air", vy: 2 }   // reported: `platform` survives in the air
+
+// instead
+data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
+```
+
+Spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`) is not reported, nor is a `_tag` written before the spread (`{ _tag: to, ...data }`).
 
 Source: https://github.com/typeonce-dev/ritmo

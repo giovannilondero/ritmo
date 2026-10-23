@@ -556,12 +556,48 @@ const clockAdvance: BenchCase = {
   }
 }
 
+// A separate schema, so adding the state leaves every other case's world unchanged.
+const Motion = Descriptor.EntityState("Bench/Motion", {
+  ground: {},
+  air: { vy: Decode.number }
+}, { transitions: { ground: ["air"], air: ["ground"] } })
+const StateGame = Schema.bind(Schema.fragment({ components: { Motion } }))
+
+const entityStates: BenchCase = {
+  name: "entity-state/update-transition-10k",
+  description: "On 10k entity states, update an airborne speed each tick and move between ground and air when it runs out",
+  setup: () => {
+    const runtime = StateGame.Runtime.make({ services: StateGame.Runtime.services() }).value
+    const Spawn = StateGame.System("Bench/SpawnMotion", {
+      commands: StateGame.System.commands(StateGame.System.spawns(Motion))
+    }, ({ commands }) => {
+      for (let index = 0; index < N; index++) {
+        commands.spawn(StateGame.Command.spawn([Motion, index % 4 === 0 ? { _tag: "ground" } : { _tag: "air", vy: index % 10 }]))
+      }
+    })
+    runtime.tick(StateGame.Schedule(Spawn, StateGame.Schedule.applyDeferred()))
+    const Fall = StateGame.System("Bench/Fall", {
+      queries: { motions: StateGame.Query({ selection: { motion: StateGame.Query.write(Motion) } }) }
+    }, ({ queries }) => {
+      for (const { data } of queries.motions.each()) {
+        const motion = data.motion.get()
+        if (motion._tag === "ground") data.motion.transition({ from: "ground", to: "air", data: { vy: 9 } })
+        else if (motion.vy <= 0) data.motion.transition({ from: "air", to: "ground" })
+        else data.motion.update({ state: "air", data: (air) => ({ vy: air.vy - 1 }) })
+      }
+    })
+    const schedule = StateGame.Schedule(Fall)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
 export const cases: ReadonlyArray<BenchCase> = [
   clockAdvance,
   spawn,
   despawn,
   iterateRead,
   iterateWrite,
+  entityStates,
   sparseSingle,
   changedFilter,
   churn,
