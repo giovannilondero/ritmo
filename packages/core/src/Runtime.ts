@@ -1393,7 +1393,8 @@ const makeValidatedRuntime = <
     }
     resourceOriginals.clear()
     machineOriginals.clear()
-    committedMachineOriginals.clear()
+    // Most systems never update a machine: skip the clear on that path.
+    if (committedMachineOriginals.size > 0) committedMachineOriginals.clear()
   }
 
   const restoreStore = (store: Map<symbol, unknown>, originals: Map<symbol, unknown>): void => {
@@ -1418,7 +1419,7 @@ const makeValidatedRuntime = <
       }
     }
     machineOriginals.clear()
-    restoreStore(currentMachines, committedMachineOriginals)
+    if (committedMachineOriginals.size > 0) restoreStore(currentMachines, committedMachineOriginals)
     emittedEvents.clear()
   }
 
