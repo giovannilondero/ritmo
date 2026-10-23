@@ -4,14 +4,21 @@ title: States that can't go wrong
 description: Each state holds only its own data, so a value cannot describe something that cannot happen.
 ---
 
-A fighter in a test game started drifting up after a guard. One write
-gave it a speed but never took it off the ground:
+A fighter in a test game started drifting up after a guard. Everything
+about its body lived in one record:
 
 ```ts
-const body = { grounded: true, vy: 2 } // on the ground, and moving up // [!code highlight]
+interface Body {
+  readonly grounded: boolean // [!code highlight]
+  readonly vy: number // [!code highlight]
+  readonly platform: number | null
+  readonly coyote: number
+}
 ```
 
-Gravity skips a grounded body, so nothing pulled it back down.
+The guard set `vy: 2` and left `grounded: true`. Gravity skips a grounded
+body, so nothing pulled it back down. The record could hold a body on the
+ground and moving up.
 
 ## One state, its own fields
 
