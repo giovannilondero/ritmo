@@ -4,47 +4,53 @@ title: States that can't go wrong
 description: Each state holds only its own data, so a value cannot describe something that cannot happen.
 ---
 
-A fighter in a test game started rising slowly into the air after a
-successful guard, with nobody pressing anything. Its body was one record:
+A fighter in a test game started drifting up after a guard, with nobody
+touching the controls. Its body was one flat record:
 
-```ts
+```ts title="before"
 interface Body {
   readonly grounded: boolean
   readonly vy: number
-  readonly platform: number | null
-  readonly coyote: number
-  // ...
 }
+
+// The guard breaker pops the fighter up...
+body = { ...body, vy: 2 } // [!code highlight]
+// ...but forgets to say it left the ground: `grounded` is still true
+
+// Every frame after that:
+if (!body.grounded) vy -= gravity // grounded, so no gravity
+y += vy // [!code highlight]
+// y grows by 2, forever
 ```
 
-The guard breaker gave the body a little upward speed and left `grounded`
-as it was. A grounded body skips gravity, so nothing ever pulled it back
-down: it climbed by `vy` every frame. Every place that wrote the record had
-to remember which fields go together, and one forgot. The record could
-describe a grounded body moving up.
+`grounded: true` next to `vy: 2` is a body that cannot exist, and the
+record let one write it.
 
 ## One state, its own fields
 
-`Descriptor.EntityState` lists each state with the fields only it has. A
-body on the ground knows its platform; a body in the air knows its speed.
-There is no grounded body with a `vy`, because there is nowhere to put it:
+`Descriptor.EntityState` gives each state only the fields it has:
 
 ```ts twoslash title="schema.ts"
 import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
 
 const Contact = Descriptor.EntityState("Brawl/Contact", {
+  // On the ground: the platform underfoot (null for the floor)
   ground: { platform: Decode.nullable(Decode.integer) },
-  air: { vy: Decode.number, coyote: Decode.integer }
+
+  // In the air: the only place a vertical speed exists
+  air: { vy: Decode.number, coyote: Decode.integer } // [!code highlight]
 }, {
+  // The moves allowed between states
   transitions: { ground: ["air"], air: ["ground"] }
 })
 
+// The value is one of the states, named by `_tag`
 type ContactValue = Descriptor.EntityStateOf<typeof Contact>
 //   ^?
 ```
 
-The fields are validators, so a saved game is checked state by state when
-it loads.
+A grounded body with a `vy` no longer has a type to be. The fields are
+validators too, so a saved game is checked state by state when it loads.
 
 ## Moving takes the new state's fields
 
