@@ -200,7 +200,7 @@ check("Kit paces on and never steps into anyone (invariant held every frame)", a
 
 // ── Two players ────────────────────────────────────────────────────────
 // p1 is on the arrows from the start; p2 joins on WASD and appears beside
-// p1, turns to p1 and talks (p1 turns back), then walks right as far as the
+// p1, turns to p1 and talks (p1 turns back; q does not leave mid-talk), then walks right as far as the
 // leash lets it (both stay on one screen), and leaves with Q.
 console.log("\nTwo players")
 type WasdTimeline = Keyboard.Timeline<typeof leftKeys>
@@ -208,6 +208,7 @@ const wasd: WasdTimeline = [
   { frame: 5, press: ["right"], release: ["right"] },
   { frame: 10, press: ["up"], release: ["up"] },
   { frame: 30, press: ["action"], release: ["action"] },
+  { frame: 50, press: ["back"], release: ["back"] },
   { frame: 80, press: ["action"], release: ["action"] },
   { frame: 170, press: ["action"], release: ["action"] },
   { frame: 200, press: ["right"] },
@@ -246,6 +247,8 @@ const startCol = duoPlayers().p2?.tile.col ?? 0
 duoRunTo(31)
 check("p2 faces p1 and talks to them", duoScreen().mode === "Talking" && duoScreen().dialogue?.speaker === "Player 2" && duoPlayers().p2?.facing === "Up", [duoScreen(), duoPlayers()])
 check("p1 turns to p2", duoPlayers().p1?.facing === "Down", duoPlayers())
+duoRunTo(52)
+check("q mid-talk does not leave: p2 stays and the talk goes on", duoPlayers().p2 !== undefined && duoScreen().mode === "Talking", [duoScreen(), duoPlayers()])
 duoRunTo(79)
 check("Ah, it's player 1.", duoScreen().dialogue?.text === "Ah, it's player 1." && duoScreen().dialogue?.more === true, duoScreen().dialogue)
 duoRunTo(169)

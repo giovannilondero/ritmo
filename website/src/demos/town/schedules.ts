@@ -3,7 +3,7 @@ import { Clock } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
 
 import { Game, Input, Mode, PlayersInput, Time } from "./schema.ts"
-import { AdvanceDialogue, JoinPlayers, LookAround, PaceVillagers, SeatFirstPlayer, SpawnTown, StartTalk, TypeDialogue, WalkPlayer } from "./systems.ts"
+import { AdvanceDialogue, JoinPlayers, JoinWhileExploring, LookAround, PaceVillagers, SeatFirstPlayer, SpawnTown, StartTalk, TypeDialogue, WalkPlayer } from "./systems.ts"
 
 const AdvanceTime = Clock.system(Game, { name: "Town/AdvanceTime", resource: Time })
 
@@ -35,5 +35,6 @@ export const updateSchedule = Game.Schedule(
     AdvanceDialogue,
     TypeDialogue
   ),
-  Game.Schedule.applyStateTransitions()
+  Game.Schedule.applyStateTransitions(),
+  JoinWhileExploring
 )

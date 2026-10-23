@@ -96,6 +96,21 @@ export const SeatFirstPlayer = Game.System(
 
 // ── Players joining and leaving ─────────────────────────────────────────
 
+/**
+ * Joining (and leaving by button) is open only while exploring: a player
+ * cannot walk out of a conversation and leave its box behind, and nobody
+ * drops in halfway through one. Runs after the mode changes, so the next
+ * update's input sees it.
+ */
+export const JoinWhileExploring = Game.System(
+  "Town/JoinWhileExploring",
+  {
+    services: { players: Game.System.service(PlayersInput) },
+    machines: { mode: Game.System.machine(Mode) }
+  },
+  ({ services, machines }) => services.players.setJoining(machines.mode.get() === "Exploring")
+)
+
 /** The second player is the same boy, tinted, so the two are told apart. */
 const tints: Readonly<Record<SeatValue, number | undefined>> = { p1: undefined, p2: 0x9fd8ff }
 
