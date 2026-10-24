@@ -33,11 +33,11 @@ const start = (runtime: GameRuntime) => {
   if (!ticked.ok) throw new Error("setup failed")
 }
 
-/** The whole world as a save: equal saves are equal worlds. */
+/** The whole world's checksum: equal checksums are equal worlds. */
 const world = (peer: Peer) => {
-  const saved = peer.runtime.snapshot()
-  if (!saved.ok) throw new Error("snapshot failed")
-  return JSON.stringify(saved.value)
+  const sum = peer.runtime.checksum()
+  if (!sum.ok) throw new Error("checksum failed")
+  return sum.value
 }
 
 /** What the screen shows: every sprite and where. */

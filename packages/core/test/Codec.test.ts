@@ -77,11 +77,13 @@ describe("Codecs", () => {
     expect(loaded.inspect(Read)).toEqual({ players: 1, inventory: new Map([["coin", 4], ["gem", 1]]) })
   })
 
-  it("fails a snapshot whose encode rejects a value, naming it", () => {
-    expect(makeRuntime(-2).snapshot()).toEqual({
+  it("fails a snapshot and a checksum whose encode rejects a value, naming it", () => {
+    const failed = {
       ok: false,
       error: { _tag: "UnencodableResource", name: "Codec/Debt", error: { _tag: "SchemaIssues", issues: [{ message: "Expected a value of 0 or more", path: [] }] } }
-    })
+    }
+    expect(makeRuntime(-2).snapshot()).toEqual(failed)
+    expect(makeRuntime(-2).checksum()).toEqual(failed)
   })
 
   it("rejects raw values with the schema's issues", () => {

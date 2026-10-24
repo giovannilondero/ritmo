@@ -62,6 +62,7 @@
 import * as HostClockModule from "./HostClock.ts"
 import * as Checkpoint from "./Checkpoint.ts"
 import * as CheckpointInternal from "./internal/checkpoint.ts"
+import * as Checksum from "./internal/checksum.ts"
 import * as Command from "./Command.ts"
 import * as Debug from "./Debug.ts"
 import * as DescriptorModule from "./Descriptor.ts"
@@ -671,6 +672,18 @@ export interface Runtime<
    * callback) throws.
    */
   readonly snapshot: Snapshot.Gate<S, () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>>
+  /**
+   * A fingerprint of what `snapshot()` saves, as 16 hex digits: equal worlds
+   * give equal checksums, on every device and however they were built (the
+   * order components were added or object keys written does not count).
+   * For spotting desyncs: peers of a rollback or lockstep game compare the
+   * checksums of confirmed ticks, and a replay compares them with the ones
+   * it recorded. Like `snapshot`, it skips transient components and
+   * resources, fails with the value an `encode` rejected, is callable only
+   * when every component and resource is constructed or transient, and
+   * throws while a schedule is running.
+   */
+  readonly checksum: Snapshot.Gate<S, () => Result.Result<string, Snapshot.SnapshotError>>
   /**
    * Replaces the world with a snapshot after validating it against the
    * schema. On failure nothing changes. See the `Snapshot` module. Restore
@@ -2644,6 +2657,12 @@ const makeValidatedRuntime = <
     })
   }
 
+  const checksum = (): Result.Result<string, Snapshot.SnapshotError> => {
+    if (inTick) throw new Error("runtime.checksum was called while a schedule is running: it would hash writes a failing system rolls back; take it between ticks")
+    const saved = snapshot()
+    return saved.ok ? Result.success(Checksum.checksum(saved.value)) : saved
+  }
+
   // The public type only exposes `restore` when every saved descriptor has a
   // schema; a descriptor without one still fails closed here.
   const validate = (value: unknown, descriptor: Descriptor.Any): Result.Result<unknown, DescriptorModule.SchemaIssues> | undefined =>
@@ -2974,6 +2993,7 @@ const makeValidatedRuntime = <
     tryTick: tryRunSchedule,
     // The gate is type-only: the functions exist on every runtime.
     snapshot: snapshot as unknown as Snapshot.Gate<S, typeof snapshot>,
+    checksum: checksum as unknown as Snapshot.Gate<S, typeof checksum>,
     restore: tracedRestore as unknown as Snapshot.Gate<S, typeof restore>,
     checkpoint: checkpoint as Runtime<S, Services, Resources, Root, Machines>["checkpoint"],
     rewind,

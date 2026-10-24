@@ -138,6 +138,7 @@ export const memorySink = (): Sink & { readonly files: ReadonlyArray<ReplayFile>
 export interface Recordable<S extends Schema.Any, Root> {
   readonly debug: Debug.Handle<S, Root>
   readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
+  readonly checksum: () => Result.Result<string, Snapshot.SnapshotError>
   readonly services: Readonly<Record<string, unknown>>
   readonly inspect: (inspector: never) => unknown
 }
@@ -179,7 +180,7 @@ export interface Recorder {
   readonly stop: () => void
 }
 
-/** FNV-1a over a string, as 8 hex digits: a cheap fingerprint for checkpoints and schemas. */
+/** FNV-1a over a string, as 8 hex digits: a cheap fingerprint for schemas and encode failures. */
 const fingerprint = (text: string): string => {
   let hash = 0x811c9dc5
   for (let index = 0; index < text.length; index++) {
@@ -201,9 +202,10 @@ export const schemaHash = <S extends Schema.Any, Root>(debug: Debug.Handle<S, Ro
   }))
 }
 
-// A world that cannot be saved hashes its encode failure, so a replay that reaches it diverges visibly.
-const worldHash = (snapshot: Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>): string =>
-  fingerprint(JSON.stringify(snapshot.ok ? snapshot.value : snapshot.error))
+// The world's `runtime.checksum()`. A world that cannot be saved hashes its
+// encode failure, so a replay that reaches it diverges visibly.
+const worldHash = (checksum: Result.Result<string, Snapshot.SnapshotError>): string =>
+  checksum.ok ? checksum.value : fingerprint(JSON.stringify(checksum.error))
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
 
@@ -261,7 +263,7 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
     // A tick whose world an `encode` rejects is no starting point; the window keeps the previous one.
     if (!snapshot.ok) return
     points.push({ tick, snapshot: snapshot.value, pendingCommands: runtime.debug.dump({ limit: 0 }).pendingCommands.length })
-    checkpoints.push({ tick, hash: worldHash(snapshot) })
+    checkpoints.push({ tick, hash: worldHash(runtime.checksum()) })
     const windowStart = tick - keepTicks
     let firstNeeded = -1
     for (let index = 0; index < points.length; index++) if (points[index]!.tick <= windowStart) firstNeeded = index
@@ -412,6 +414,7 @@ export interface Target<S extends Schema.Any, Root> {
   readonly hostClock: HostClock.HostClock
   readonly runtime: Session.Target<S, Root> & {
     readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
+    readonly checksum: () => Result.Result<string, Snapshot.SnapshotError>
     readonly restore: (data: unknown) => Result.Result<void, Snapshot.RestoreError>
     readonly send: (descriptor: never, value: never) => void
   }
@@ -476,7 +479,7 @@ export const session = <S extends Schema.Any, Root>(
   const replay = Session.make(target.runtime, { schedules: { [file.schedule]: schedule }, hostClock: target.hostClock })
   const send = target.runtime.send as (descriptor: { readonly kind: "event"; readonly name: string; readonly key: symbol }, value: unknown) => void
   const events = new Map(target.runtime.debug.describe().events.map(({ name }) => [name, { kind: "event" as const, name, key: Symbol.for(`ritmo/event/${name}`) }]))
-  const hashes = new Map<number, string>([[ran, worldHash(target.runtime.snapshot())]])
+  const hashes = new Map<number, string>([[ran, worldHash(target.runtime.checksum())]])
   const recorded = new Map(file.checkpoints.map(({ tick, hash }) => [tick, hash] as const))
   const last = file.ticks.at(-1)?.tick ?? file.start.tick
 
@@ -489,7 +492,7 @@ export const session = <S extends Schema.Any, Root>(
       // `until` runs after each frame: the tick is checked, and the next one's input set up before it runs.
       until: () => {
         ran += 1
-        const hash = worldHash(target.runtime.snapshot())
+        const hash = worldHash(target.runtime.checksum())
         hashes.set(ran, hash)
         const expected = recorded.get(ran)
         if (expected !== undefined && expected !== hash) diverged.push({ tick: ran, recorded: expected, replayed: hash })
