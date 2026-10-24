@@ -69,21 +69,29 @@ interface QueryState {
   readonly componentSeen: Array<number>
   readonly relationSeen: Array<number>
   entitiesSeen: number
+  /**
+   * The run the query last handed matches out in, shared by every cell of
+   * its matches: a match kept from an earlier run fails its check, unless
+   * the query was handed out again in this run (its cells then read the
+   * entity's current values, as resolving it again would).
+   */
+  readonly handout: Cells.Stamp
   matches: ReadonlyArray<AnyMatch> | undefined
   records: ReadonlyArray<EntityRecord>
 }
 
 const unique = <T>(values: ReadonlyArray<T>): ReadonlyArray<T> => [...new Set(values)]
 
+
 /**
  * A live view over the proven component values of one record.
  */
-const makeProof = (record: EntityRecord, slots: ReadonlyArray<readonly [string, number]>): object => {
+const makeProof = (world: World, record: EntityRecord, slots: ReadonlyArray<readonly [string, number]>): object => {
   const proof = {}
   for (const [slot, ordinal] of slots) {
     Object.defineProperty(proof, slot, {
       enumerable: true,
-      get: () => record.values[ordinal]
+      get: () => world.valueAt(record, ordinal)
     })
   }
   return proof
@@ -97,12 +105,14 @@ class EntityView {
   readonly kind: "EntityRef" | "EntityMut"
   readonly id: Entity.EntityId<any, any>
   readonly __schemaRoot: undefined
+  readonly #world: World
   readonly #state: QueryState
   readonly #record: EntityRecord
   #proof: object | undefined
   #writable: object | undefined
 
-  constructor(state: QueryState, record: EntityRecord) {
+  constructor(world: World, state: QueryState, record: EntityRecord) {
+    this.#world = world
     this.kind = state.writeSlots.length > 0 ? "EntityMut" : "EntityRef"
     this.id = record.entityId
     this.__schemaRoot = undefined
@@ -113,11 +123,11 @@ class EntityView {
   }
 
   get proof(): object {
-    return this.#proof ??= makeProof(this.#record, this.#state.proofSlots)
+    return this.#proof ??= makeProof(this.#world, this.#record, this.#state.proofSlots)
   }
 
   get writable(): object {
-    return this.#writable ??= makeProof(this.#record, this.#state.writeSlots)
+    return this.#writable ??= makeProof(this.#world, this.#record, this.#state.writeSlots)
   }
 }
 
@@ -231,6 +241,7 @@ export const makeQueryEngine = (world: World) => {
       componentSeen: componentDeps.map(() => -1),
       relationSeen: relationDeps.map(() => -1),
       entitiesSeen: -1,
+      handout: { live: false },
       matches: undefined,
       records: []
     }
@@ -302,32 +313,38 @@ export const makeQueryEngine = (world: World) => {
   const relatedIds = (relation: Relation.Relation.Any, id: number): ReadonlyArray<Entity.EntityId<any, any>> =>
     world.relatedSourceIds(relation, id).map(world.entityIdOf)
 
-  const makeCell = (plan: SlotPlan, record: EntityRecord): unknown => {
+  const makeCell = (plan: SlotPlan, record: EntityRecord, stamp: Cells.Stamp): unknown => {
     switch (plan.mode) {
       case "read":
-        return Cells.componentRead(record, plan.ordinal)
+        return Cells.componentRead(world, record, plan.ordinal, stamp)
       case "write":
-        return Cells.componentWrite(record, plan.ordinal, world, plan.constructor, plan.entityState)
+        return Cells.componentWrite(world, record, plan.ordinal, stamp, plan.constructor, plan.entityState)
       case "optional":
-        return Cells.componentOptional(record, plan.ordinal)
+        return Cells.componentOptional(world, record, plan.ordinal, stamp)
       case "readRelation":
-        return Cells.derivedRead(() => world.entityIdOf(world.relationTarget(plan.relation, record.id)!))
+        return Cells.derivedRead(world, stamp, plan.relation.name, () => world.entityIdOf(world.relationTarget(plan.relation, record.id)!))
       case "optionalRelation":
         return Cells.derivedOptional(
+          world,
+          stamp,
+          plan.relation.name,
           () => world.relationTarget(plan.relation, record.id) !== undefined,
           () => world.entityIdOf(world.relationTarget(plan.relation, record.id)!)
         )
       case "readRelated":
-        return Cells.derivedRead(() => relatedIds(plan.relation, record.id))
+        return Cells.derivedRead(world, stamp, plan.relation.relatedName, () => relatedIds(plan.relation, record.id))
       case "optionalRelated":
         return Cells.derivedOptional(
+          world,
+          stamp,
+          plan.relation.relatedName,
           () => world.relatedSourceIds(plan.relation, record.id).length > 0,
           () => relatedIds(plan.relation, record.id)
         )
     }
   }
 
-  const makeEntityView = (state: QueryState, record: EntityRecord): object => new EntityView(state, record)
+  const makeEntityView = (state: QueryState, record: EntityRecord): object => new EntityView(world, state, record)
 
   const matchFor = (state: QueryState, record: EntityRecord): AnyMatch => {
     const cached = record.matches[state.ordinal]
@@ -336,7 +353,7 @@ export const makeQueryEngine = (world: World) => {
     }
     const data: Record<string, unknown> = {}
     for (const plan of state.slots) {
-      data[plan.slot] = makeCell(plan, record)
+      data[plan.slot] = makeCell(plan, record, state.handout)
     }
     const match = { entity: makeEntityView(state, record), data } as unknown as AnyMatch
     record.matches[state.ordinal] = match
@@ -467,8 +484,7 @@ export const makeQueryEngine = (world: World) => {
    * Current matches of a query. `since` is the tick of the reading system's
    * previous run; `added`/`changed` filters match changes made after it.
    */
-  const each = (query: AnyQuery, since: number): ReadonlyArray<AnyMatch> => {
-    const state = stateOf(query)
+  const matchesOf = (state: QueryState, since: number): ReadonlyArray<AnyMatch> => {
     refresh(state)
     if (state.filters.length === 0) {
       return state.matches!
@@ -508,20 +524,35 @@ export const makeQueryEngine = (world: World) => {
     return records.map((record) => matchFor(state, record))
   }
 
-  const get = (
+  const matchOf = (
     id: number,
-    query: AnyQuery,
+    state: QueryState,
     since: number
   ): Result.Result<AnyMatch, Query.Query.LookupError> => {
     const record = world.records.get(id)
     if (!record) {
       return Result.failure(Query.missingEntityError(id))
     }
-    const state = stateOf(query)
     if (!matchesStructure(state, record) || !matchesFilters(state, record, since)) {
       return Result.failure(Query.queryMismatchError(id))
     }
     return Result.success(matchFor(state, record))
+  }
+
+  /**
+   * Hands matches out for the running run: the cells of the query's matches
+   * refuse to read or write once it ends.
+   */
+  const each = (query: AnyQuery, since: number): ReadonlyArray<AnyMatch> => {
+    const state = stateOf(query)
+    world.handOut(state.handout)
+    return matchesOf(state, since)
+  }
+
+  const get = (id: number, query: AnyQuery, since: number): Result.Result<AnyMatch, Query.Query.LookupError> => {
+    const state = stateOf(query)
+    world.handOut(state.handout)
+    return matchOf(id, state, since)
   }
 
   return { each, get }

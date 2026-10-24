@@ -173,8 +173,8 @@ export interface AddedFilter<D extends ComponentDescriptor> {
 }
 
 /**
- * A filter that matches entities whose component was added or written since
- * the reading system's previous run.
+ * A filter that matches entities whose component was added, or changed to a
+ * different value, since the reading system's previous run.
  */
 export interface ChangedFilter<D extends ComponentDescriptor> {
   readonly kind: "changed"
@@ -295,11 +295,15 @@ export const added = <D extends ComponentDescriptor>(descriptor: D): AddedFilter
 })
 
 /**
- * Declares a filter that matches components added or written since the
- * reading system's previous run.
+ * Declares a filter that matches components added, or changed to a different
+ * value, since the reading system's previous run.
  *
- * Any write through a write cell counts, even when the value is equal to the
- * previous one. Writes from a system whose run failed are rolled back and do
+ * A write counts when the value differs from the one before the writing
+ * system's run: a different number or string (`NaN` equals `NaN`), or a
+ * different object. Writing back the value read, or an equal number, is not
+ * a change; a new object is one even when its fields are equal, so write the
+ * value you read when nothing moved. Inserting a component counts as added
+ * and changed. Writes from a system whose run failed are rolled back and do
  * not count. A system never sees its own writes as changes on its next run
  * (it does see the events it emitted).
  *
@@ -776,6 +780,13 @@ export type OptionalReadCell<T> = PresentOptionalReadCell<T> | AbsentOptionalRea
  *
  * If the query contains at least one write access, the entity proof is mutable.
  * Otherwise it remains read-only.
+ *
+ * A match is valid during the run that produced it (the system run, or the
+ * inspector read): its cells throw when used after it, so a match kept in
+ * `local` state, a closure, or an inspector's result fails loudly instead of
+ * reading an entity that may have changed or left the query. To follow an
+ * entity across runs, keep `match.entity.id` or a handle and resolve it again
+ * with `queries.x.get(id)` / `queries.x.getHandle(handle)`, which is fallible.
  */
 export type QueryMatch<S extends Schema.Any, Q extends Query.Any> =
   keyof Query.WriteProof<Q> extends never

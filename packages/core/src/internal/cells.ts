@@ -3,14 +3,14 @@
  *
  * Cells are small prototype-based objects instead of per-call closures so a
  * query can create one set of cells per matched entity and reuse them for as
- * long as the entity keeps matching. Every read goes to live storage, so a
- * reused cell never observes a stale value.
+ * long as the entity keeps matching. Every read goes to live storage (the
+ * component's store pages), so a reused cell never observes a stale value.
  */
 import * as Result from "../Result.ts"
 import type { Construction } from "./schema.ts"
 import { emptyStates } from "./states.ts"
-import type { EntityRecord, World } from "./world.ts"
-import { ABSENT } from "./world.ts"
+import type { EntityRecord, Page, World } from "./world.ts"
+import { ABSENT, PAGE_MASK } from "./world.ts"
 
 /**
  * Validation behavior shared by every writable cell.
@@ -78,51 +78,109 @@ const staleMatch = (record: EntityRecord, ordinal: number): Error =>
   )
 
 
+/**
+ * Whether a query handed its matches out in the running run: their cells
+ * read and write only while it is `live` (`World.handOut` sets it, the end
+ * of the run clears it).
+ */
+export interface Stamp {
+  live: boolean
+}
+
+/** A cell used in a later run than the one its match was handed out in. */
+const staleRun = (name: string): never => {
+  throw new Error(
+    `${name} was used through a query match from an earlier run: a match is valid during the system run that produced it; `
+    + "keep the entity id or a handle and resolve it again with queries.x.get(id) or queries.x.getHandle(handle)"
+  )
+}
+
 /** Kept out of `get` so the hot read stays small enough to inline. */
 const staleRead = (record: EntityRecord, ordinal: number): never => {
   throw staleMatch(record, ordinal)
 }
 
+/** A cell read that failed its one hot-path check: the component is gone, or the match is from another run. */
+const invalid = (record: EntityRecord, ordinal: number, value: unknown): never =>
+  value === ABSENT ? staleRead(record, ordinal) : staleRun(record.nameAt(ordinal))
+
+/**
+ * Writes a component value through a cell. Inside a transaction the first
+ * write to a slot keeps its old value, and commit stamps what changed. A slot without a
+ * value means the match outlived its entity's component, and a stamp from
+ * another run means it outlived its run: the first is the more specific cause.
+ */
+const write = (world: World, page: Page, slot: number, value: unknown, record: EntityRecord, ordinal: number, stamp: Stamp): void => {
+  const values = page.values
+  const current = values[slot]
+  if (current === ABSENT || !stamp.live) invalid(record, ordinal, current)
+  const transaction = world.transactionState
+  if (!transaction.active) return world.writeOutsideTransaction(page, slot, value)
+  if (page.savedIn !== transaction.id) world.touchPage(page)
+  // The slot's first write in the transaction keeps its old value for commit and rollback.
+  const saved = page.saved
+  const word = slot >>> 5
+  const bit = 1 << (slot & 31)
+  if ((saved[word]! & bit) === 0) {
+    saved[word] = saved[word]! | bit
+    page.before![slot] = current
+  }
+  values[slot] = value
+}
+
+/** The entity's page of a component and its slot there: where its cells read. */
+const pageOf = (world: World, record: EntityRecord, ordinal: number): Page => world.pageFor(ordinal, record.id)
+
 class ComponentReadCell {
-  // The record's values array, held directly: one load per read instead of
-  // two pays for the stale check. Records never replace their array.
-  readonly values: Array<unknown>
+  readonly page: Page
+  readonly slot: number
   readonly ordinal: number
   readonly record: EntityRecord
+  readonly stamp: Stamp
 
-  constructor(record: EntityRecord, ordinal: number) {
-    this.values = record.values
+  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
+    this.page = pageOf(world, record, ordinal)
+    this.slot = record.id & PAGE_MASK
     this.ordinal = ordinal
     this.record = record
+    this.stamp = stamp
   }
 
   get(): unknown {
-    const value = this.values[this.ordinal]
-    return value === ABSENT ? staleRead(this.record, this.ordinal) : value
+    const value = this.page.values[this.slot]
+    // One branch on the hot path; `invalid` names the misuse.
+    if (value === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, value)
+    return value
   }
 }
 
 class ComponentWriteCell extends WriteCellBase<unknown> {
-  readonly values: Array<unknown>
+  readonly page: Page
+  readonly slot: number
   readonly ordinal: number
   readonly record: EntityRecord
   readonly world: World
+  readonly stamp: Stamp
 
-  constructor(record: EntityRecord, ordinal: number, world: World) {
+  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
     super()
-    this.values = record.values
+    this.page = pageOf(world, record, ordinal)
+    this.slot = record.id & PAGE_MASK
     this.ordinal = ordinal
     this.record = record
     this.world = world
+    this.stamp = stamp
   }
 
   get(): unknown {
-    const value = this.values[this.ordinal]
-    return value === ABSENT ? staleRead(this.record, this.ordinal) : value
+    const value = this.page.values[this.slot]
+    // One branch on the hot path; `invalid` names the misuse.
+    if (value === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, value)
+    return value
   }
 
   set(value: unknown): void {
-    if (!this.world.setComponentValue(this.record, this.ordinal, value)) staleRead(this.record, this.ordinal)
+    write(this.world, this.page, this.slot, value, this.record, this.ordinal, this.stamp)
   }
 }
 
@@ -134,15 +192,19 @@ class ComponentWriteCell extends WriteCellBase<unknown> {
  * any state.
  */
 class EntityStateWriteCell {
-  readonly values: Array<unknown>
+  readonly page: Page
+  readonly slot: number
   readonly ordinal: number
   readonly record: EntityRecord
   readonly world: World
   readonly decoder: Construction
   readonly plan: EntityStatePlan
+  readonly stamp: Stamp
 
-  constructor(record: EntityRecord, ordinal: number, world: World, decoder: Construction, plan: EntityStatePlan) {
-    this.values = record.values
+  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp, decoder: Construction, plan: EntityStatePlan) {
+    this.stamp = stamp
+    this.page = pageOf(world, record, ordinal)
+    this.slot = record.id & PAGE_MASK
     this.ordinal = ordinal
     this.record = record
     this.world = world
@@ -151,12 +213,14 @@ class EntityStateWriteCell {
   }
 
   get(): unknown {
-    const value = this.values[this.ordinal]
-    return value === ABSENT ? staleRead(this.record, this.ordinal) : value
+    const value = this.page.values[this.slot]
+    // One branch on the hot path; `invalid` names the misuse.
+    if (value === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, value)
+    return value
   }
 
   set(value: unknown): void {
-    if (!this.world.setComponentValue(this.record, this.ordinal, value)) staleRead(this.record, this.ordinal)
+    write(this.world, this.page, this.slot, value, this.record, this.ordinal, this.stamp)
   }
 
   setRaw(raw: unknown): Result.Result<void, unknown> {
@@ -186,25 +250,31 @@ class EntityStateWriteCell {
 }
 
 class OptionalComponentCell {
-  readonly record: EntityRecord
-  readonly ordinal: number
+  readonly page: Page
+  readonly slot: number
+  readonly name: string
+  readonly stamp: Stamp
 
-  constructor(record: EntityRecord, ordinal: number) {
-    this.record = record
-    this.ordinal = ordinal
+  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
+    this.page = pageOf(world, record, ordinal)
+    this.slot = record.id & PAGE_MASK
+    this.name = record.nameAt(ordinal)
+    this.stamp = stamp
   }
 
   get present(): boolean {
-    const values = this.record.values
-    return this.ordinal < values.length && values[this.ordinal] !== ABSENT
+    if (!this.stamp.live) staleRun(this.name)
+    return this.page.values[this.slot] !== ABSENT
   }
 
   get(): unknown {
-    return this.record.values[this.ordinal]
+    if (!this.stamp.live) staleRun(this.name)
+    return this.page.values[this.slot]
   }
 
   value(): unknown {
-    const value = this.record.values[this.ordinal]
+    if (!this.stamp.live) staleRun(this.name)
+    const value = this.page.values[this.slot]
     return value === ABSENT ? undefined : value
   }
 }
@@ -244,23 +314,24 @@ class StoreWriteCell extends WriteCellBase<unknown> {
   }
 }
 
-export const componentRead = (record: EntityRecord, ordinal: number): { get(): unknown } =>
-  new ComponentReadCell(record, ordinal)
+export const componentRead = (world: World, record: EntityRecord, ordinal: number, stamp: Stamp): { get(): unknown } =>
+  new ComponentReadCell(world, record, ordinal, stamp)
 
 export const componentWrite = (
+  world: World,
   record: EntityRecord,
   ordinal: number,
-  world: World,
+  stamp: Stamp,
   constructor: Construction | undefined,
   entityState: EntityStatePlan | undefined
 ): object => {
-  if (entityState !== undefined && constructor !== undefined) return new EntityStateWriteCell(record, ordinal, world, constructor, entityState)
-  const cell = new ComponentWriteCell(record, ordinal, world)
+  if (entityState !== undefined && constructor !== undefined) return new EntityStateWriteCell(world, record, ordinal, stamp, constructor, entityState)
+  const cell = new ComponentWriteCell(world, record, ordinal, stamp)
   return constructor === undefined ? cell : withConstructor(cell, constructor)
 }
 
-export const componentOptional = (record: EntityRecord, ordinal: number): { readonly present: boolean; get(): unknown; value(): unknown } =>
-  new OptionalComponentCell(record, ordinal)
+export const componentOptional = (world: World, record: EntityRecord, ordinal: number, stamp: Stamp): { readonly present: boolean; get(): unknown; value(): unknown } =>
+  new OptionalComponentCell(world, record, ordinal, stamp)
 
 export const storeRead = (store: Map<symbol, unknown>, key: symbol): { get(): unknown } =>
   new StoreReadCell(store, key)
@@ -282,18 +353,40 @@ export const storeWrite = (
 /**
  * A read cell over a derived value, used for relation slots.
  */
-export const derivedRead = <T>(read: () => T): { get(): T } => ({ get: read })
+export const derivedRead = <T>(world: World, stamp: Stamp, name: string, read: () => T): { get(): T } => {
+  return {
+    get: () => {
+      if (!stamp.live) staleRun(name)
+      return read()
+    }
+  }
+}
 
 /**
  * A maybe-present cell over a derived value, used for optional relation slots.
  */
 export const derivedOptional = <T>(
+  world: World,
+  stamp: Stamp,
+  name: string,
   isPresent: () => boolean,
   read: () => T
-): { readonly present: boolean; get(): T; value(): T | undefined } => ({
-  get present() {
-    return isPresent()
-  },
-  get: read,
-  value: () => (isPresent() ? read() : undefined)
-})
+): { readonly present: boolean; get(): T; value(): T | undefined } => {
+  const check = (): void => {
+    if (!stamp.live) staleRun(name)
+  }
+  return {
+    get present() {
+      check()
+      return isPresent()
+    },
+    get: () => {
+      check()
+      return read()
+    },
+    value: () => {
+      check()
+      return isPresent() ? read() : undefined
+    }
+  }
+}

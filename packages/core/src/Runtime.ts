@@ -680,6 +680,10 @@ export interface Runtime<
    * system, the inspector sees `added`/`changed` matches, removed and
    * despawned records, and events published since its own previous
    * evaluation, once.
+   *
+   * Inspect between ticks: calling it while a schedule is running throws
+   * (read the world from a system instead). Return plain data: query matches
+   * are valid during the read only, so a match in the result throws when used.
    */
   readonly inspect: {
     <const Selected extends Inspector.InspectorDefinition<any, any, Root, any, any>>(
@@ -1071,9 +1075,7 @@ const makeValidatedRuntime = <
     destroyEntity(id) {
       if (debugEnabled) {
         const record = world.records.get(id)
-        record?.values.forEach((value, ordinal) => {
-          if (value !== ABSENT) noteCommand("despawns", world.descriptorAt(ordinal).name)
-        })
+        for (const ordinal of record?.held ?? []) noteCommand("despawns", world.descriptorAt(ordinal).name)
       }
       world.destroyEntity(id)
     },
@@ -1649,7 +1651,12 @@ const makeValidatedRuntime = <
         // advances the world tick or any reader position.
         const projection = condition.projection as Inspector.InspectorDefinition<any, boolean>
         const { context } = slotOf(projection.system, false)
-        return projection.read(context as never) === true
+        world.beginRun()
+        try {
+          return projection.read(context as never) === true
+        } finally {
+          world.endRun()
+        }
       }
     }
   }
@@ -1925,15 +1932,18 @@ const makeValidatedRuntime = <
     const started = tracing ? now() : 0
     beginSystemTransaction()
     let outcome: Result.Result<unknown, unknown>
+    world.beginRun()
     try {
       // A system that returns nothing cannot fail; otherwise it returned a `Result`.
       outcome = system.run(context) ?? succeeded
     } catch (defect) {
+      world.endRun()
       if (tracing) emit(traceSystem(system, reader, thisRun, started, "defect", defect, commands.flush()))
       rollbackSystemTransaction()
       commands.flush()
       throw defect
     }
+    world.endRun()
     if (!outcome.ok) {
       if (tracing) emit(traceSystem(system, reader, thisRun, started, "failed", outcome.error, commands.flush()))
       rollbackSystemTransaction()
@@ -2478,10 +2488,18 @@ const makeValidatedRuntime = <
   const inspect = <const Selected extends Inspector.InspectorDefinition<any, any, Root, any, any>>(
     inspector: Selected
   ): Inspector.Inspector.Value<Selected> => {
+    // Matches are valid in the run that produced them, so runs never nest.
+    if (inTick) throw new Error(`runtime.inspect(${inspector.name}) was called while a schedule is running: read the world from a system, or inspect between ticks`)
     const { context, reader } = slotOf(inspector.system, false)
     reader.since = reader.lastRun
     reader.streamSince = reader.streamLastRun
-    const value = inspector.read(context) as Inspector.Inspector.Value<Selected>
+    world.beginRun()
+    let value: Inspector.Inspector.Value<Selected>
+    try {
+      value = inspector.read(context) as Inspector.Inspector.Value<Selected>
+    } finally {
+      world.endRun()
+    }
     reader.lastRun = world.advanceTick()
     reader.streamLastRun = reader.lastRun
     return value
@@ -2754,9 +2772,7 @@ const makeValidatedRuntime = <
       if (only !== undefined && !only.has(record.id)) continue
       if (!required.every((ordinal) => world.has(record, ordinal))) continue
       const components: Record<string, unknown> = {}
-      record.values.forEach((value, ordinal) => {
-        if (value !== ABSENT) components[world.descriptorAt(ordinal).name] = value
-      })
+      for (const ordinal of record.held) components[world.descriptorAt(ordinal).name] = world.valueAt(record, ordinal)
       const relations: Record<string, number> = {}
       for (const relation of world.relationDefinitions) {
         const target = world.relationTarget(relation, record.id)
