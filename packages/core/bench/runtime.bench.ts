@@ -8,19 +8,21 @@
  * Scores are normalized by the `calibration` case in `harness.ts` (see
  * `scripts/bench.ts`).
  */
-import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import * as Codecs from "../test/codecs.ts"
 import type * as Entity from "@typeonce/ritmo/Entity"
 import type { ScheduleEntry } from "@typeonce/ritmo/Schedule"
 import type { BenchCase } from "./harness.ts"
+import { worldOf } from "../test/saved.ts"
 
 const N = 10_000
 
 // Validators exist so snapshots can be restored; the round-trip case measures them.
-const vec = Decode.struct({ x: Decode.number, y: Decode.number })
+const vec = Codecs.struct({ x: Codecs.number, y: Codecs.number })
 
 const Position = Descriptor.ConstructedComponent(vec)("Bench/Position")
 const Velocity = Descriptor.ConstructedComponent(vec)("Bench/Velocity")
-const Health = Descriptor.ConstructedComponent(Decode.number)("Bench/Health")
+const Health = Descriptor.ConstructedComponent(Codecs.number)("Bench/Health")
 const Static = Descriptor.Tag("Bench/Static")
 const Player = Descriptor.Tag("Bench/Player")
 const Hot = Descriptor.Tag("Bench/Hot")
@@ -451,7 +453,7 @@ const snapshotRoundTrip: BenchCase = {
     populate(runtime, N, 0)
     return {
       run: () => {
-        const restored = runtime.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
+        const restored = runtime.restore(JSON.parse(JSON.stringify(worldOf(runtime.snapshot()))))
         if (!restored.ok) throw new Error("snapshot round-trip failed")
       }
     }
@@ -559,7 +561,7 @@ const clockAdvance: BenchCase = {
 // A separate schema, so adding the state leaves every other case's world unchanged.
 const Motion = Descriptor.EntityState("Bench/Motion", {
   ground: {},
-  air: { vy: Decode.number }
+  air: Codecs.struct({ vy: Codecs.number })
 }, { transitions: { ground: ["air"], air: ["ground"] } })
 const StateGame = Schema.bind(Schema.fragment({ components: { Motion } }))
 
@@ -595,7 +597,7 @@ const entityStates: BenchCase = {
 const MachineGame = Schema.bind(Schema.fragment({}))
 const Dialogue = MachineGame.StateMachine("Bench/Dialogue", {
   Closed: {},
-  Open: { page: Decode.integer, typed: Decode.integer }
+  Open: Codecs.struct({ page: Codecs.integer, typed: Codecs.integer })
 })
 
 const machineUpdates: BenchCase = {

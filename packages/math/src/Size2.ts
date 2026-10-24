@@ -31,6 +31,7 @@
  * Pure readers and raw views over already-validated size values.
  */
 import type * as Brand from "@typeonce/ritmo/Brand"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
 import * as internal from "./internal/size2.ts"
 import type * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "./Scalar.ts"
@@ -68,29 +69,26 @@ export type Error = {
 }
 
 /**
- * Failure produced by `decode` when the input does not have the raw shape.
- *
- * @category Size Types
- */
-export type DecodeError = {
-  readonly tag: "Size2/Malformed"
-  readonly input: unknown
-}
-
-/**
  * Validates one raw size and returns an explicit result.
  *
  * @category Construction
  */
 export const result: (raw: Raw) => Result.Result<Size2, Error> = internal.result
 /**
- * Validates untrusted input of any shape, for example a value read from a
- * save file. Descriptors built from this module use it when restoring
- * snapshots.
+ * The codec of `Size2` (a Standard Schema, see `Descriptor.Codec`): give it to
+ * `Descriptor.ConstructedComponent(...)` so raw input and saves are validated.
+ * Its saved form is the raw shape, so it needs no `encode`. To put a `Size2`
+ * inside your own object schema, use {@link is} with your library's guard
+ * schema (`Schema.declare`, `z.custom`).
+ *
+ * @example
+ * ```ts
+ * const Position = Descriptor.ConstructedComponent(Size2.codec)("Game/Position")
+ * ```
  *
  * @category Construction
  */
-export const decode: (raw: unknown) => Result.Result<Size2, Error | DecodeError> = internal.decode
+export const codec: StandardSchema<Raw, Size2> = internal.codec
 /**
  * Validates one raw size and returns `null` on failure.
  *
@@ -98,11 +96,12 @@ export const decode: (raw: unknown) => Result.Result<Size2, Error | DecodeError>
  */
 export const option: (raw: Raw) => Size2 | null = internal.option
 /**
- * Checks whether one raw size already satisfies the size invariants.
+ * Whether any value is a valid `Size2`: a guard, also for building a
+ * `Size2` field in your own schema (`Schema.declare(Size2.is)`).
  *
  * @category Construction
  */
-export const is: (raw: Raw) => raw is Raw & Size2 = internal.is
+export const is: (raw: unknown) => raw is Size2 = internal.is
 /**
  * Converts one branded size back to a fresh raw object.
  *

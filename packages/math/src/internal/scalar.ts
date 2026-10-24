@@ -1,6 +1,7 @@
 import type * as Brand from "@typeonce/ritmo/Brand"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "../Scalar.ts"
+import { codecOf } from "./codec.ts"
 
 // A branded number's constructor from its check.
 const refine = <Value, Raw, Error>(
@@ -51,9 +52,15 @@ const positiveBrand = refine<Scalar.Positive, number, Scalar.Error>((value) => {
       })
 })
 
-export const Finite = finiteBrand
-export const NonNegative = nonNegativeBrand
-export const Positive = positiveBrand
+// Each brand with its codec: the saved form is the number itself.
+const withCodec = <Value extends number>(brand: Brand.Constructor<Value, number, Scalar.Error>, expected: string) => ({
+  ...brand,
+  codec: codecOf<number, Value>((raw) => typeof raw === "number" ? brand.result(raw) : Result.failure(raw), expected)
+})
+
+export const Finite = withCodec(finiteBrand, "a finite number")
+export const NonNegative = withCodec(nonNegativeBrand, "a finite number, 0 or more")
+export const Positive = withCodec(positiveBrand, "a finite number above 0")
 
 export const clamp = (value: number, min: number, max: number): Scalar.Finite =>
   Math.min(Math.max(value, min), max) as Scalar.Finite

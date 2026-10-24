@@ -13,8 +13,8 @@ const Counter = Descriptor.Resource<number>()("Counter")
 const Phase = Descriptor.Resource<"Boot" | "Running">()("Phase")
 const Logger = Descriptor.Service<{ readonly log: (message: string) => void }>()("Logger")
 const PrefixedLogger = Descriptor.Service<{ readonly log: (message: string) => void }>()("RuntimeResources/Logger")
-const Viewport = Descriptor.ConstructedResource(Size2)("Viewport")
-const Camera = Descriptor.ConstructedResource(Vector2)("Camera")
+const Viewport = Descriptor.ConstructedResource(Size2.codec)("Viewport")
+const Camera = Descriptor.ConstructedResource(Vector2.codec)("Camera")
 
 const Game = Schema.bind(Schema.fragment({
   resources: {

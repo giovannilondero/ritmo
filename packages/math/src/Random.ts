@@ -11,7 +11,7 @@
  *
  * @example
  * ```ts
- * const Rng = Descriptor.ConstructedResource(Random)("Game/Rng")
+ * const Rng = Descriptor.ConstructedResource(Random.codec)("Game/Rng")
  * const runtime = Game.Runtime.make({ services, resources: { Rng: Random.seed(0x5eed) } })
  *
  * Game.System("Game/Spawn", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
@@ -35,7 +35,9 @@
  */
 import type * as Brand from "@typeonce/ritmo/Brand"
 import type { WriteCell } from "@typeonce/ritmo/Query"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
+import { codecOf } from "./internal/codec.ts"
 
 /**
  * A generator. Every draw advances `state`.
@@ -143,7 +145,7 @@ export const make = (state: number): Random => new Mulberry32(state)
 
 /**
  * A generator's state as a resource holds it: an unsigned 32-bit integer.
- * Only `seed`, `result`, and `decode` make one, so `draw` takes the cell of a
+ * Only `seed`, `result`, and `codec` make one, so `draw` takes the cell of a
  * random resource and nothing else.
  *
  * @category Resource
@@ -160,7 +162,7 @@ const isState = (value: unknown): value is State =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 0xffffffff
 
 /**
- * Validates a state, for `Descriptor.ConstructedResource(Random)` and saves.
+ * Validates a state, for game code that builds one from a number.
  *
  * @category Resource
  */
@@ -168,12 +170,24 @@ export const result = (raw: number): Result.Result<State, InvalidState> =>
   isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw })
 
 /**
- * Validates a state read from untrusted data (a save).
+ * Whether any value is a generator state: a guard, also for building a
+ * state field in your own schema (`Schema.declare(Random.is)`).
  *
  * @category Resource
  */
-export const decode = (raw: unknown): Result.Result<State, InvalidState> =>
-  isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw })
+export const is = (raw: unknown): raw is State => isState(raw)
+
+/**
+ * The codec of a random resource's state (a Standard Schema, see
+ * `Descriptor.Codec`): `Descriptor.ConstructedResource(Random.codec)`. Its
+ * saved form is the number itself, so it needs no `encode`.
+ *
+ * @category Resource
+ */
+export const codec: StandardSchema<number, State> = codecOf<number, State>(
+  (raw) => isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw }),
+  "a generator state: an unsigned 32-bit integer"
+)
 
 /**
  * The starting state for a seed, reduced to an unsigned 32-bit integer like

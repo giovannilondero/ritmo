@@ -87,21 +87,24 @@ export type InterpolationError = {
 
 /**
  * Constructor for {@link Finite}: `result` (explicit failure), `option`
- * (`null` on failure), and `is` (a type guard).
+ * (`null` on failure), `is` (a type guard), and `codec`, for
+ * `Descriptor.ConstructedComponent(Scalar.Finite.codec)`.
  *
  * @category Constructors
  */
 export const Finite = internal.Finite
 /**
  * Constructor for {@link NonNegative}: `result` (explicit failure), `option`
- * (`null` on failure), and `is` (a type guard).
+ * (`null` on failure), `is` (a type guard), and `codec`, for
+ * `Descriptor.ConstructedComponent(Scalar.NonNegative.codec)`.
  *
  * @category Constructors
  */
 export const NonNegative = internal.NonNegative
 /**
  * Constructor for {@link Positive}: `result` (explicit failure), `option`
- * (`null` on failure), and `is` (a type guard).
+ * (`null` on failure), `is` (a type guard), and `codec`, for
+ * `Descriptor.ConstructedComponent(Scalar.Positive.codec)`.
  *
  * @category Constructors
  */

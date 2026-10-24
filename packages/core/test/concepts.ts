@@ -4,21 +4,23 @@
  * machines, and schedules. It is typechecked with the repository and run by
  * `packages/core/test/Concepts.test.ts`.
  */
-import { Decode, Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
 import type { Query } from "@typeonce/ritmo/Query"
+import { worldOf } from "./saved.ts"
 
 // 1. Descriptors name the data a world can hold. Constructed descriptors carry
 //    a validator, so values loaded from a save are checked; transient ones are
 //    never saved. `Decode` covers common shapes; any Standard Schema validator
 //    works through `Descriptor.fromStandardSchema(...)`.
 const Root = Schema.defineRoot("Concepts")
-const vector = Decode.struct({ x: Decode.number, y: Decode.number })
+const vector = Codecs.struct({ x: Codecs.number, y: Codecs.number })
 const Position = Descriptor.ConstructedComponent(vector)("Concepts/Position")
 const Velocity = Descriptor.ConstructedComponent(vector)("Concepts/Velocity")
-const Health = Descriptor.ConstructedComponent(Decode.number)("Concepts/Health")
-const Target = Descriptor.ConstructedComponent(Decode.struct({ enemy: Decode.handle(Root, Health) }))("Concepts/Target")
+const Health = Descriptor.ConstructedComponent(Codecs.number)("Concepts/Health")
+const Target = Descriptor.ConstructedComponent(Codecs.struct({ enemy: Codecs.handle(Root, Health) }))("Concepts/Target")
 const DeltaTime = Descriptor.TransientResource<number>()("Concepts/DeltaTime")
-const Score = Descriptor.ConstructedResource(Decode.number)("Concepts/Score")
+const Score = Descriptor.ConstructedResource(Codecs.number)("Concepts/Score")
 const Hit = Descriptor.Event<{ readonly amount: number }>()("Concepts/Hit")
 const Log = Descriptor.Service<{ readonly write: (line: string) => void }>()("Concepts/Log")
 const { relation: ChildOf } = Descriptor.Hierarchy("Concepts/ChildOf", "Concepts/Children")
@@ -173,7 +175,7 @@ export const runConcepts = (frames: number): { readonly log: ReadonlyArray<strin
     }
   }
 
-  const saved = JSON.stringify(runtime.snapshot())
+  const saved = JSON.stringify(worldOf(runtime.snapshot()))
   const restored = runtime.restore(JSON.parse(saved))
   return { log, failure: restored.ok ? undefined : restored.error._tag }
 }

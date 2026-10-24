@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Clock, Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./saved.ts"
 
 const step = Clock.hz(60)
 const Time = Clock.resource("ClockRun/Time", step)
@@ -96,7 +97,7 @@ describe("Clock", () => {
   it("refuses to restore a save made at another rate, naming the resource", () => {
     const runtime = make()
     runtime.tick(Game.Schedule(AdvanceTime))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     const FastTime = Clock.resource("ClockRun/Time", Clock.hz(120))
     const Fast = Schema.bind(Schema.fragment({ resources: { Time: FastTime, Slow } }))
     const made = Fast.Runtime.make({ services: Fast.Runtime.services(), resources: { Time: Clock.start(Clock.hz(120)), Slow: Clock.start(Clock.hz(10)) } })
@@ -104,7 +105,7 @@ describe("Clock", () => {
     expect(made.value.restore(saved)).toEqual(Result.failure({
       _tag: "InvalidResource",
       name: "ClockRun/Time",
-      error: { _tag: "InvalidTime", message: "saved at 60 Hz, this game runs at 120 Hz" }
+      error: { _tag: "SchemaIssues", issues: [{ message: "saved at 60 Hz, this game runs at 120 Hz" }] }
     }))
     expect(runtime.restore(saved).ok).toBe(true)
   })

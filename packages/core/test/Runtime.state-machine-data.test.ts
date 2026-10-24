@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest"
-import { Debug, Decode, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import { Debug, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
+import { worldOf } from "./saved.ts"
 
 const Log = Descriptor.TransientResource<ReadonlyArray<string>>()("MachineData/Log")
 const Game = Schema.bind(Schema.fragment({ resources: { Log } }))
 
 const Mode = Game.StateMachine("MachineData/Mode", {
   Exploring: {},
-  Talking: { speaker: Decode.string, page: Decode.integer, typed: Decode.integer }
+  Talking: Codecs.struct({ speaker: Codecs.string, page: Codecs.integer, typed: Codecs.integer })
 })
 const Session = Game.StateMachine("MachineData/Session", { Menu: {}, Playing: {} })
-const Turn = Game.StateMachine("MachineData/Turn", { Mine: { moves: Decode.integer } }, { within: [Session, "Playing"] })
+const Turn = Game.StateMachine("MachineData/Turn", { Mine: Codecs.struct({ moves: Codecs.integer }) }, { within: [Session, "Playing"] })
 
 const makeRuntime = (debug = false) => Game.Runtime.make({
   services: Game.Runtime.services(),
@@ -186,7 +188,7 @@ describe("per-state machine data", () => {
   it("saves the state with its fields and restores it, rejecting bad data by path", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(StartTalk, Game.Schedule.applyStateTransitions(), Type))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     expect(saved.machines["MachineData/Mode"]).toEqual({ _tag: "Talking", speaker: "Mira", page: 0, typed: 1 })
 
     const restored = makeRuntime()
@@ -197,10 +199,10 @@ describe("per-state machine data", () => {
       const result = restored.restore({ ...saved, machines: { ...saved.machines, "MachineData/Mode": value } })
       return result.ok ? undefined : result.error
     }
-    expect(reject("Talking")).toMatchObject({ _tag: "InvalidMachineState", name: "MachineData/Mode", error: { path: "$" } })
-    expect(reject({ _tag: "Asleep" })).toMatchObject({ _tag: "InvalidMachineState", error: { path: "$._tag" } })
-    expect(reject({ _tag: "Talking", speaker: "Mira", page: 0.5, typed: 0 })).toMatchObject({ _tag: "InvalidMachineState", error: { path: "$.page" } })
-    expect(reject({ _tag: "Talking", speaker: "Mira", page: 0 })).toMatchObject({ _tag: "InvalidMachineState", error: { path: "$.typed" } })
+    expect(reject("Talking")).toMatchObject({ _tag: "InvalidMachineState", name: "MachineData/Mode", error: { _tag: "SchemaIssues", issues: [{ path: [] }] } })
+    expect(reject({ _tag: "Asleep" })).toMatchObject({ _tag: "InvalidMachineState", error: { _tag: "SchemaIssues", issues: [{ path: ["_tag"] }] } })
+    expect(reject({ _tag: "Talking", speaker: "Mira", page: 0.5, typed: 0 })).toMatchObject({ _tag: "InvalidMachineState", error: { _tag: "SchemaIssues", issues: [{ path: ["page"] }] } })
+    expect(reject({ _tag: "Talking", speaker: "Mira", page: 0 })).toMatchObject({ _tag: "InvalidMachineState", error: { _tag: "SchemaIssues", issues: [{ path: ["typed"] }] } })
     expect(restored.inspect(ReadMode)).toEqual({ _tag: "Talking", speaker: "Mira", page: 0, typed: 1 })
   })
 

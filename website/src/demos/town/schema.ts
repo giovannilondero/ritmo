@@ -142,7 +142,7 @@ export const Stride = Descriptor.Component<StrideValue>()("Town/Stride")
 
 export const Time = Clock.resource("Town/Time", step)
 /** The villagers' look-around and pacing draws come from here, so a run replays exactly. */
-export const Rng = Descriptor.ConstructedResource(Random)("Town/Rng")
+export const Rng = Descriptor.ConstructedResource(Random.codec)("Town/Rng")
 /** Captured from the players' devices at the start of each update; never saved. */
 /** Which device the first player plays on; set by the host before setup. */
 export const Host = Descriptor.Resource<HostValue>()("Town/Host")

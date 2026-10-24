@@ -13,9 +13,9 @@ const Time = Descriptor.Resource<number>()("Time")
 const TickEvent = Descriptor.Event<{ dt: number }>()("TickEvent")
 const Phase = Descriptor.Resource<"Running" | "Paused">()("Phase")
 const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Logger")
-const SafePosition = Descriptor.ConstructedComponent(Vector2)("SafePosition")
-const Viewport = Descriptor.ConstructedResource(Size2)("Viewport")
-const Camera = Descriptor.ConstructedResource(Vector2)("Camera")
+const SafePosition = Descriptor.ConstructedComponent(Vector2.codec)("SafePosition")
+const Viewport = Descriptor.ConstructedResource(Size2.codec)("Viewport")
+const Camera = Descriptor.ConstructedResource(Vector2.codec)("Camera")
 
 const Game = Schema.bind(Schema.fragment({
   components: {
@@ -78,22 +78,22 @@ describe("System", () => {
 
           expect(resources.time.get()).type.toBe<number>()
           expect(resources.phase.get()).type.toBe<"Running" | "Paused">()
-          expect(resources.viewport.setRaw({ width: 320, height: 180 })).type.toBe<Result.Result<void, Size2.Error>>()
+          expect(resources.viewport.setRaw({ width: 320, height: 180 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
           expect(resources.viewport.updateRaw((viewport) => ({
             width: viewport.width,
             height: viewport.height
-          }))).type.toBe<Result.Result<void, Size2.Error>>()
+          }))).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
           expect(services.logger).type.toBe<{ log: (message: string) => void }>()
           expect(events.tick.emit).type.toBe<(value: { readonly dt: number }) => void>()
           // Plain write cells take valid values only; validation belongs to constructed descriptors.
           expect(resources.phase).type.not.toHaveProperty("setResult")
           expect(resources.phase).type.not.toHaveProperty("updateResult")
           expect(resources.phase).type.not.toHaveProperty("setRaw")
-          expect(resources.camera.setRaw({ x: 0, y: 0 })).type.toBe<Result.Result<void, Vector2.Error>>()
+          expect(resources.camera.setRaw({ x: 0, y: 0 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
           expect(resources.camera.updateRaw((camera) => ({
             x: camera.x + 1,
             y: camera.y + 1
-          }))).type.toBe<Result.Result<void, Vector2.Error>>()
+          }))).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
 
           // @ts-expect-error Property 'missing' does not exist on type 'ResourceContext<SystemSpec<SchemaDefinition<{ readonly Position
           resources.missing
@@ -152,7 +152,7 @@ describe("System", () => {
           }>>()
 
           expect(resources.time.get()).type.toBe<number>()
-          expect(resources.viewport.setRaw({ width: 320, height: 180 })).type.toBe<Result.Result<void, Size2.Error>>()
+          expect(resources.viewport.setRaw({ width: 320, height: 180 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
           expect(services.logger).type.toBe<{ log: (message: string) => void }>()
 
           // @ts-expect-error Property 'missing' does not exist on type 'ResourceContext<SystemSpec<SchemaDefinition<{ readonly Position
@@ -228,7 +228,7 @@ describe("Game.System.consumeService", () => {
     Bound.System("Consume/Drain", { services: { logger: Bound.System.consumeService(Logger) } }, ({ services }) => {
       expect(services.logger.log).type.toBe<(message: string) => void>()
     })
-    // @ts-expect-error Argument of type 'DecodableDescriptor<"resource"
+    // @ts-expect-error Argument of type 'ConstructedDescriptor<"resource", "Viewport"
     Bound.System.consumeService(Viewport)
   })
 

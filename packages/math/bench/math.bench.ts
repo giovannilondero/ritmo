@@ -232,7 +232,7 @@ const randomDraw: BenchCase = {
   name: "math/random-draw-resource-100k",
   description: "Draw 100,000 random numbers from a resource in one system",
   setup: () => {
-    const Rng = Descriptor.ConstructedResource(Random)("Bench/Rng")
+    const Rng = Descriptor.ConstructedResource(Random.codec)("Bench/Rng")
     const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
     const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(1) } })
     if (!made.ok) throw new Error("bench runtime")

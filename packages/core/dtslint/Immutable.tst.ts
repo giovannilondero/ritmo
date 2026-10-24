@@ -1,11 +1,12 @@
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import * as Codecs from "../test/codecs.ts"
 import type * as DescriptorTypes from "@typeonce/ritmo/Descriptor"
 import type * as Query from "@typeonce/ritmo/Query"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("ImmutableTypes/Position")
 const Kind = Descriptor.Component<"wall" | "pickup">()("ImmutableTypes/Kind", { immutable: true })
-const Team = Descriptor.ConstructedComponent(Decode.literal("red", "blue"))("ImmutableTypes/Team", { immutable: true })
+const Team = Descriptor.ConstructedComponent(Codecs.literal("red", "blue"))("ImmutableTypes/Team", { immutable: true })
 const Cache = Descriptor.TransientComponent<number>()("ImmutableTypes/Cache", { immutable: true })
 
 const Game = Schema.bind(Schema.fragment({ components: { Position, Kind, Team, Cache } }))

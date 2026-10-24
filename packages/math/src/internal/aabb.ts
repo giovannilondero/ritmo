@@ -1,3 +1,4 @@
+import { codecOf } from "./codec.ts"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Size2 from "../Size2.ts"
 import * as Vector2 from "../Vector2.ts"
@@ -36,7 +37,7 @@ export const option = (raw: Aabb.Raw): Aabb.Aabb | null => {
   return next.ok ? next.value : null
 }
 
-export const is = (raw: Aabb.Raw): raw is Aabb.Raw & Aabb.Aabb => result(raw).ok
+export const is = (raw: unknown): raw is Aabb.Aabb => decode(raw).ok
 
 export const position = (aabb: Aabb.Aabb): Vector2.Vector2 => aabb.position
 export const size = (aabb: Aabb.Aabb): Size2.Size2 => aabb.size
@@ -66,10 +67,15 @@ export const overlapsVertically = (first: Aabb.Aabb, second: Aabb.Aabb): boolean
 export const translate = (aabb: Aabb.Aabb, delta: Vector2.Vector2): Aabb.Aabb =>
   make(Vector2.add(aabb.position, delta), aabb.size)
 
-export const decode = (raw: unknown): Result.Result<Aabb.Aabb, Aabb.Error | Aabb.DecodeError> => {
+/** Untrusted input without the raw shape. */
+type Malformed = { readonly tag: "Aabb/Malformed"; readonly input: unknown }
+
+export const decode = (raw: unknown): Result.Result<Aabb.Aabb, Aabb.Error | Malformed> => {
   if (typeof raw !== "object" || raw === null) return Result.failure({ tag: "Aabb/Malformed", input: raw })
   const { position, size } = raw as Record<string, unknown>
   return isVector2Shape(position) && isSize2Shape(size)
     ? result({ position, size })
     : Result.failure({ tag: "Aabb/Malformed", input: raw })
 }
+
+export const codec = codecOf<Aabb.Raw, Aabb.Aabb>(decode, "a box { x, y, width, height } of finite numbers with a non-negative size")

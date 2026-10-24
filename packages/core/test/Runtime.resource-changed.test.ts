@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { Decode, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
 import * as Runtime from "@typeonce/ritmo/Runtime"
+import { worldOf } from "./saved.ts"
 
 const hostClock = HostClock.test()
 
-const Score = Descriptor.ConstructedResource(Decode.number)("Changed/Score")
-const Hud = Descriptor.ConstructedResource(Decode.struct({ label: Decode.string, tags: Decode.array(Decode.string) }))("Changed/Hud")
-const Open = Descriptor.ConstructedResource(Decode.boolean)("Changed/Open")
+const Score = Descriptor.ConstructedResource(Codecs.number)("Changed/Score")
+const Hud = Descriptor.ConstructedResource(Codecs.struct({ label: Codecs.string, tags: Codecs.array(Codecs.string) }))("Changed/Hud")
+const Open = Descriptor.ConstructedResource(Codecs.boolean)("Changed/Open")
 
 const Game = Schema.bind(Schema.fragment({ resources: { Score, Hud, Open } }))
 
@@ -132,7 +134,7 @@ describe("Game.System.changedResource", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(w.system, r.system))
     runtime.tick(Game.Schedule(r.system))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     const restored = runtime.restore(JSON.parse(JSON.stringify(saved)))
     expect(restored).toEqual({ ok: true, value: undefined })
     runtime.tick(Game.Schedule(r.system))

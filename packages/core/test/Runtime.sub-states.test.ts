@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { Decode, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
+import { worldOf } from "./saved.ts"
 
-const Name = Descriptor.ConstructedComponent(Decode.string)("SubStates/Name")
+const Name = Descriptor.ConstructedComponent(Codecs.string)("SubStates/Name")
 const Game = Schema.bind(Schema.fragment({ components: { Name } }))
 const Session = Game.StateMachine("SubStates/Session", { Menu: {}, Playing: {} })
 const Phase = Game.StateMachine("SubStates/Phase", { Setup: {}, Battle: {} }, { within: [Session, "Playing"] })
@@ -187,11 +189,11 @@ describe("sub-states", () => {
   it("saves no value for an inactive sub-state and restores into either side", () => {
     const playing = makeRuntime("Playing")
     playing.tick(Game.Schedule(setPhase("Battle"), Game.Schedule.applyStateTransitions(transitions)))
-    const battle = playing.snapshot()
+    const battle = worldOf(playing.snapshot())
     expect(battle.machines).toEqual({ "SubStates/Session": { _tag: "Playing" }, "SubStates/Phase": { _tag: "Battle" }, "SubStates/Turn": { _tag: "Mine" } })
 
     const menu = makeRuntime("Menu")
-    const atMenu = menu.snapshot()
+    const atMenu = worldOf(menu.snapshot())
     expect(atMenu.machines).toEqual({ "SubStates/Session": { _tag: "Menu" } })
 
     // Restoring the menu save into a playing runtime clears the sub-states.

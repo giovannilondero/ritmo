@@ -36,6 +36,7 @@
  * Immutable vector math and normalization helpers on already-validated values.
  */
 import type * as Brand from "@typeonce/ritmo/Brand"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
 import * as internal from "./internal/vector2.ts"
 import type * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "./Scalar.ts"
@@ -73,16 +74,6 @@ export type Error = {
 }
 
 /**
- * Failure produced by `decode` when the input does not have the raw shape.
- *
- * @category Vector Types
- */
-export type DecodeError = {
-  readonly tag: "Vector2/Malformed"
-  readonly input: unknown
-}
-
-/**
  * Explicit failure produced when a zero-length vector cannot be normalized.
  *
  * @category Vector Types
@@ -103,13 +94,20 @@ export type NormalizeError = {
  */
 export const result: (raw: Raw) => Result.Result<Vector2, Error> = internal.result
 /**
- * Validates untrusted input of any shape, for example a value read from a
- * save file. Descriptors built from this module use it when restoring
- * snapshots.
+ * The codec of `Vector2` (a Standard Schema, see `Descriptor.Codec`): give it to
+ * `Descriptor.ConstructedComponent(...)` so raw input and saves are validated.
+ * Its saved form is the raw shape, so it needs no `encode`. To put a `Vector2`
+ * inside your own object schema, use {@link is} with your library's guard
+ * schema (`Schema.declare`, `z.custom`).
+ *
+ * @example
+ * ```ts
+ * const Position = Descriptor.ConstructedComponent(Vector2.codec)("Game/Position")
+ * ```
  *
  * @category Construction
  */
-export const decode: (raw: unknown) => Result.Result<Vector2, Error | DecodeError> = internal.decode
+export const codec: StandardSchema<Raw, Vector2> = internal.codec
 /**
  * Validates one raw vector and returns `null` on failure.
  *
@@ -117,11 +115,12 @@ export const decode: (raw: unknown) => Result.Result<Vector2, Error | DecodeErro
  */
 export const option: (raw: Raw) => Vector2 | null = internal.option
 /**
- * Checks whether one raw vector already satisfies the vector invariants.
+ * Whether any value is a valid `Vector2`: a guard, also for building a
+ * `Vector2` field in your own schema (`Schema.declare(Vector2.is)`).
  *
  * @category Construction
  */
-export const is: (raw: Raw) => raw is Raw & Vector2 = internal.is
+export const is: (raw: unknown) => raw is Vector2 = internal.is
 /**
  * Converts one branded vector back to a fresh raw object.
  *

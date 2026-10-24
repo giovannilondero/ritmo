@@ -1,4 +1,5 @@
-import { Decode, Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
+import { Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
+import * as Codecs from "../test/codecs.ts"
 import * as Size2 from "@typeonce/ritmo-math/Size2"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import * as Runtime from "@typeonce/ritmo/Runtime"
@@ -9,8 +10,8 @@ import { describe, expect, it } from "tstyche"
 const Time = Descriptor.Resource<number>()("Time")
 const Counter = Descriptor.Resource<number>()("Counter")
 const Phase = Descriptor.Resource<"Running" | "Paused">()("Phase")
-const Viewport = Descriptor.ConstructedResource(Size2)("Viewport")
-const Camera = Descriptor.ConstructedResource(Vector2)("Camera")
+const Viewport = Descriptor.ConstructedResource(Size2.codec)("Viewport")
+const Camera = Descriptor.ConstructedResource(Vector2.codec)("Camera")
 const Logger = Descriptor.Service<{ readonly log: (message: string) => void }>()("Logger")
 const PrefixedLogger = Descriptor.Service<{ readonly log: (message: string) => void }>()("RuntimeTypes/Logger")
 
@@ -329,7 +330,7 @@ describe("Runtime", () => {
 describe("Runtime snapshots", () => {
   const Root = Schema.defineRoot("SnapshotTypes")
   const Label = Descriptor.Component<string>()("SnapshotTypes/Label")
-  const Place = Descriptor.ConstructedComponent(Vector2)("SnapshotTypes/Place")
+  const Place = Descriptor.ConstructedComponent(Vector2.codec)("SnapshotTypes/Place")
   const Sprite = Descriptor.TransientComponent<{ readonly frame: number }>()("SnapshotTypes/Sprite")
   const Frame = Descriptor.TransientResource<number>()("SnapshotTypes/Frame")
   const Score = Descriptor.Resource<number>()("SnapshotTypes/Score")
@@ -337,59 +338,37 @@ describe("Runtime snapshots", () => {
   it("exposes snapshot and restore only when every value can be validated on load", () => {
     const Valid = Schema.bind(Schema.fragment({ components: { Place, Sprite }, resources: { Frame } }), Root)
     const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } }).value
-    expect(valid.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
+    expect(valid.snapshot()).type.toBe<Result.Result<import("@typeonce/ritmo/Snapshot").WorldSnapshot, import("@typeonce/ritmo/Snapshot").SnapshotError>>()
     expect(valid.restore(null)).type.toBe<Result.Result<void, import("@typeonce/ritmo/Snapshot").RestoreError>>()
 
     const Invalid = Schema.bind(Schema.fragment({ components: { Place, Label }, resources: { Score } }), Root)
     const invalid = Invalid.Runtime.make({ services: Invalid.Runtime.services(), resources: { Score: 0 } }).value
     expect(invalid.snapshot).type.toBe<{
-      readonly "SnapshotTypes/Label needs a validator": "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)"
-      readonly "SnapshotTypes/Score needs a validator": "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)"
+      readonly "SnapshotTypes/Label needs a schema": "Use a Constructed* descriptor given a Standard Schema (validated on load) or a Transient* one (not saved)"
+      readonly "SnapshotTypes/Score needs a schema": "Use a Constructed* descriptor given a Standard Schema (validated on load) or a Transient* one (not saved)"
     }>()
-    // @ts-expect-error Type '{ readonly "SnapshotTypes/Label needs a validator": "Use a Constructed* descriptor whose constructor
+    // @ts-expect-error Type '{ readonly "SnapshotTypes/Label needs a schema": "Use a Constructed* descriptor given a Standard Schema
     invalid.snapshot()
-    // @ts-expect-error Type '{ readonly "SnapshotTypes/Label needs a validator": "Use a Constructed* descriptor whose constructor
+    // @ts-expect-error Type '{ readonly "SnapshotTypes/Label needs a schema": "Use a Constructed* descriptor given a Standard Schema
     invalid.restore(null)
   })
 
-  it("requires constructors that accept untrusted input", () => {
-    const typedOnly = { result: (raw: { readonly n: number }) => Result.success(raw.n) }
-    const Typed = Descriptor.ConstructedComponent(typedOnly)("SnapshotTypes/Typed")
-    const Unknown = Descriptor.ConstructedComponent({
-      result: (raw: unknown) => typeof raw === "number" ? Result.success(raw) : Result.failure("NaN" as const)
-    })("SnapshotTypes/Unknown")
-    const Decoded = Descriptor.ConstructedComponent({ ...typedOnly, decode: (raw: unknown) => Result.failure(raw) })("SnapshotTypes/Decoded")
-
-    const Loadable = Schema.bind(Schema.fragment({ components: { Unknown, Decoded, Place } }), Root)
+  it("saves components with a schema and guards stored handles", () => {
+    const Marker = Descriptor.Tag("SnapshotTypes/Marker")
+    const Loadable = Schema.bind(Schema.fragment({ components: { Marker, Place } }), Root)
     const loadable = Loadable.Runtime.make({ services: Loadable.Runtime.services() }).value
-    expect(loadable.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
+    expect(loadable.snapshot()).type.toBe<Result.Result<import("@typeonce/ritmo/Snapshot").WorldSnapshot, import("@typeonce/ritmo/Snapshot").SnapshotError>>()
 
-    const Unloadable = Schema.bind(Schema.fragment({ components: { Typed } }), Root)
-    const unloadable = Unloadable.Runtime.make({ services: Unloadable.Runtime.services() }).value
-    // @ts-expect-error Type '{ readonly "SnapshotTypes/Typed needs a validator": "Use a Constructed* descriptor whose constructor
-    unloadable.snapshot()
-  })
-
-  it("infers constructed values from Standard Schema validators and stored handles", () => {
-    const Positive = Descriptor.ConstructedComponent(Descriptor.fromStandardSchema({
-      "~standard": {
-        version: 1,
-        vendor: "test",
-        validate: (value: unknown) => typeof value === "number" ? { value } : { issues: [{ message: "NaN" }] }
-      }
-    }))("SnapshotTypes/Positive")
-    expect<Descriptor.Descriptor.Value<typeof Positive>>().type.toBe<number>()
-
-    const decoded = Entity.decodeHandle(Root, null, Label)
-    expect(decoded).type.toBe<Result.Result<Entity.Handle<typeof Root, typeof Label>, Entity.InvalidHandle>>()
+    const isLabelHandle = Entity.isHandle(Root, Label)
+    expect(isLabelHandle).type.toBe<(raw: unknown) => raw is Entity.Handle<typeof Root, typeof Label>>()
   })
 })
 
-describe("Decode", () => {
+describe("Codecs", () => {
   it("infers descriptor values from codecs", () => {
-    const Stats = Descriptor.ConstructedComponent(Decode.struct({ level: Decode.integer, tags: Decode.array(Decode.string) }))("DecodeTypes/Stats")
+    const Stats = Descriptor.ConstructedComponent(Codecs.struct({ level: Codecs.integer, tags: Codecs.array(Codecs.string) }))("DecodeTypes/Stats")
     expect<Descriptor.Descriptor.Value<typeof Stats>>().type.toBe<{ readonly level: number; readonly tags: ReadonlyArray<string> }>()
-    const Team = Descriptor.ConstructedComponent(Decode.literal("red", "blue"))("DecodeTypes/Team")
+    const Team = Descriptor.ConstructedComponent(Codecs.literal("red", "blue"))("DecodeTypes/Team")
     expect<Descriptor.Descriptor.Value<typeof Team>>().type.toBe<"red" | "blue">()
     const Player = Descriptor.Tag("DecodeTypes/Player")
     expect<Descriptor.Descriptor.Value<typeof Player>>().type.toBe<{}>()
@@ -397,7 +376,7 @@ describe("Decode", () => {
     const Root = Schema.defineRoot("DecodeTypes")
     const Game = Schema.bind(Schema.fragment({ components: { Stats, Team, Player } }), Root)
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
-    expect(runtime.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
+    expect(runtime.snapshot()).type.toBe<Result.Result<import("@typeonce/ritmo/Snapshot").WorldSnapshot, import("@typeonce/ritmo/Snapshot").SnapshotError>>()
   })
 })
 

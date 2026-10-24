@@ -182,7 +182,7 @@ export type CodecRejection<S> = S extends StandardSchema<infer Encoded, infer Ty
     : "its encode does not take the value the schema decodes: make encode the schema's inverse"
   : [Type] extends [Encoded] ? PlainEncoded<Encoded>
   : "this schema changes its value when it decodes (an Option, a Map, a class): give it an `encode` schema back to the saved form (with Effect, the playbook's `codec`)"
-  : "not a Standard Schema: pass a schema from Zod, Valibot, ArkType, or Effect (`Schema.toStandardSchemaV1`)"
+  : never
 
 /** The schema argument of a constructed descriptor, or the message naming what is wrong with it. */
 export type CheckedCodec<S> = [CodecRejection<S>] extends [never] ? unknown : { readonly __fixCodec__: CodecRejection<S> }

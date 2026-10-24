@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
-import { Clock, Decode, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "../../core/test/codecs.ts"
 import { Invariant, Replay } from "@typeonce/ritmo-devtools"
+import { worldOf } from "../../core/test/saved.ts"
 
 const hostClock = HostClock.test()
 
-const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number }))("Replay/Position")
-const Steps = Descriptor.ConstructedResource(Decode.number)("Replay/Steps")
+const Position = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("Replay/Position")
+const Steps = Descriptor.ConstructedResource(Codecs.number)("Replay/Steps")
 const Bump = Descriptor.Event<number>()("Replay/Bump")
 const Input = Descriptor.Service<Replay.Source<{ readonly dx: number }>>()("Replay/Input")
 const Config = Descriptor.Service<{ readonly scale: number }>()("Replay/Config")
@@ -88,8 +90,8 @@ describe("Replay", () => {
     const played = opened.value.play()
     expect(played.data.diverged).toEqual([])
     expect(played.text).toContain("checkpoints match")
-    expect(positionOf(opened.value.snapshot())).toEqual(positionOf(runtime.snapshot()))
-    expect(positionOf(opened.value.snapshot())).toEqual({ x: (1 + 2 + 3 + 5) * 2 + 10 })
+    expect(positionOf(worldOf(opened.value.snapshot()))).toEqual(positionOf(worldOf(runtime.snapshot())))
+    expect(positionOf(worldOf(opened.value.snapshot()))).toEqual({ x: (1 + 2 + 3 + 5) * 2 + 10 })
   })
 
   it("keeps only the last seconds, from the newest snapshot before them", () => {
@@ -145,7 +147,7 @@ describe("Replay", () => {
     const opened = Replay.session(make, JSON.parse(JSON.stringify(extracted.value)))
     if (!opened.ok) throw new Error("open extract")
     expect(opened.value.play().data.diverged).toEqual([])
-    expect(positionOf(opened.value.snapshot())).toEqual({ x: (1 + 2 + 3 + 4 + 5) * 2 })
+    expect(positionOf(worldOf(opened.value.snapshot()))).toEqual({ x: (1 + 2 + 3 + 4 + 5) * 2 })
   })
 
   it("rejects a replay recorded with another schema, and data that is not a replay", () => {

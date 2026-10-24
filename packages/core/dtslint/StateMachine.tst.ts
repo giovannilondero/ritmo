@@ -1,4 +1,5 @@
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import * as Codecs from "../test/codecs.ts"
 import type * as Machine from "@typeonce/ritmo/Machine"
 import type * as Result from "@typeonce/ritmo/Result"
 import * as Runtime from "@typeonce/ritmo/Runtime"
@@ -31,7 +32,7 @@ const RoundState = Game.StateMachine("RoundState", { Warmup: {}, Live: {}, Sudde
 const OtherState = OtherGame.StateMachine("OtherState", { Idle: {}, Running: {} })
 const Mode = Game.StateMachine("StateMachine/Mode", {
   Exploring: {},
-  Talking: { speaker: Decode.string, pages: Decode.array(Decode.string), page: Decode.integer }
+  Talking: Codecs.struct({ speaker: Codecs.string, pages: Codecs.array(Codecs.string), page: Codecs.integer })
 })
 
 type AppValue = { readonly _tag: "Menu" } | { readonly _tag: "Playing" } | { readonly _tag: "Paused" }
@@ -431,8 +432,8 @@ describe("per-state data", () => {
     // @ts-expect-error a state machine needs at least one state
     Game.StateMachine("StateMachine/Empty", {})
     // @ts-expect-error `_tag` holds the state's name: give this field another name
-    Game.StateMachine("StateMachine/Tagged", { Idle: { _tag: Decode.string } })
-    // @ts-expect-error Type 'string' is not assignable to type 'Readonly<Record<string, Codec<any>>>
+    Game.StateMachine("StateMachine/Tagged", { Idle: Codecs.struct({ _tag: Codecs.string }) })
+    // @ts-expect-error Type 'string' is not assignable to type 'object'.
     Game.StateMachine("StateMachine/Array", ["Menu"])
   })
 

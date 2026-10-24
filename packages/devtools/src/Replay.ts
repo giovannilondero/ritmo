@@ -160,7 +160,7 @@ export const memorySink = (): Sink & { readonly files: ReadonlyArray<ReplayFile>
 /** What a recorder needs from a runtime: made with `debug: { hostClock }`, with snapshots available. */
 export interface Recordable<S extends Schema.Any, Root> {
   readonly debug: Debug.Handle<S, Root>
-  readonly snapshot: () => Snapshot.WorldSnapshot
+  readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
   readonly services: Readonly<Record<string, unknown>>
   readonly inspect: (inspector: never) => unknown
 }
@@ -224,7 +224,9 @@ export const schemaHash = <S extends Schema.Any, Root>(debug: Debug.Handle<S, Ro
   }))
 }
 
-const worldHash = (snapshot: Snapshot.WorldSnapshot): string => fingerprint(JSON.stringify(snapshot))
+// A world that cannot be saved hashes its encode failure, so a replay that reaches it diverges visibly.
+const worldHash = (snapshot: Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>): string =>
+  fingerprint(JSON.stringify(snapshot.ok ? snapshot.value : snapshot.error))
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
 
@@ -279,7 +281,9 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
 
   const takePoint = () => {
     const snapshot = runtime.snapshot()
-    points.push({ tick, snapshot, pendingCommands: runtime.debug.dump({ limit: 0 }).pendingCommands.length })
+    // A tick whose world an `encode` rejects is no starting point; the window keeps the previous one.
+    if (!snapshot.ok) return
+    points.push({ tick, snapshot: snapshot.value, pendingCommands: runtime.debug.dump({ limit: 0 }).pendingCommands.length })
     checkpoints.push({ tick, hash: worldHash(snapshot) })
     const windowStart = tick - keepTicks
     let firstNeeded = -1
@@ -303,7 +307,8 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
   takePoint()
 
   const save = (reason: string): ReplayFile => {
-    const start = points[0]!
+    const start = points[0]
+    if (start === undefined) throw new Error("no tick of this run could be saved: an `encode` rejected the world every time (see runtime.snapshot())")
     const file: ReplayFile = {
       format: "ritmo-replay",
       version: 1,
@@ -389,6 +394,8 @@ export type ReplayError =
   | { readonly _tag: "SchemaMismatch"; readonly message: "replay recorded with an older schema"; readonly recorded: string; readonly current: string }
   | { readonly _tag: "MissingSchedule"; readonly schedule: string }
   | { readonly _tag: "RestoreFailed"; readonly error: Snapshot.RestoreError }
+  /** The world at the start of an extract could not be saved. */
+  | { readonly _tag: "SnapshotFailed"; readonly error: Snapshot.SnapshotError }
 
 /** Checks the shape of untrusted replay data (`JSON.parse` output). */
 export const parse = (data: unknown): Result.Result<ReplayFile, ReplayError> => {
@@ -427,7 +434,7 @@ export interface Playback {
 export interface Target<S extends Schema.Any, Root> {
   readonly hostClock: HostClock.HostClock
   readonly runtime: Session.Target<S, Root> & {
-    readonly snapshot: () => Snapshot.WorldSnapshot
+    readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
     readonly restore: (data: unknown) => Result.Result<void, Snapshot.RestoreError>
     readonly send: (descriptor: never, value: never) => void
   }
@@ -451,8 +458,8 @@ export interface ReplaySession<S extends Schema.Any, Names extends string> {
   readonly play: (options?: { readonly to?: number }) => Rendered.Rendered<PlayResult>
   /** Hashes of the world at the end of each replayed tick so far. */
   readonly hashes: () => ReadonlyMap<number, string>
-  /** The world as plain data now. */
-  readonly snapshot: () => Snapshot.WorldSnapshot
+  /** The world as plain data now, or the value an `encode` rejected. */
+  readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
 }
 
 /**
@@ -579,6 +586,7 @@ export const extract = <S extends Schema.Any, Root>(
   if (!opened.ok) return opened
   opened.value.play({ to: range.from - 1 })
   const start = opened.value.snapshot()
+  if (!start.ok) return Result.failure({ _tag: "SnapshotFailed", error: start.error })
   // Each kept tick carries its sources' values in full, so the extract does not depend on earlier ticks.
   const latest = new Map<string, ReadonlyArray<unknown>>()
   const ticks: Array<TickRecord> = []
@@ -592,7 +600,7 @@ export const extract = <S extends Schema.Any, Root>(
   return Result.success({
     ...file,
     reason: `${file.reason} (ticks ${range.from}-${range.to})`,
-    start: { tick: range.from - 1, snapshot: start, pendingCommands: 0 },
+    start: { tick: range.from - 1, snapshot: start.value, pendingCommands: 0 },
     ticks,
     checkpoints
   })

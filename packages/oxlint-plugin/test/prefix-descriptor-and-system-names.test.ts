@@ -6,7 +6,7 @@ const rule = plugin.rules["prefix-descriptor-and-system-names"]!
 tester.run("prefix-descriptor-and-system-names", rule, {
   valid: [
     "const Position = Descriptor.Component<Vec2>()(\"Town/Position\")",
-    "const Rng = Descriptor.ConstructedResource(Random)(\"Town/Rng\")",
+    "const Rng = Descriptor.ConstructedResource(Random.codec)(\"Town/Rng\")",
     "const Player = Descriptor.Tag(\"Shooter/Player\")",
     "const ChildOf = Descriptor.Hierarchy(\"Town/ChildOf\", \"Town/Children\")",
     "const Move = Game.System(\"Shooter/Move\", {}, () => {})",
@@ -20,7 +20,7 @@ tester.run("prefix-descriptor-and-system-names", rule, {
   ],
   invalid: [
     { code: "const Position = Descriptor.Component<Vec2>()(\"Position\")", errors: [{ messageId: "unprefixed", data: { name: "Position" } }] },
-    { code: "const Rng = Descriptor.ConstructedResource(Random)(\"Rng\")", errors: [{ messageId: "unprefixed", data: { name: "Rng" } }] },
+    { code: "const Rng = Descriptor.ConstructedResource(Random.codec)(\"Rng\")", errors: [{ messageId: "unprefixed", data: { name: "Rng" } }] },
     { code: "const Enemy = Descriptor.Tag(\"Enemy\")", errors: [{ messageId: "unprefixed", data: { name: "Enemy" } }] },
     {
       code: "const ChildOf = Descriptor.Relation(\"ChildOf\", \"Children\")",
