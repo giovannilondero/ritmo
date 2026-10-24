@@ -190,7 +190,7 @@ type DescriptorsOf<Access> =
   : never
 
 /** Every system an entry runs, nested schedules and transition bundles included, as a union. */
-type SystemsIn<Entry> =
+export type SystemsIn<Entry> =
   Entry extends AnySystem ? Entry
   : OrderOf<Entry> extends infer Order extends AnyScheduleOrder
     ? [Order] extends [never] ? never : SystemsIn<Order["entries"][number]>
@@ -416,6 +416,35 @@ type CheckTick<Schedules extends ReadonlyArray<unknown>> =
  */
 export type TickOrderErrors<Schedules extends ReadonlyArray<unknown>> =
   HasReads<Schedules> extends false ? never : CheckTick<Schedules>
+
+/**
+ * An input service: one value per call, such as a keyboard's actions this
+ * step. A schedule that is replayed (`Replay.recorder`) or rewound
+ * (`runtime.checkpoint`) takes its input from services of this shape, so
+ * the host can hand it the same input again; every other service it uses
+ * must be plain data.
+ */
+export interface Source<Data> {
+  readonly snapshot: () => Data
+}
+
+/**
+ * Whether a type is plain data (what JSON keeps): no functions, maps, sets,
+ * or class instances with methods. Recursive types are checked once.
+ */
+export type IsPlain<T> = false extends PlainMember<T, never> ? false : true
+
+// Checks one member of a union at a time (the conditional distributes), so a
+// recursive type is recognised when it comes back (`Seen`).
+type PlainMember<T, Seen> =
+  T extends string | number | boolean | null | undefined ? true
+  : [T] extends [Seen] ? true
+  : T extends (...args: ReadonlyArray<never>) => unknown ? false
+  : T extends ReadonlyArray<infer Element> ? PlainMember<Element, Seen | T>
+  : T extends object ? PlainField<T, keyof T, Seen | T>
+  : false
+
+type PlainField<T, K extends keyof T, Seen> = K extends keyof T ? PlainMember<T[K], Seen> : never
 
 /** Transition schedules grouped by `transitions(...)`, run by the `applyStateTransitions(bundle)` they are passed to. */
 export interface TransitionBundleDefinition<

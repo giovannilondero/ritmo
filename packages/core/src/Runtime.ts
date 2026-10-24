@@ -60,6 +60,8 @@
  * Public runtime constructors and helpers for services, machines, and bootstrap input.
  */
 import * as HostClockModule from "./HostClock.ts"
+import * as Checkpoint from "./Checkpoint.ts"
+import * as CheckpointInternal from "./internal/checkpoint.ts"
 import * as Command from "./Command.ts"
 import * as Debug from "./Debug.ts"
 import * as DescriptorModule from "./Descriptor.ts"
@@ -73,10 +75,11 @@ import type { Construction } from "./internal/schema.ts"
 import { emptyStates, stateCodec } from "./internal/states.ts"
 import * as DebugInternal from "./internal/debug.ts"
 import { makeQueryEngine } from "./internal/queries.ts"
+import type { Reverts as QueryReverts } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
 import * as Streams from "./internal/streams.ts"
 import { ABSENT, makeWorld } from "./internal/world.ts"
-import type { WorldHooks } from "./internal/world.ts"
+import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
 import type { QueryMatch, ReadonlyValue } from "./Query.ts"
@@ -676,6 +679,28 @@ export interface Runtime<
    */
   readonly restore: Snapshot.Gate<S, (data: unknown) => Result.Result<void, Snapshot.RestoreError>>
   /**
+   * Marks the world now, between ticks, so `rewind` can put it back exactly:
+   * for rollback and client prediction, not for saving (use `snapshot`).
+   * `schedule` is the one that will be ticked again after a rewind: its
+   * systems' read positions rewind with the world, and every other reader
+   * sees the rewind as changes. It must use only input sources and plain
+   * data as services, and keep no `local` state; anything else does not
+   * compile, naming the fix. See the `Checkpoint` module.
+   *
+   * Calling it while a schedule is running throws.
+   */
+  readonly checkpoint: <const Selected extends ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>(
+    schedule: Selected & Checkpoint.ValidateRewindable<Selected>
+  ) => Checkpoint.Checkpoint<Root>
+  /**
+   * Puts the world back to `checkpoint`, exactly as it was when it was
+   * taken. Checkpoints taken after it are released; it stays usable. Fails,
+   * changing nothing, with a checkpoint of another runtime or one the
+   * runtime released. Calling it while a schedule is running throws. See
+   * the `Checkpoint` module.
+   */
+  readonly rewind: (checkpoint: Checkpoint.Checkpoint<Root>) => Result.Result<void, Checkpoint.RewindError>
+  /**
    * Evaluates one read-only projection without running a schedule. Like a
    * system, the inspector sees `added`/`changed` matches, removed and
    * despawned records, and events published since its own previous
@@ -741,6 +766,7 @@ const makeValidatedRuntime = <
   readonly scopeDefinitions: ReadonlyArray<EntityScopeModule.EntityScope.Any>
   readonly debug: Debug.Option | undefined
   readonly saves: Snapshot.Migrations | undefined
+  readonly checkpoints: number
 }): Runtime<S, Services, Resources, Root, Machines> => {
   const world = makeWorld(options.schema, streamCapacity)
   const queries = makeQueryEngine(world)
@@ -1170,10 +1196,22 @@ const makeValidatedRuntime = <
     streamLastRun: number
     /** Tick at which the reader first ran; drops before it are not losses. */
     readonly registeredAt: number
+    /**
+     * What rewinds changed since the reader's previous completed run, when
+     * it is not in the schedule they rewound: seen on its next completed
+     * run, on top of its change ticks.
+     */
+    reverts: Reverts | undefined
+  }
+
+  /** {@link QueryReverts}, and per component ordinal the removals (and the despawns) a rewind made. */
+  interface Reverts extends QueryReverts {
+    readonly removed: Map<number, Set<number>>
+    readonly despawned: Set<number>
   }
 
   const resolve = <Q extends Query.Query.Any<Root>>(id: number, query: Q, reader: ReaderState) =>
-    queries.get(id, query, reader.since) as Result.Result<QueryMatch<S, Q>, Query.Query.LookupError>
+    queries.get(id, query, reader.since, reader.reverts) as Result.Result<QueryMatch<S, Q>, Query.Query.LookupError>
 
   const relatedTarget = (
     target: Entity.EntityId<S, Root>,
@@ -1253,7 +1291,7 @@ const makeValidatedRuntime = <
   }
 
   const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryIteration<S, Q> & QueryLookups<S, Q> => {
-    const each = () => queries.each(query, reader.since) as ReadonlyArray<QueryMatch<S, Q>>
+    const each = () => queries.each(query, reader.since, reader.reverts) as ReadonlyArray<QueryMatch<S, Q>>
     const matching = (ids: ReadonlyArray<Entity.EntityId<S, Root>>): Array<QueryMatch<S, Q>> => {
       const matches: Array<QueryMatch<S, Q>> = []
       for (const id of ids) {
@@ -1328,14 +1366,14 @@ const makeValidatedRuntime = <
     readonly resourceChangedAt: Map<symbol, number | undefined>
     readonly machines: Map<symbol, { value: unknown; skipIfSame: boolean } | typeof absentValue>
     readonly committedMachines: Map<symbol, unknown>
-    readonly readers: Map<ReaderState, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number]>
+    readonly readers: Map<ReaderState, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number, reverts: Reverts | undefined]>
   }
   let phase: Phase | undefined
 
   /** Keeps a reader's position from before the phase, the first time the phase moves it. */
   const journalReader = (reader: ReaderState): void => {
     if (phase !== undefined && !phase.readers.has(reader)) {
-      phase.readers.set(reader, [reader.since, reader.lastRun, reader.streamSince, reader.streamLastRun])
+      phase.readers.set(reader, [reader.since, reader.lastRun, reader.streamSince, reader.streamLastRun, reader.reverts])
     }
   }
 
@@ -1465,11 +1503,12 @@ const makeValidatedRuntime = <
           if (tick === undefined) resourceChangedAt.delete(key)
           else resourceChangedAt.set(key, tick)
         }
-        for (const [reader, [since, lastRun, streamSince, streamLastRun]] of opened.readers) {
+        for (const [reader, [since, lastRun, streamSince, streamLastRun, reverts]] of opened.readers) {
           reader.since = since
           reader.lastRun = lastRun
           reader.streamSince = streamSince
           reader.streamLastRun = streamLastRun
+          reader.reverts = reverts
         }
         events.retract(opened.tick)
         pendingCommands.length = opened.commands
@@ -1532,7 +1571,19 @@ const makeValidatedRuntime = <
     const ordinal = world.ordinalOf(descriptor)
     return {
       all() {
-        return world.removedSince(ordinal, reader.since).map(entityId)
+        const logged = world.removedSince(ordinal, reader.since)
+        const reverted = reader.reverts?.removed.get(ordinal)
+        if (reverted === undefined) return logged.map(entityId)
+        // A rewind's removals count only for what is still without the component.
+        const ids = [...logged]
+        const seen = new Set(logged)
+        for (const id of [...reverted].sort((left, right) => left - right)) {
+          const record = world.records.get(id)
+          if (seen.has(id) || (record !== undefined && world.has(record, ordinal))) continue
+          seen.add(id)
+          ids.push(id)
+        }
+        return ids.map(entityId)
       },
       lagged() {
         return world.removedLagged(ordinal, reader.since, reader.registeredAt)
@@ -1542,7 +1593,18 @@ const makeValidatedRuntime = <
 
   const makeDespawnedReadView = (reader: ReaderState): DespawnedReadView<S, Root> => ({
     all() {
-      return world.despawnedSince(reader.since).map(entityId)
+      const logged = world.despawnedSince(reader.since)
+      const reverted = reader.reverts?.despawned
+      if (reverted === undefined) return logged.map(entityId)
+      // A rewind's despawns count only for entities that are still gone.
+      const ids = [...logged]
+      const seen = new Set(logged)
+      for (const id of [...reverted].sort((left, right) => left - right)) {
+        if (seen.has(id) || world.records.has(id)) continue
+        seen.add(id)
+        ids.push(id)
+      }
+      return ids.map(entityId)
     },
     lagged() {
       return world.despawnedLagged(reader.since, reader.registeredAt)
@@ -1721,6 +1783,8 @@ const makeValidatedRuntime = <
   }
 
   const slots = new WeakMap<SystemDefinition<any, any, any>, SystemSlot>()
+  /** Every reader, for what a rewind changed for those outside the rewound schedule. */
+  const allReaders = new Set<ReaderState>()
   /** Slots of systems with `local` state, rebuilt on `restore`. */
   const localSlots: Array<{ readonly slot: SystemSlot; readonly make: () => unknown }> = []
   /** Stream readers by cursor, for `debug.streams()`. */
@@ -1876,10 +1940,11 @@ const makeValidatedRuntime = <
   const slotOf = (system: SystemDefinition<any, any, any>, holdsStreams: boolean): SystemSlot => {
     let slot = slots.get(stateKey(system))
     if (!slot) {
-      const reader: ReaderState = { since: 0, lastRun: 0, streamSince: 0, streamLastRun: 0, registeredAt: world.currentTick() }
+      const reader: ReaderState = { since: 0, lastRun: 0, streamSince: 0, streamLastRun: 0, registeredAt: world.currentTick(), reverts: undefined }
       const commands = Command.makeCommands<S, Root>(() => world.allocateEntity() as Entity.EntityId<S, Root>)
       slot = { context: makeContext(system, reader, commands), commands, reader }
       slots.set(stateKey(system), slot)
+      allReaders.add(reader)
       if (holdsStreams) registerStreamReader(system, slot.reader)
       const make = system.spec.local as (() => unknown) | undefined
       if (make !== undefined) localSlots.push({ slot, make })
@@ -1956,6 +2021,7 @@ const makeValidatedRuntime = <
     // A failed run leaves `lastRun` unchanged, so the next run sees the same changes again.
     reader.lastRun = thisRun
     reader.streamLastRun = thisRun
+    reader.reverts = undefined
     for (let index = 0; index < queued.length; index++) {
       pendingCommands.push(queued[index]!)
     }
@@ -2502,6 +2568,7 @@ const makeValidatedRuntime = <
     }
     reader.lastRun = world.advanceTick()
     reader.streamLastRun = reader.lastRun
+    reader.reverts = undefined
     return value
   }
 
@@ -2688,6 +2755,8 @@ const makeValidatedRuntime = <
 
     // Apply: the old world is despawned and the saved one spawned, so change
     // detection and renderer sync observe the restore like any other change.
+    // Checkpoints taken before it stand for a world that no longer leads here.
+    releaseMarks(0, "restored")
     pendingCommands.length = 0
     pendingOrigins.length = 0
     pendingMachines.clear()
@@ -2722,6 +2791,178 @@ const makeValidatedRuntime = <
     return result
   }
 
+  /** What a checkpoint holds beyond the world's mark: the runtime's own stores, copied when it was taken. */
+  interface RuntimeMark {
+    readonly owner: object
+    readonly world: WorldMark
+    readonly resources: ReadonlyMap<symbol, unknown>
+    readonly resourceChangedAt: ReadonlyMap<symbol, number>
+    readonly currentMachines: ReadonlyMap<symbol, unknown>
+    readonly pendingMachines: ReadonlyMap<symbol, { value: unknown; skipIfSame: boolean; by?: string }>
+    readonly previousMachines: ReadonlyMap<symbol, unknown>
+    readonly pendingCommands: ReadonlyArray<Command.DeferredCommand<S>>
+    readonly pendingOrigins: ReadonlyArray<string>
+    readonly events: Streams.StreamMark
+    readonly transitionEvents: Streams.StreamMark
+    readonly relationFailures: Streams.StreamMark
+    /** The rewound schedule's systems (their state keys), with each reader's positions then (`undefined`: not run yet). */
+    readonly readers: ReadonlyMap<SystemDefinition<any, any, any>, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number] | undefined>
+    released: Checkpoint.Released["reason"] | undefined
+  }
+
+  /** Identifies this runtime's checkpoints. */
+  const checkpointOwner = {}
+  /** Held checkpoints, oldest first, in step with the world's marks. */
+  const runtimeMarks: Array<RuntimeMark> = []
+  const checkpointWindow = options.checkpoints
+
+  /** Releases the marks from `from` on (newest last), for `reason`. */
+  const releaseMarks = (from: number, reason: Checkpoint.Released["reason"]): void => {
+    if (runtimeMarks.length === 0) return
+    for (let index = from; index < runtimeMarks.length; index++) runtimeMarks[index]!.released = reason
+    if (from === 0) {
+      runtimeMarks.length = 0
+      world.dropMarks()
+    } else {
+      runtimeMarks.length = from
+    }
+    releaseStreams()
+  }
+
+  const releaseStreams = (): void => {
+    events.release(runtimeMarks.map((mark) => mark.events))
+    transitionEvents.release(runtimeMarks.map((mark) => mark.transitionEvents))
+    relationFailures.release(runtimeMarks.map((mark) => mark.relationFailures))
+  }
+
+  /** The systems a schedule runs, transition bundles included, by the key their state is kept under. */
+  const rewoundSystems = (steps: ReadonlyArray<Schedule.ScheduleStep>, into: Set<SystemDefinition<any, any, any>>): void => {
+    for (const step of steps) {
+      if (Schedule.isSystemStep(step)) {
+        const system = step as SystemDefinition<any, any, any>
+        if (system.spec.local !== undefined) {
+          throw new Error(`runtime.checkpoint: ${system.name} keeps local state, which a rewind cannot put back: keep it in a resource or a component`)
+        }
+        into.add(stateKey(system))
+      } else if (step.kind === "applyStateTransitions" && step.bundle !== undefined) {
+        for (const schedule of (step.bundle as { readonly entries: ReadonlyArray<{ readonly steps: ReadonlyArray<Schedule.ScheduleStep> }> }).entries) {
+          rewoundSystems(schedule.steps, into)
+        }
+      }
+    }
+  }
+
+  const checkpoint = (schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>): Checkpoint.Checkpoint<Root> => {
+    if (inTick) throw new Error("runtime.checkpoint was called while a schedule is running: the running systems' writes are not committed yet; take it between ticks")
+    const systems = new Set<SystemDefinition<any, any, any>>()
+    rewoundSystems(schedule.steps, systems)
+    const readers = new Map<SystemDefinition<any, any, any>, readonly [number, number, number, number] | undefined>()
+    for (const system of systems) {
+      const reader = slots.get(system)?.reader
+      readers.set(system, reader === undefined ? undefined : [reader.since, reader.lastRun, reader.streamSince, reader.streamLastRun])
+    }
+    const mark: RuntimeMark = {
+      owner: checkpointOwner,
+      world: world.takeMark(),
+      resources: new Map(resources),
+      resourceChangedAt: new Map(resourceChangedAt),
+      currentMachines: new Map(currentMachines),
+      pendingMachines: new Map(pendingMachines),
+      previousMachines: new Map(previousMachines),
+      pendingCommands: pendingCommands.slice(),
+      pendingOrigins: pendingOrigins.slice(),
+      events: events.mark(),
+      transitionEvents: transitionEvents.mark(),
+      relationFailures: relationFailures.mark(),
+      readers,
+      released: undefined
+    }
+    runtimeMarks.push(mark)
+    if (runtimeMarks.length > checkpointWindow) {
+      runtimeMarks.shift()!.released = "window"
+      world.releaseOldestMark()
+      releaseStreams()
+    }
+    return CheckpointInternal.make(mark) as Checkpoint.Checkpoint<Root>
+  }
+
+  const addAll = (into: Map<number, Set<number>>, from: ReadonlyMap<number, ReadonlySet<number>>): void => {
+    for (const [ordinal, ids] of from) {
+      let set = into.get(ordinal)
+      if (set === undefined) into.set(ordinal, set = new Set<number>())
+      for (const id of ids) set.add(id)
+    }
+  }
+
+  /** Gives a reader outside the rewound schedule what the rewind changed, for its next run. */
+  const revert = (reader: ReaderState, rewound: WorldRewind): void => {
+    const reverts = reader.reverts ??= { added: new Map(), changed: new Map(), removed: new Map(), despawned: new Set() }
+    addAll(reverts.added, rewound.back)
+    addAll(reverts.changed, rewound.back)
+    addAll(reverts.changed, rewound.written)
+    addAll(reverts.removed, rewound.gone)
+    for (const id of rewound.despawned) reverts.despawned.add(id)
+    // Removals made after the checkpoint that the reader had not read yet: the rewind took them back.
+    for (const [ordinal, id, at] of rewound.removedAfter) {
+      if (at <= reader.lastRun) continue
+      let set = reverts.removed.get(ordinal)
+      if (set === undefined) reverts.removed.set(ordinal, set = new Set<number>())
+      set.add(id)
+    }
+    for (const [id, at] of rewound.despawnedAfter) {
+      if (at > reader.lastRun) reverts.despawned.add(id)
+    }
+  }
+
+  const restoreMap = <K, V>(target: Map<K, V>, from: ReadonlyMap<K, V>): void => {
+    target.clear()
+    for (const [key, value] of from) target.set(key, value)
+  }
+
+  const rewind = (value: Checkpoint.Checkpoint<Root>): Result.Result<void, Checkpoint.RewindError> => {
+    if (inTick) throw new Error("runtime.rewind was called while a schedule is running: the running systems' queued commands would land on the rewound world; rewind between ticks")
+    const mark = CheckpointInternal.internalOf(value) as RuntimeMark | undefined
+    if (mark === undefined || mark.owner !== checkpointOwner) return Result.failure({ _tag: "OtherRuntime" })
+    if (mark.released !== undefined) return Result.failure({ _tag: "Released", reason: mark.released })
+    const index = runtimeMarks.indexOf(mark)
+    const rewound = world.rewindToMark(mark.world)
+    for (let newer = index + 1; newer < runtimeMarks.length; newer++) runtimeMarks[newer]!.released = "rewound"
+    runtimeMarks.length = index + 1
+
+    restoreMap(resources, mark.resources)
+    restoreMap(resourceChangedAt, mark.resourceChangedAt)
+    restoreMap(currentMachines, mark.currentMachines)
+    restoreMap(pendingMachines, mark.pendingMachines)
+    restoreMap(previousMachines, mark.previousMachines)
+    pendingCommands.length = 0
+    for (const command of mark.pendingCommands) pendingCommands.push(command)
+    pendingOrigins.length = 0
+    for (const origin of mark.pendingOrigins) pendingOrigins.push(origin)
+    events.rewind(mark.events, mark.world.tick)
+    transitionEvents.rewind(mark.transitionEvents, mark.world.tick)
+    relationFailures.rewind(mark.relationFailures, mark.world.tick)
+    releaseStreams()
+
+    const inside = new Set<ReaderState>()
+    for (const [system, positions] of mark.readers) {
+      const reader = slots.get(system)?.reader
+      if (reader === undefined) continue
+      inside.add(reader)
+      // A system first run after the checkpoint starts over, as if it never ran.
+      const [since, lastRun, streamSince, streamLastRun] = positions ?? [0, 0, 0, 0]
+      reader.since = since
+      reader.lastRun = lastRun
+      reader.streamSince = streamSince
+      reader.streamLastRun = streamLastRun
+      reader.reverts = undefined
+    }
+    for (const reader of allReaders) {
+      // A reader that has not run since the checkpoint never saw what the rewind undid.
+      if (!inside.has(reader) && reader.lastRun > mark.world.tick) revert(reader, rewound)
+    }
+    return succeeded
+  }
+
   const runtime: Runtime<S, Services, Resources, Root, Machines> = {
     schema: options.schema,
     services: providedServices,
@@ -2734,6 +2975,8 @@ const makeValidatedRuntime = <
     // The gate is type-only: the functions exist on every runtime.
     snapshot: snapshot as unknown as Snapshot.Gate<S, typeof snapshot>,
     restore: tracedRestore as unknown as Snapshot.Gate<S, typeof restore>,
+    checkpoint: checkpoint as Runtime<S, Services, Resources, Root, Machines>["checkpoint"],
+    rewind,
     inspect,
     send: send as Runtime<S, Services, Resources, Root, Machines>["send"]
   }
@@ -2957,10 +3200,16 @@ export const make = <
   readonly debug?: Enabled
   /** The game's save migrations (`Snapshot.migrations`), applied by `restore`. */
   readonly saves?: Snapshot.Migrations
+  /** How many checkpoints `runtime.checkpoint` keeps, a positive whole number ({@link Checkpoint.defaultWindow} by default). */
+  readonly checkpoints?: number
 }): MakeRuntimeResult<S, Simplify<RuntimeServicesOf<ProvidedServices>>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled> => {
   const validated = collectConstructedRegistryValues(options.schema.resources, options.resources)
   if (!validated.ok) {
     return Result.failure({ resources: validated.error }) as never
+  }
+  const checkpoints = options.checkpoints ?? Checkpoint.defaultWindow
+  if (!Number.isSafeInteger(checkpoints) || checkpoints < 1) {
+    throw new Error(`Game.Runtime.make: checkpoints must be a positive whole number, got ${checkpoints}`)
   }
   const runtime = makeValidatedRuntime({
     schema: options.schema,
@@ -2970,7 +3219,8 @@ export const make = <
     machineDefinitions: options.machineDefinitions ?? [],
     scopeDefinitions: options.scopeDefinitions ?? [],
     debug: options.debug,
-    saves: options.saves
+    saves: options.saves,
+    checkpoints
   })
   return Result.success(runtime) as never
 }
