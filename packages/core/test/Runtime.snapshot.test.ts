@@ -96,13 +96,14 @@ describe("Runtime snapshots", () => {
 
     let children: Array<string> = []
     let resolved = ""
+    // Inspected before the tick: inspecting while a schedule runs throws.
+    const parent = readWorld(target).names.find(([, name]) => name === "parent")![0]
     const Check = Game.System("Snapshot/Check", {
       queries: {
         targets: Game.Query({ selection: { target: Game.Query.read(Target) } }),
         named: Named
       }
     }, ({ queries }) => {
-      const parent = readWorld(target).names.find(([, name]) => name === "parent")![0]
       const matches = queries.named.children(Entity.makeEntityId(parent), ChildOf)
       children = matches.ok ? matches.value.map((match) => match.data.name.get()) : []
       const handle = queries.targets.each()[0]!.data.target.get().handle

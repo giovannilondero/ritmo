@@ -708,7 +708,7 @@ export namespace Schema {
       optional: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.OptionalReadAccess<D>
       /** A `filters` entry: entities whose component was added since this system's previous run. */
       added: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.AddedFilter<D>
-      /** A `filters` entry: entities whose component was added or written since this system's previous run. */
+      /** A `filters` entry: entities whose component was added, or changed to a different value, since this system's previous run. */
       changed: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.ChangedFilter<D>
       /** A `filters` entry passing when at least one of its `added` / `changed` filters does (filters listed side by side must all pass). */
       anyOf: <

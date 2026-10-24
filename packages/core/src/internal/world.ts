@@ -3,15 +3,25 @@
  *
  * Layout:
  *
- * - every live entity is one `EntityRecord` holding its component values in a
- *   dense array indexed by component ordinal (`ABSENT` marks a missing slot)
+ * - every component ordinal has a store: its values in pages of
+ *   `PAGE_SIZE` entities indexed by entity id (`ABSENT` marks an entity
+ *   without it), next to the tick each value was added and last changed at.
+ *   A page exists while one of its entities holds the component
+ * - every live entity is one `EntityRecord`: its id, the ordinals it holds,
+ *   and its cached query matches
  * - every component ordinal keeps the set of records that currently have it,
  *   so a query only visits entities that carry its rarest required component
  * - every component ordinal and relation keeps a membership version, bumped on
  *   structural change, so queries know when their cached match set is stale
- * - every component slot records the change tick it was added and last
- *   changed at; `added`/`changed` filters compare those ticks with the tick
- *   of the reading system's previous run
+ * - `added`/`changed` filters compare a value's ticks with the tick of the
+ *   reading system's previous run
+ *
+ * A system run is a transaction. The first write to a slot keeps its old
+ * value on the page (`saved`, `before`); commit compares each such slot with
+ * its old value and stamps the changed tick of every value that differs (so
+ * writing an equal value is not a change); rollback puts the old values back.
+ * Ticks move only at commit, so a running system never sees its own writes as
+ * changes.
  *
  * Ordinals are assigned per world from the schema, in schema order. Component
  * identity is the descriptor key, which is derived from `(kind, name)`; a bound
@@ -28,6 +38,61 @@ import type { Schema } from "../Schema.ts"
  */
 export const ABSENT: unique symbol = Symbol("ritmo/absent")
 
+/** Entities per page: an entity's page is `id >>> PAGE_BITS`, its slot `id & PAGE_MASK`. */
+export const PAGE_BITS = 8
+export const PAGE_SIZE = 1 << PAGE_BITS
+export const PAGE_MASK = PAGE_SIZE - 1
+
+/**
+ * `PAGE_SIZE` consecutive entity ids of one component's store. A page object
+ * is never replaced, so cells hold it directly; while none of its entities
+ * holds the component, its arrays are the shared empty ones (every slot
+ * `ABSENT`), which nothing writes to.
+ */
+export interface Page {
+  readonly ordinal: number
+  /** The id of the page's first slot. */
+  readonly base: number
+  values: Array<unknown>
+  added: Float64Array
+  changed: Float64Array
+  /** Entities on the page that hold the component. */
+  count: number
+  /**
+   * The transaction that last wrote to the page. While it runs, `saved` has
+   * a bit for every slot it wrote, and `before` holds those slots' values
+   * from before it (other slots of `before` are `undefined`).
+   */
+  savedIn: number
+  readonly saved: Uint32Array
+  before: Array<unknown> | undefined
+  /** The phase that copied the page, and its values and changed ticks then. */
+  phaseIn: number
+  phaseValues: Array<unknown> | undefined
+  phaseChanged: Float64Array | undefined
+}
+
+/** Whether a system transaction is running, and which one. */
+export interface TransactionState {
+  id: number
+  active: boolean
+}
+
+/** One component's pages, by page index. */
+export interface Store {
+  readonly pages: Array<Page | undefined>
+}
+
+/** A packed array (not holey, which V8 reads more slowly) of `PAGE_SIZE` copies of `value`. */
+const filled = (value: unknown): Array<unknown> => {
+  const array: Array<unknown> = []
+  for (let slot = 0; slot < PAGE_SIZE; slot++) array.push(value)
+  return array
+}
+
+const emptyValues: Array<unknown> = filled(ABSENT)
+const emptyTicks = new Float64Array(PAGE_SIZE)
+
 export interface EntityRecord {
   readonly id: number
   /**
@@ -35,15 +100,15 @@ export interface EntityRecord {
    */
   readonly entityId: Entity.EntityId<any, any>
   /**
-   * Component values by ordinal. Slots past the end are absent.
+   * Ordinals of the components the entity holds, ascending.
    */
-  readonly values: Array<unknown>
+  readonly held: Array<number>
   /**
-   * Per component ordinal, `MARK_STRIDE` numbers: the tick the component was
-   * added, the tick it last changed, the transaction that last journaled it,
-   * and its changed tick from before that transaction.
+   * The same set as bits (ordinal `n` is bit `n & 31` of word `n >>> 5`), so
+   * a query's structure check is one load per component. Missing words read
+   * as `undefined`, which `&` turns into 0.
    */
-  readonly marks: Array<number>
+  readonly heldBits: Array<number>
   /**
    * Cached query matches by query ordinal, reused while the entity matches.
    */
@@ -53,12 +118,16 @@ export interface EntityRecord {
   alive: boolean
 }
 
-const ADDED = 0
-const CHANGED = 1
-const JOURNALED = 2
-const PREVIOUS = 3
-const MARK_STRIDE = 4
-const NO_MARK = -1
+/** Inserts `ordinal` into an ascending list (an entity's held components, a handful). */
+const insertSorted = (list: Array<number>, ordinal: number): void => {
+  let index = list.length
+  while (index > 0 && list[index - 1]! > ordinal) index--
+  list.splice(index, 0, ordinal)
+}
+
+/** Whether a write replaced a value with a different one; `NaN` equals itself. */
+const differs = (before: unknown, after: unknown): boolean =>
+  before !== after && (before === before || after === after)
 
 /**
  * An append-only list of entity ids with the change tick each entry was
@@ -165,6 +234,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const ordinals = new Map<symbol, number>()
   const descriptors: Array<ComponentDescriptor> = []
   const members: Array<Set<EntityRecord>> = []
+  const stores: Array<Store> = []
   const componentVersions: Array<number> = []
   /**
    * Bumped on every spawn and despawn, for queries without required components.
@@ -221,30 +291,32 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   let frameStart = 0
 
   /**
-   * Journal of in-place component writes made by the running system. Each
-   * record/ordinal pair is journaled once per transaction with its original
-   * value (its original changed tick stays in the slot's `PREVIOUS` mark), so
-   * rollback can restore both. Writes stamp their changed tick as they happen,
-   * and the running system reads its own slots through `PREVIOUS`, so commit
-   * has nothing to replay. The arrays are reused across transactions:
-   * `journalSize` is the live length.
+   * The running system transaction, and the pages it wrote to.
    */
   let transaction = 0
   let inTransaction = false
-  let journalSize = 0
-  const journalRecords: Array<EntityRecord> = []
-  const journalOrdinals: Array<number> = []
-  const journalValues: Array<unknown> = []
+  // Reused, with an explicit count: resetting an array's `length` is a runtime call.
+  const savedPages: Array<Page> = []
+  let savedCount = 0
   /**
-   * Journal of a phase: several system transactions undone together (a
-   * transition's exit schedules). Each committed write keeps its value and
-   * change tick from before it, so rollback restores both, newest first.
+   * Whether a run is going on (a system body, an inspector read, or a
+   * condition check), and the hand-outs of the queries it used: their
+   * matches are valid until it ends.
    */
+  let inRun = false
+  // Reused, with an explicit count: resetting an array's `length` is a runtime call.
+  const handedOut: Array<{ live: boolean }> = []
+  let handedOutCount = 0
+  /** The running transaction, shared with write cells so their hot path stays inline. */
+  const transactionState: TransactionState = { id: 0, active: false }
+  /**
+   * A phase: several system transactions undone together (a transition's
+   * exit schedules). Each page a committed transaction wrote keeps its values
+   * and changed ticks from before the phase.
+   */
+  let phase = 0
   let inPhase = false
-  const phaseRecords: Array<EntityRecord> = []
-  const phaseOrdinals: Array<number> = []
-  const phaseValues: Array<unknown> = []
-  const phaseChanged: Array<number> = []
+  const phasePages: Array<Page> = []
 
   /**
    * Entity ownership used by scene and level lifetime scopes.
@@ -267,6 +339,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     ordinals.set(descriptor.key, ordinal)
     descriptors.push(descriptor)
     members.push(new Set())
+    stores.push({ pages: [] })
     componentVersions.push(0)
     membershipRecords.push([])
     membershipVersions.push([])
@@ -279,8 +352,82 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     ordinalOf(descriptor)
   }
 
+  const pageAt = (ordinal: number, id: number): Page | undefined => stores[ordinal]!.pages[id >>> PAGE_BITS]
+
+  /** The page holding `id`'s slot, created (empty) when missing. */
+  const pageFor = (ordinal: number, id: number): Page => {
+    const pages = stores[ordinal]!.pages
+    const index = id >>> PAGE_BITS
+    let page = pages[index]
+    if (page === undefined) {
+      page = {
+        ordinal,
+        base: index << PAGE_BITS,
+        values: emptyValues,
+        added: emptyTicks,
+        changed: emptyTicks,
+        count: 0,
+        savedIn: 0,
+        saved: new Uint32Array(PAGE_SIZE >>> 5),
+        before: undefined,
+        phaseIn: 0,
+        phaseValues: undefined,
+        phaseChanged: undefined
+      }
+      while (pages.length < index) pages.push(undefined)
+      pages[index] = page
+    }
+    return page
+  }
+
   const has = (record: EntityRecord, ordinal: number): boolean =>
-    ordinal < record.values.length && record.values[ordinal] !== ABSENT
+    (record.heldBits[ordinal >>> 5]! & (1 << (ordinal & 31))) !== 0
+
+  const holdBit = (record: EntityRecord, ordinal: number): void => {
+    const bits = record.heldBits
+    const word = ordinal >>> 5
+    while (bits.length <= word) bits.push(0)
+    bits[word] = bits[word]! | (1 << (ordinal & 31))
+  }
+
+  const dropBit = (record: EntityRecord, ordinal: number): void => {
+    const word = ordinal >>> 5
+    record.heldBits[word] = record.heldBits[word]! & ~(1 << (ordinal & 31))
+  }
+
+  /** The value of a component the entity holds (`ABSENT` when it does not). */
+  const valueAt = (record: EntityRecord, ordinal: number): unknown => {
+    const page = pageAt(ordinal, record.id)
+    return page === undefined ? ABSENT : page.values[record.id & PAGE_MASK]
+  }
+
+  /** The page holding `id`'s slot, with storage to write into. */
+  const ensurePage = (ordinal: number, id: number): Page => {
+    const page = pageFor(ordinal, id)
+    if (page.values === emptyValues) {
+      page.values = filled(ABSENT)
+      page.added = new Float64Array(PAGE_SIZE)
+      page.changed = new Float64Array(PAGE_SIZE)
+    }
+    return page
+  }
+
+  /**
+   * Clears one slot, leaving `record.held` to the caller; a page left empty
+   * lets go of its storage, except while a transaction or phase may still
+   * restore it.
+   */
+  const clearSlot = (record: EntityRecord, ordinal: number): void => {
+    const page = pageAt(ordinal, record.id)!
+    page.values[record.id & PAGE_MASK] = ABSENT
+    page.count -= 1
+    if (page.count === 0 && !inTransaction && !inPhase) {
+      page.values = emptyValues
+      page.added = emptyTicks
+      page.changed = emptyTicks
+      page.before = undefined
+    }
+  }
 
   /**
    * Records a membership change of `record` for one component.
@@ -302,27 +449,15 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   /**
-   * Stamps a component slot as changed at the current tick, logging it once
-   * per tick.
+   * Stamps a slot as changed at the current tick, logging it once per tick.
    */
-  const markChanged = (record: EntityRecord, ordinal: number): void => {
-    const slot = ordinal * MARK_STRIDE + CHANGED
-    if (record.marks[slot] === tick) {
+  const stampChanged = (page: Page, slot: number): void => {
+    if (page.changed[slot] === tick) {
       return
     }
-    record.marks[slot] = tick
-    if (changedLogFrom[ordinal] !== undefined) {
-      appendLog(logFor(changedLogs, ordinal), record.id, tick)
-    }
-  }
-
-  const ensureSlots = (record: EntityRecord, ordinal: number): void => {
-    const values = record.values
-    while (values.length <= ordinal) {
-      values.push(ABSENT)
-      for (let index = 0; index < MARK_STRIDE; index++) {
-        record.marks.push(NO_MARK)
-      }
+    page.changed[slot] = tick
+    if (changedLogFrom[page.ordinal] !== undefined) {
+      appendLog(logFor(changedLogs, page.ordinal), page.base + slot, tick)
     }
   }
 
@@ -347,22 +482,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   ): void => {
     let record = records.get(entityId)
     if (!record) {
-      // Slots past the highest ordinal the entity spawns with stay absent
-      // until a write grows them (`ensureSlots`), so a record costs what the
-      // entity holds, not what the schema declares.
-      let size = 0
-      for (let index = 0; index < components.length; index++) {
-        size = Math.max(size, ordinalOf(components[index]![0]) + 1)
-      }
-      const values: Array<unknown> = new Array(size)
-      values.fill(ABSENT)
-      const marks: Array<number> = new Array(size * MARK_STRIDE)
-      marks.fill(NO_MARK)
       record = {
         id: entityId,
         entityId,
-        values,
-        marks,
+        held: [],
+        heldBits: [],
         matches: [],
         nameAt,
         alive: true
@@ -389,116 +513,143 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   /**
-   * Writes a component the entity holds. Returns `false`, writing nothing,
-   * when it does not (despawned records hold nothing): only a stale query
-   * cell gets here, and it reports the misuse.
+   * Writes a slot that holds a value, outside any transaction: a different
+   * value is stamped as changed at once. Write cells handle the transaction
+   * path themselves (`transactionState`, `touchPage`).
    */
-  const setComponentValue = (record: EntityRecord, ordinal: number, value: unknown): boolean => {
-    if (record.values[ordinal] === ABSENT) {
-      return false
-    }
-    if (!inTransaction) {
-      record.values[ordinal] = value
-      markChanged(record, ordinal)
-      return true
-    }
-    const marks = record.marks
-    const base = ordinal * MARK_STRIDE
-    if (marks[base + JOURNALED] !== transaction) {
-      marks[base + JOURNALED] = transaction
-      marks[base + PREVIOUS] = marks[base + CHANGED]!
-      journalRecords[journalSize] = record
-      journalOrdinals[journalSize] = ordinal
-      journalValues[journalSize] = record.values[ordinal]
-      journalSize += 1
-    }
-    record.values[ordinal] = value
-    markChanged(record, ordinal)
-    return true
-  }
-
-  /** Empties the journal, dropping its references so old values can be collected. */
-  const clearJournal = (): void => {
-    journalRecords.length = 0
-    journalOrdinals.length = 0
-    journalValues.length = 0
-    journalSize = 0
+  const writeOutsideTransaction = (page: Page, slot: number, value: unknown): void => {
+    const before = page.values[slot]
+    page.values[slot] = value
+    if (differs(before, value)) stampChanged(page, slot)
   }
 
   /**
-   * The changed tick a reader sees: a slot journaled by the running
-   * transaction shows its tick from before, so a system does not see its own
-   * writes as changes until it commits.
+   * Registers a page the running transaction is about to write to for the
+   * first time. Write cells then save each slot's old value before its first
+   * write (`saved`, `before`); commit and rollback visit only those slots.
    */
-  const visibleChanged = (record: EntityRecord, ordinal: number): number => {
-    const base = ordinal * MARK_STRIDE
-    const marks = record.marks
-    return inTransaction && marks[base + JOURNALED] === transaction ? marks[base + PREVIOUS]! : marks[base + CHANGED]!
+  const touchPage = (page: Page): void => {
+    // `saved` is all zero here: commit and rollback clear every word they visit.
+    page.savedIn = transaction
+    page.before ??= filled(undefined)
+    savedPages[savedCount++] = page
   }
 
   /**
-   * Starts journaling in-place component writes for one system run.
+   * Visits the slots the running transaction saved on a page, lowest first,
+   * with the value from before the transaction.
+   */
+  const forEachSaved = (page: Page, visit: (slot: number, before: unknown) => void): void => {
+    const saved = page.saved
+    const before = page.before!
+    for (let word = 0; word < saved.length; word++) {
+      let bits = saved[word]!
+      while (bits !== 0) {
+        const lowest = bits & -bits
+        const slot = (word << 5) + 31 - Math.clz32(lowest)
+        visit(slot, before[slot])
+        bits ^= lowest
+      }
+    }
+  }
+
+  /**
+   * Starts a transaction for one system run.
    */
   const beginTransaction = (): void => {
     transaction += 1
     inTransaction = true
+    transactionState.id = transaction
+    transactionState.active = true
   }
 
   /**
-   * Keeps the journaled writes and records them as lifecycle changes.
+   * Keeps the transaction's writes: every value that differs from the copy
+   * is stamped as changed now.
    */
   const commitTransaction = (): void => {
     inTransaction = false
-    if (inPhase) {
-      for (let index = 0; index < journalSize; index++) {
-        const record = journalRecords[index]!
-        const ordinal = journalOrdinals[index]!
-        phaseRecords.push(record)
-        phaseOrdinals.push(ordinal)
-        phaseValues.push(journalValues[index])
-        phaseChanged.push(record.marks[ordinal * MARK_STRIDE + PREVIOUS]!)
+    transactionState.active = false
+    for (let index = 0; index < savedCount; index++) {
+      const page = savedPages[index]!
+      if (inPhase && page.phaseIn !== phase) savePhasePage(page)
+      const saved = page.saved
+      const before = page.before!
+      const values = page.values
+      for (let word = 0; word < saved.length; word++) {
+        let bits = saved[word]!
+        while (bits !== 0) {
+          const lowest = bits & -bits
+          const slot = (word << 5) + 31 - Math.clz32(lowest)
+          if (differs(before[slot], values[slot])) stampChanged(page, slot)
+          // Old values do not outlive the transaction.
+          before[slot] = undefined
+          bits ^= lowest
+        }
+        saved[word] = 0
       }
     }
-    // Large journals are dropped so the values they hold can be collected;
-    // small ones are reused.
-    if (journalSize > 4096) clearJournal()
-    else journalSize = 0
+    savedCount = 0
   }
 
   /**
-   * Restores every journaled slot to its value before the transaction.
+   * Restores every page the transaction wrote; no tick moved, so values are
+   * all there is to restore.
    */
   const rollbackTransaction = (): void => {
     inTransaction = false
-    for (let index = 0; index < journalSize; index++) {
-      const record = journalRecords[index]!
-      const ordinal = journalOrdinals[index]!
-      record.values[ordinal] = journalValues[index]
-      record.marks[ordinal * MARK_STRIDE + CHANGED] = record.marks[ordinal * MARK_STRIDE + PREVIOUS]!
+    transactionState.active = false
+    for (let index = 0; index < savedCount; index++) {
+      const page = savedPages[index]!
+      const values = page.values
+      const before = page.before!
+      forEachSaved(page, (slot, value) => {
+        values[slot] = value
+        before[slot] = undefined
+      })
+      page.saved.fill(0)
     }
-    clearJournal()
+    savedCount = 0
+  }
+
+  /**
+   * Keeps a page's values and ticks from before the phase, the first time a
+   * transaction in it commits writes to the page: the slots it saved get
+   * their old values back, and commit is about to stamp the ticks.
+   */
+  const savePhasePage = (page: Page): void => {
+    page.phaseIn = phase
+    const values = page.values.slice()
+    forEachSaved(page, (slot, before) => {
+      values[slot] = before
+    })
+    page.phaseValues = values
+    page.phaseChanged = page.changed.slice()
+    phasePages.push(page)
   }
 
   const clearPhase = (): void => {
     inPhase = false
-    phaseRecords.length = 0
-    phaseOrdinals.length = 0
-    phaseValues.length = 0
-    phaseChanged.length = 0
+    for (const page of phasePages) {
+      page.phaseValues = undefined
+      page.phaseChanged = undefined
+    }
+    phasePages.length = 0
   }
 
   /** Starts a phase: the transactions committed until it ends can be undone together. */
   const beginPhase = (): void => {
+    phase += 1
     inPhase = true
   }
 
-  /** Restores every write committed in the phase, with its change tick. */
+  /** Restores every page written in the phase, with its change ticks. */
   const rollbackPhase = (): void => {
-    for (let index = phaseRecords.length - 1; index >= 0; index--) {
-      const record = phaseRecords[index]!
-      const ordinal = phaseOrdinals[index]!
-      record.values[ordinal] = phaseValues[index]
-      record.marks[ordinal * MARK_STRIDE + CHANGED] = phaseChanged[index]!
+    for (const page of phasePages) {
+      const values = page.values
+      const saved = page.phaseValues!
+      for (let slot = 0; slot < PAGE_SIZE; slot++) values[slot] = saved[slot]
+      page.changed.set(page.phaseChanged!)
     }
     clearPhase()
   }
@@ -537,17 +688,21 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   const writeRecord = (record: EntityRecord, ordinal: number, value: unknown): void => {
-    if (!has(record, ordinal)) {
-      ensureSlots(record, ordinal)
+    const page = ensurePage(ordinal, record.id)
+    const slot = record.id & PAGE_MASK
+    if (page.values[slot] === ABSENT) {
+      page.count += 1
+      insertSorted(record.held, ordinal)
+      holdBit(record, ordinal)
       members[ordinal]!.add(record)
       bumpMembership(record, ordinal)
-      record.marks[ordinal * MARK_STRIDE + ADDED] = tick
+      page.added[slot] = tick
       if (hooks !== undefined && hookDepth === 0) hooks.inserted(record.id, ordinal, value)
     } else if (hooks !== undefined && hookDepth === 0) {
-      hooks.overwritten(record.id, ordinal, record.values[ordinal], value)
+      hooks.overwritten(record.id, ordinal, page.values[slot], value)
     }
-    record.values[ordinal] = value
-    markChanged(record, ordinal)
+    page.values[slot] = value
+    stampChanged(page, slot)
   }
 
   const writeComponent = (id: number, descriptor: ComponentDescriptor, value: unknown): void => {
@@ -566,7 +721,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (!has(record, ordinal)) {
       return
     }
-    record.values[ordinal] = ABSENT
+    clearSlot(record, ordinal)
+    record.held.splice(record.held.indexOf(ordinal), 1)
+    dropBit(record, ordinal)
     members[ordinal]!.delete(record)
     bumpMembership(record, ordinal)
     appendLog(logFor(removedLogs, ordinal), id, tick)
@@ -730,16 +887,17 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       }
       unrelate(id, relation)
     }
-    const values = record.values
-    for (let ordinal = 0; ordinal < values.length; ordinal++) {
-      if (values[ordinal] === ABSENT) {
-        continue
-      }
-      values[ordinal] = ABSENT
+    const held = record.held
+    for (let index = 0; index < held.length; index++) {
+      const ordinal = held[index]!
+      clearSlot(record, ordinal)
       members[ordinal]!.delete(record)
       bumpMembership(record, ordinal)
       appendLog(logFor(removedLogs, ordinal), id, tick)
     }
+    // `held` and `heldBits` stay as they were: the record is dead from here
+    // (`alive` is false, and it leaves `records`), and resetting an array's
+    // length is a runtime call per entity.
     clearEntityScope(id)
     appendLog(despawnedLog, id, tick)
     record.alive = false
@@ -804,10 +962,10 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       .sort((left, right) => left.id - right.id)
       .map((record) => {
         const components: Record<string, unknown> = {}
-        record.values.forEach((value, ordinal) => {
+        for (const ordinal of record.held) {
           const descriptor = descriptors[ordinal]!
-          if (value !== ABSENT && !skip(descriptor)) components[descriptor.name] = value
-        })
+          if (!skip(descriptor)) components[descriptor.name] = valueAt(record, ordinal)
+        }
         return { id: record.id, components }
       })
 
@@ -842,14 +1000,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const nextEntityValue = (): number => nextEntity
 
   /**
-   * Visits the component writes journaled by the running system transaction,
+   * Visits the component values the running system transaction changed,
    * with the value before the transaction and the current one.
    */
   const forEachJournaled = (visit: (id: number, ordinal: number, before: unknown, after: unknown) => void): void => {
-    for (let index = 0; index < journalSize; index++) {
-      const record = journalRecords[index]!
-      const ordinal = journalOrdinals[index]!
-      visit(record.id, ordinal, journalValues[index], record.values[ordinal])
+    for (let index = 0; index < savedCount; index++) {
+      const page = savedPages[index]!
+      const values = page.values
+      forEachSaved(page, (slot, before) => {
+        if (differs(before, values[slot])) visit(page.base + slot, page.ordinal, before, values[slot])
+      })
     }
   }
 
@@ -863,10 +1023,32 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     ordinalOf,
     nameAt,
     has,
+    valueAt,
+    /** The page holding `id`'s slot of a component, for cells that read it directly. */
+    pageFor,
     entityIdOf,
     allocateEntity,
     spawnEntity,
-    setComponentValue,
+    transactionState: transactionState as Readonly<TransactionState>,
+    /** Starts a run: matches handed out from now on are valid until `endRun`. */
+    beginRun: (): void => {
+      inRun = true
+    },
+    /** Ends the run: every match handed out in it stops being usable. */
+    endRun: (): void => {
+      inRun = false
+      for (let index = 0; index < handedOutCount; index++) handedOut[index]!.live = false
+      handedOutCount = 0
+    },
+    /** Makes a query's matches usable until the running run ends. */
+    handOut: (stamp: { live: boolean }): void => {
+      if (inRun && !stamp.live) {
+        stamp.live = true
+        handedOut[handedOutCount++] = stamp
+      }
+    },
+    touchPage,
+    writeOutsideTransaction,
     writeComponent,
     removeComponent,
     destroyEntity,
@@ -923,13 +1105,19 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     /**
      * Whether the component was added after `since`.
      */
-    addedSince: (record: EntityRecord, ordinal: number, since: number): boolean =>
-      has(record, ordinal) && record.marks[ordinal * MARK_STRIDE + ADDED]! > since,
+    addedSince: (record: EntityRecord, ordinal: number, since: number): boolean => {
+      const page = pageAt(ordinal, record.id)
+      const slot = record.id & PAGE_MASK
+      return page !== undefined && page.values[slot] !== ABSENT && page.added[slot]! > since
+    },
     /**
      * Whether the component was added or changed after `since`.
      */
-    changedSince: (record: EntityRecord, ordinal: number, since: number): boolean =>
-      has(record, ordinal) && visibleChanged(record, ordinal) > since,
+    changedSince: (record: EntityRecord, ordinal: number, since: number): boolean => {
+      const page = pageAt(ordinal, record.id)
+      const slot = record.id & PAGE_MASK
+      return page !== undefined && page.values[slot] !== ABSENT && page.changed[slot]! > since
+    },
     /**
      * Candidate ids for a `changed`/`added` filter on `ordinal` after `since`,
      * or `undefined` when the log no longer covers that range. Ids may repeat.

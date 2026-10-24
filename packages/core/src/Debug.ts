@@ -453,7 +453,7 @@ export interface StreamStatus {
   readonly heldBy: string | undefined
 }
 
-/** A component written in place by a system's write query slot. */
+/** A component changed in place by a system's write query slot: written to a different value (see `Game.Query.changed`). */
 export interface ComponentWrite {
   readonly entity: number
   readonly component: string

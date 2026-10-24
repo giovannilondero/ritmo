@@ -143,7 +143,8 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
   with one setup frame, timeline frame `n` is read in session frame `n + 2`.
   `e12`: entity 12. `&e12`: a stored handle to entity 12.
 - The schedule path shows nesting, for example `update > onEnter(Game/Flow=Paused)`.
-- `write`: a component written through a system's write query. `resource`,
+- `write`: a component a system's write query changed to a different value
+  (writing back an equal value is not recorded). `resource`,
   `emit`, `next state`: resource writes, event emits, and queued machine
   values. Failed systems show `(rolled back)`.
 - `queued ...` then `applyDeferred: ...`: a command queued by a system, then
