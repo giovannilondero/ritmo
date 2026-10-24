@@ -1,36 +1,49 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Ritmo and other ECS libraries
-description: What bitECS, Koota, and Miniplex are best at, what happens when an agent gets a system wrong in each, and how fast each one runs.
+description: The same mechanic in bitECS, Koota, Miniplex, and Ritmo, what happens when it is changed wrong, and what Ritmo trades for its guarantees.
 ---
 
-import Benchmarks from "../../components/Benchmarks.astro"
+TypeScript has several entity component system libraries, each built for
+something different:
 
-Each TypeScript ECS library is built for something. **bitECS** is built for
-raw throughput: components are typed arrays, entities are numbers.
-**Koota** is built for real-time apps, with React bindings and change
-tracking. **Miniplex** is built for simplicity: entities are plain objects,
-and queries are views over them. **Ritmo** is built for a game that a coding
-agent writes: a wrong call does not compile, and the error says what to do
-instead.
+- **bitECS** is built for throughput: entities are numbers, and components
+  are arrays indexed by them.
+- **Koota** is built for real-time apps: components are traits with
+  defaults, with change tracking and React bindings.
+- **Miniplex** is built for simplicity: entities are plain objects, and
+  queries are live views over them.
+
+**Ritmo** is built for a game that keeps growing while coding agents write
+it. Every system declares what it reads, writes, and queues, so the
+compiler can check each change against the rest of the game. Mistakes come
+back as compile errors, typed failures, and lint messages that name the
+fix, so an agent can change a system it never read without breaking the
+ones around it.
 
 ## The same mechanic in each library
 
-A hit stuns every guard for 30 frames; a stunned guard does not move, and the
-stun wears off. In bitECS, components are arrays indexed by entity id:
+A hit stuns every guard for 30 frames. A stunned guard does not move, and
+the stun wears off.
 
-```ts twoslash title="bitECS"
+### bitECS
+
+Components are arrays indexed by entity id, and systems are plain functions
+over the world.
+
+```ts twoslash title="stun.ts"
 import { addComponent, Not, query, removeComponent, type World } from "bitecs"
 
+// One array per field, indexed by entity id
 const Position = { x: [] as number[], y: [] as number[] }
 const Velocity = { x: [] as number[], y: [] as number[] }
 const Guard = {}
 const Stunned = { frames: [] as number[] }
 
-// Called by the game when a hit lands
+// The game calls this when a hit lands
 const stun = (world: World) => {
   for (const eid of query(world, [Guard, Not(Stunned)])) {
-    addComponent(world, eid, Stunned)
+    addComponent(world, eid, Stunned) // [!code highlight]
     Stunned.frames[eid] = 30
   }
 }
@@ -38,54 +51,65 @@ const stun = (world: World) => {
 const recover = (world: World) => {
   for (const eid of query(world, [Stunned])) {
     Stunned.frames[eid]! -= 1
-    if (Stunned.frames[eid]! <= 0) removeComponent(world, eid, Stunned)
+    if (Stunned.frames[eid]! <= 0) removeComponent(world, eid, Stunned) // [!code highlight]
   }
 }
 
+// Stunned guards are left out of the query
 const move = (world: World) => {
-  for (const eid of query(world, [Position, Velocity, Not(Stunned)])) {
+  for (const eid of query(world, [Position, Velocity, Not(Stunned)])) { // [!code highlight]
     Position.x[eid]! += Velocity.x[eid]!
     Position.y[eid]! += Velocity.y[eid]!
   }
 }
 ```
 
-In Koota, components are traits with defaults, and queries update them in
-place:
+### Koota
 
-```ts twoslash title="Koota"
+Components are traits with default values, and a query updates them in
+place.
+
+```ts twoslash title="stun.ts"
 import { Not, trait, type World } from "koota"
 
+// A trait's fields and their defaults
 const Position = trait({ x: 0, y: 0 })
 const Velocity = trait({ x: 0, y: 0 })
 const Guard = trait()
 const Stunned = trait({ frames: 0 })
 
-// Called by the game when a hit lands
+// The game calls this when a hit lands
 const stun = (world: World) => {
-  world.query(Guard, Not(Stunned)).forEach((entity) => entity.add(Stunned({ frames: 30 })))
+  world.query(Guard, Not(Stunned)).forEach((entity) => {
+    entity.add(Stunned({ frames: 30 })) // [!code highlight]
+  })
 }
 
 const recover = (world: World) => {
   world.query(Stunned).updateEach(([stunned], entity) => {
     stunned.frames -= 1
-    if (stunned.frames <= 0) entity.remove(Stunned)
+    if (stunned.frames <= 0) entity.remove(Stunned) // [!code highlight]
   })
 }
 
+// Stunned guards are left out of the query
 const move = (world: World) => {
-  world.query(Position, Velocity, Not(Stunned)).updateEach(([position, velocity]) => {
+  world.query(Position, Velocity, Not(Stunned)).updateEach(([position, velocity]) => { // [!code highlight]
     position.x += velocity.x
     position.y += velocity.y
   })
 }
 ```
 
-In Miniplex, an entity is an object, and a component is one of its keys:
+### Miniplex
 
-```ts twoslash title="Miniplex"
+An entity is an object, and a component is one of its keys. Queries are
+declared once and stay up to date.
+
+```ts twoslash title="stun.ts"
 import { World } from "miniplex"
 
+// Every component an entity may have
 type Entity = {
   position?: { x: number; y: number }
   velocity?: { x: number; y: number }
@@ -94,19 +118,21 @@ type Entity = {
 }
 
 const world = new World<Entity>()
+
+// Live views over the world
 const calm = world.with("guard").without("stunned")
 const stunned = world.with("stunned")
-const moving = world.with("position", "velocity").without("stunned")
+const moving = world.with("position", "velocity").without("stunned") // [!code highlight]
 
-// Called by the game when a hit lands
+// The game calls this when a hit lands
 const stun = () => {
-  for (const entity of calm) world.addComponent(entity, "stunned", { frames: 30 })
+  for (const entity of calm) world.addComponent(entity, "stunned", { frames: 30 }) // [!code highlight]
 }
 
 const recover = () => {
   for (const entity of stunned) {
     entity.stunned.frames -= 1
-    if (entity.stunned.frames <= 0) world.removeComponent(entity, "stunned")
+    if (entity.stunned.frames <= 0) world.removeComponent(entity, "stunned") // [!code highlight]
   }
 }
 
@@ -118,16 +144,18 @@ const move = () => {
 }
 ```
 
-In Ritmo, each system declares what it reads, writes, and queues, and the
-runtime gives it only that:
+### Ritmo
 
-```ts twoslash title="Ritmo"
+Each system declares what it reads, writes, and queues. The runtime gives
+it exactly that, and nothing else.
+
+```ts twoslash title="stun.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
 const Guard = Descriptor.Tag("Arena/Guard")
-// Frames left
+// The frames left, stored as a plain number
 const Stunned = Descriptor.Component<number>()("Arena/Stunned", { columns: "number" })
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
 
@@ -139,7 +167,9 @@ const Game = Schema.bind(Schema.fragment({
 const Stun = Game.System("Arena/Stun", {
   queries: { calm: Game.Query({ selection: {}, with: [Guard], without: [Stunned] }) },
   events: { hits: Game.System.readEvent(Hit) },
-  commands: Game.System.commands(Game.System.inserts(Stunned))
+
+  // The only command it may queue: adding Stunned
+  commands: Game.System.commands(Game.System.inserts(Stunned)) // [!code highlight]
 }, ({ queries, events, commands }) => {
   if (events.hits.all().length === 0) return
   for (const match of queries.calm.each()) commands.insert(match.entity, [Stunned, 30])
@@ -147,7 +177,7 @@ const Stun = Game.System("Arena/Stun", {
 
 const Recover = Game.System("Arena/Recover", {
   queries: { stunned: Game.Query({ selection: { frames: Game.Query.write(Stunned) } }) },
-  commands: Game.System.commands(Game.System.removes(Stunned))
+  commands: Game.System.commands(Game.System.removes(Stunned)) // [!code highlight]
 }, ({ queries, commands }) => {
   for (const match of queries.stunned.each()) {
     const frames = match.data.frames.get() - 1
@@ -159,7 +189,8 @@ const Recover = Game.System("Arena/Recover", {
 const Move = Game.System("Arena/Move", {
   queries: {
     moving: Game.Query({
-      selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) },
+      // Writes Position, only reads Velocity
+      selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) }, // [!code highlight]
       without: [Stunned]
     })
   }
@@ -172,53 +203,219 @@ const Move = Game.System("Arena/Move", {
 })
 ```
 
-Ritmo's version is the longest: the declarations are the extra lines. They
-are what the next section is about.
+Ritmo's version is the longest. The extra lines are the declarations, and
+the next section is what they buy.
 
 ## When the code is wrong
 
-The same four libraries, and the mistakes an agent makes when it changes a
-system it did not write:
-
-| Mistake | bitECS | Koota | Miniplex | Ritmo |
-|---|---|---|---|---|
-| A system writes a component it was not meant to touch | Runs: any code can write any array | Runs: any code can set any trait | Runs: any code can set any key | Does not compile: the error names the permission to add |
-| A reference is kept after its entity is despawned | The id is recycled: the old reference reads the next entity's data | The old handle reports it is not alive, yet `get` returns the next entity's data | The object keeps taking writes, outside the world | Ids are never reused: resolving it again is a typed failure, and a kept query match throws, naming the fix |
-| A system throws halfway through | The writes before the throw stay | The writes before the throw stay | The writes before the throw stay | Its writes are rolled back; a failure it returns does the same |
-| A save file is corrupted | The snapshot deserializer reads the bytes back unchecked | No save format: the game writes and checks its own | No save format: the game writes and checks its own | `restore` checks every value against its schema; on failure nothing changes |
-| Game logic calls `Math.random()` or `Date.now()` | Runs, and replays diverge | Runs, and replays diverge | Runs, and replays diverge | A lint error names `Random` and `Clock` |
-
-Each claim about another library is a test in the repository
+The other libraries trust the code: the mistakes below run, and show up
+later as a bug. Each claim about them is a test in the repository
 ([`bench/compare/test/mistakes.test.ts`](https://github.com/typeonce-dev/ritmo/blob/main/bench/compare/test/mistakes.test.ts)),
-run against the versions named below. One mistake you might expect is not in
-the table: adding or removing components while iterating a query is handled
-correctly by all four.
+run against bitECS 0.4.0, Koota 0.6.6, and Miniplex 2.0.0.
+
+### A system touches what it should not
+
+An agent asked to "freeze stunned guards" adds a line to the stun system. In
+Miniplex, as in bitECS and Koota, any code can change any component:
+
+```ts twoslash title="stun.ts"
+import { World } from "miniplex"
+type Entity = { velocity?: { x: number; y: number }; guard?: true; stunned?: { frames: number } }
+const world = new World<Entity>()
+const calm = world.with("guard", "velocity").without("stunned")
+// ---cut---
+const stun = () => {
+  for (const entity of calm) {
+    world.addComponent(entity, "stunned", { frames: 30 })
+    entity.velocity = { x: 0, y: 0 } // Runs: now every system that reads velocity sees this [!code warning]
+  }
+}
+```
+
+In Ritmo the same line does not compile, and the error says where the
+permission goes:
+
+```ts twoslash title="stun.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
+const Guard = Descriptor.Tag("Arena/Guard")
+const Stunned = Descriptor.Component<number>()("Arena/Stunned", { columns: "number" })
+const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned } }))
+// ---cut---
+// @errors: 2345
+const Stun = Game.System("Arena/Stun", {
+  queries: { calm: Game.Query({ selection: {}, with: [Guard], without: [Stunned] }) },
+  commands: Game.System.commands(Game.System.inserts(Stunned))
+}, ({ queries, commands }) => {
+  for (const match of queries.calm.each()) {
+    commands.insert(match.entity, [Stunned, 30])
+    commands.insert(match.entity, [Velocity, { x: 0, y: 0 }])
+  }
+})
+```
+
+Adding the permission is a visible change to the system's spec. Tools read
+the specs too: `ritmo-devtools` lists who writes each component, so the new
+writer of `Velocity` shows up next to the systems that read it.
+
+### A reference outlives its entity
+
+A system remembers the guard it is following. The guard is despawned, and
+another entity is spawned. In bitECS the id is recycled, so the old
+reference now reads the new entity:
+
+```ts twoslash title="follow.ts"
+import { addComponent, addEntity, createWorld, removeEntity } from "bitecs"
+const world = createWorld()
+const Health = { value: [] as number[] }
+// ---cut---
+const guard = addEntity(world)
+addComponent(world, guard, Health)
+Health.value[guard] = 10
+
+removeEntity(world, guard)
+const crate = addEntity(world) // The same id as guard [!code warning]
+addComponent(world, crate, Health)
+Health.value[crate] = 99
+
+Health.value[guard] // 99: the crate's health, read through the guard's id [!code warning]
+```
+
+Koota's old handle reports `isAlive() === false`, yet `get` still returns the
+new entity's data. A removed Miniplex entity is an object that keeps taking
+writes, outside the world.
+
+Ritmo never reuses an id. Following one is a lookup, and a lookup that
+depends on the world says it can fail:
+
+```ts twoslash title="follow.ts"
+import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Guard = Descriptor.Tag("Arena/Guard")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Guard } }))
+type GuardId = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+const Guards = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Guard] })
+// ---cut---
+const Follow = Game.System("Arena/Follow", {
+  queries: { guards: Guards },
+  local: () => ({ target: undefined as GuardId | undefined })
+}, ({ queries, local }) => {
+  if (local.target === undefined) return
+  const target = queries.guards.get(local.target) // [!code highlight]
+  if (!target.ok) {
+    // The guard is gone, or is no longer a guard
+    const reason = target.error._tag
+    //    ^?
+    local.target = undefined
+    return
+  }
+  const { x, y } = target.value.data.position.get()
+})
+```
+
+A query match kept instead of the id throws on its next use, and the message
+says to keep the id.
+
+### A system fails halfway
+
+A purchase takes the gold, then finds the item sold out. In all three other
+libraries, the gold taken before the throw stays taken. A Ritmo system
+returns its failure as a value, and everything it wrote is rolled back:
+
+```ts twoslash title="buy.ts"
+import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+const Gold = Descriptor.Resource<number>()("Shop/Gold")
+const Stock = Descriptor.Resource<number>()("Shop/Stock")
+const Game = Schema.bind(Schema.fragment({ resources: { Gold, Stock } }))
+const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Gold: 50, Stock: 0 } })
+if (!made.ok) throw new Error()
+const runtime = made.value
+// ---cut---
+const Buy = Game.System("Shop/Buy", {
+  resources: { gold: Game.System.writeResource(Gold), stock: Game.System.readResource(Stock) }
+}, ({ resources }) => {
+  resources.gold.update((gold) => gold - 10)
+  if (resources.stock.get() === 0) return Result.failure("SoldOut" as const) // [!code highlight]
+  return Result.success(undefined)
+})
+
+// The tick reports which system failed and why; the gold is back at 50
+const ticked = runtime.tick(Game.Schedule(Buy))
+//    ^?
+```
+
+### A save file is broken
+
+A player's save was edited by hand, or written by an older version. bitECS's
+snapshot deserializer reads the bytes back as they are, and Koota and
+Miniplex leave saving to the game. Ritmo checks every value against the
+component's schema, and changes nothing unless all of it is valid:
+
+```ts twoslash title="load.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
+const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health", { columns: "number" })
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (!made.ok) throw new Error()
+const runtime = made.value
+declare const file: string
+// ---cut---
+const restored = runtime.restore(JSON.parse(file))
+//    ^?
+
+// On failure, the world is untouched and the error names the value:
+// { _tag: "InvalidComponent", entityId: 3, name: "Arena/Health", ... }
+```
+
+Saves also carry the game's version, and `Snapshot.migrations` upgrades an
+old one before it is checked.
+
+### Logic reads the clock or the dice
+
+A replay, a headless test, and a bug report all need the game to play the
+same way twice. Nothing stops game code from calling `Math.random()` in the
+other libraries. In Ritmo, the repository's lint rules catch it, and the
+message names the replacement:
+
+```text
+error ritmo(use-random-for-randomness): Math.random() cannot be seeded or
+saved, so the run cannot replay. Draw from the world's Random resource:
+`const random = Random.draw(resources.rng)` (declare
+`rng: Game.System.writeResource(Rng)`), then `random.next()`, ...
+```
+
+### Why this scales
+
+Each mistake above is local in Ritmo: the compiler checks a change against
+every declaration it touches, and a failure names the fix. A game with
+hundreds of systems stays one where an agent can change one system without
+reading the others, because the others' declarations are what the change is
+checked against.
 
 ## Performance
 
-The five cases of the community [ECS benchmark](https://github.com/noctjs/ecs-benchmark),
-each written the fastest normal way for its library. Ritmo runs them as a
-game would: declared systems, one tick per operation, commands landing at
-`applyDeferred()`. Each library and case runs in its own process.
+Ritmo gives up some speed for its guarantees. On the
+[community ECS benchmark](https://github.com/noctjs/ecs-benchmark) it runs
+close to Miniplex, and well behind bitECS's raw arrays (`pnpm bench:compare`
+in the [repository](https://github.com/typeonce-dev/ritmo/tree/main/bench/compare)
+runs it). What the runtime does that the others do not:
 
-<Benchmarks />
-
-The numbers are not the same work. A bitECS write stores a number in an
-array. A Ritmo write also records the old value so a failing system can be
-rolled back, checks that the query's match is still valid, and lets
-`changed` filters see the new value on the next run. That is the cost of the
-guarantees above. Ritmo's spawns and despawns are queued and applied
-together, and keep pace with the others.
-
-To run it yourself: `pnpm bench:compare` in the
-[repository](https://github.com/typeonce-dev/ritmo/tree/main/bench/compare).
-
-## When to pick something else
-
-- **Hundreds of thousands of entities, every frame:** bitECS. Its typed
-  arrays are hard to beat, and they pass straight to WebAssembly or the GPU.
-- **State for a React app:** Koota or Miniplex, which come with React
-  bindings.
-- **A game a coding agent writes and keeps changing:** Ritmo. It costs some
-  speed and some lines, and in return the agent hears about its mistakes
-  from the compiler, a lint, or a typed failure, not from a player.
+- **Every write keeps the old value** until the system finishes, so a
+  failing system can be rolled back.
+- **A change is a different value**, found by comparing old and new when the
+  system commits, so `changed` filters never see a write that changed
+  nothing.
+- **Every read and write through a query match is checked**: the match must
+  come from this run, and its entity must still hold the component.
+- **Structural changes are queued**: spawns, despawns, inserts, and removes
+  wait for `applyDeferred()`, so no system sees the world change shape mid-run.
+- **Values are immutable**: an object component is replaced, not edited in
+  place, and a number component is stored unboxed so its writes allocate
+  nothing.
+- **Each system declares its access**, which costs lines, not time: the checks
+  are done by the compiler.

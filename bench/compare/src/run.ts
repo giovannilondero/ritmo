@@ -8,10 +8,6 @@
  *   pnpm bench:compare --filter add_remove  cases or libraries whose name contains the text
  *   pnpm bench:compare --json <path>        also write the results, with the machine, date, and versions
  *
- * `bench/compare/results.json` is the run the website's comparison page shows
- * (`website/src/pages/docs/comparison.mdx`): refresh it with
- * `pnpm bench:compare --json bench/compare/results.json` on a quiet machine.
- *
  * Each library/case pair runs in a fresh process, so one library's code never
  * shares V8's optimization state with another's. Results are operations per
  * second from the fastest sample; higher is better.
