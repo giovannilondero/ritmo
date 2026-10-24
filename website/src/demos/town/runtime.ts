@@ -13,7 +13,7 @@ export const initialResources = (host: HostValue) => ({
   Time: Clock.start(step),
   Rng: Random.seed(0x7017),
   Host: host,
-  Input: Players.idle({ left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padBindings), touch: Touch.idle({ buttons: touchButtons }) })
+  Input: Players.idle({ left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padBindings), touch: Touch.idle({ buttons: touchButtons, sticks: [] }) })
 } as const)
 
 export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Exploring" }))
@@ -35,7 +35,7 @@ export const createTownSimulation = (devices: {
       left: devices.left ?? Keyboard.scripted(leftKeys, []),
       right: devices.right,
       pads: Gamepad.scriptedPads(padBindings, []),
-      touch: Touch.scripted({ buttons: touchButtons }, [])
+      touch: Touch.scripted({ buttons: touchButtons, sticks: [] }, [])
     }))),
     resources: initialResources("right"),
     machines: initialMachines(),

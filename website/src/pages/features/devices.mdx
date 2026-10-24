@@ -152,9 +152,12 @@ const controls = Actions.merge({ keyboard, touch })
   released when the window loses focus, and a key released after a
   modifier changed its character still lets go. Clicks get edges, pointer
   capture, and no context menu.
-- **Touch.** A floating stick that appears under the thumb, buttons that aim
-  by dragging (tap to use, drag to aim, release to fire), an optional swipe
-  area to look around, and a layout recomputed from the screen's size.
+- **Touch.** Floating sticks that appear under the thumb, each named by the
+  vector it drives, so a twin-stick shooter moves with a `move` stick on the
+  left and aims with an `aim` stick on the right, both thumbs at once.
+  Buttons aim by dragging (tap to use, drag to aim, release to fire), an
+  optional swipe area looks around, and the layout is recomputed from the
+  screen's size.
 - **Tests.** Every device has a scripted twin that plays a timeline, so the
   same rules run headless with no browser.
 
