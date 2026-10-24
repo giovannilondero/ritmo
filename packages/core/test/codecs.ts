@@ -9,22 +9,27 @@ import * as Entity from "@typeonce/ritmo/Entity"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 
 type Issue = StandardSchema.Issue
-type Check<T> = (raw: unknown, path: ReadonlyArray<PropertyKey>) => { readonly value: T } | { readonly issues: ReadonlyArray<Issue> }
+type Check<T> = (raw: unknown) => { readonly value: T } | { readonly issues: ReadonlyArray<Issue> }
 
-/** A codec whose saved form is its value, from a check that knows its path. */
+/** A codec whose saved form is its value. Paths are built only when a check fails. */
 export interface TestCodec<T> extends StandardSchema<T, T> {
   readonly check: Check<T>
 }
 
 const make = <T>(check: Check<T>): TestCodec<T> => ({
   check,
-  "~standard": { version: 1, vendor: "ritmo-test", validate: (raw) => check(raw, []) }
+  "~standard": { version: 1, vendor: "ritmo-test", validate: check }
 })
 
-const fail = (message: string, path: ReadonlyArray<PropertyKey>) => ({ issues: [{ message, path }] })
+const fail = (message: string) => ({ issues: [{ message, path: [] }] })
+
+// The issues of a nested check, under `key`.
+const under = (key: PropertyKey, issues: ReadonlyArray<Issue>) => ({
+  issues: issues.map((issue) => ({ message: issue.message, path: [key, ...(issue.path ?? [])] }))
+})
 
 export const primitiveOf = <T>(expected: string, test: (raw: unknown) => raw is T): TestCodec<T> =>
-  make((raw, path) => test(raw) ? { value: raw } : fail(`Expected ${expected}`, path))
+  make((raw) => test(raw) ? { value: raw } : fail(`Expected ${expected}`))
 
 export const number = primitiveOf("a finite number", (raw): raw is number => typeof raw === "number" && Number.isFinite(raw))
 export const integer = primitiveOf("an integer", (raw): raw is number => Number.isSafeInteger(raw))
@@ -37,15 +42,15 @@ export const literal = <const Values extends readonly [string | number | boolean
   primitiveOf(values.map((value) => JSON.stringify(value)).join(" | "), (raw): raw is Values[number] => values.includes(raw as Values[number]))
 
 export const nullable = <T>(inner: TestCodec<T>): TestCodec<T | null> =>
-  make<T | null>((raw, path) => raw === null ? { value: null } : inner.check(raw, path))
+  make<T | null>((raw) => raw === null ? { value: null } : inner.check(raw))
 
 export const array = <T>(item: TestCodec<T>): TestCodec<ReadonlyArray<T>> =>
-  make((raw, path) => {
-    if (!Array.isArray(raw)) return fail("Expected an array", path)
+  make((raw) => {
+    if (!Array.isArray(raw)) return fail("Expected an array")
     const values: Array<T> = []
-    for (const [index, entry] of raw.entries()) {
-      const value = item.check(entry, [...path, index])
-      if ("issues" in value) return value
+    for (let index = 0; index < raw.length; index++) {
+      const value = item.check(raw[index])
+      if ("issues" in value) return under(index, value.issues)
       values.push(value.value)
     }
     return { value: values }
@@ -53,17 +58,19 @@ export const array = <T>(item: TestCodec<T>): TestCodec<ReadonlyArray<T>> =>
 
 export const struct = <const Fields extends Readonly<Record<string, TestCodec<any>>>>(
   fields: Fields
-): TestCodec<{ readonly [K in keyof Fields]: Fields[K] extends TestCodec<infer T> ? T : never }> =>
-  make((raw, path) => {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("Expected an object", path)
+): TestCodec<{ readonly [K in keyof Fields]: Fields[K] extends TestCodec<infer T> ? T : never }> => {
+  const entries = Object.entries(fields)
+  return make((raw) => {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("Expected an object")
     const value: Record<string, unknown> = {}
-    for (const [key, field] of Object.entries(fields)) {
-      const decoded = field.check((raw as Record<string, unknown>)[key], [...path, key])
-      if ("issues" in decoded) return decoded
+    for (const [key, field] of entries) {
+      const decoded = field.check((raw as Record<string, unknown>)[key])
+      if ("issues" in decoded) return under(key, decoded.issues)
       value[key] = decoded.value
     }
     return { value: value as { readonly [K in keyof Fields]: Fields[K] extends TestCodec<infer T> ? T : never } }
   })
+}
 
 /** A stored entity handle for schema root `Root`, built from `Entity.isHandle`. */
 export const handle = <Root, const Intent extends Descriptor<"component", string, any> | undefined = undefined>(
@@ -71,7 +78,7 @@ export const handle = <Root, const Intent extends Descriptor<"component", string
   intent?: Intent
 ): TestCodec<Entity.Handle<Root, Intent>> => {
   const isHandle = Entity.isHandle(root, intent)
-  return make((raw, path) => isHandle(raw) ? { value: raw } : fail("Expected an entity handle", path))
+  return make((raw) => isHandle(raw) ? { value: raw } : fail("Expected an entity handle"))
 }
 
 /**
@@ -82,17 +89,17 @@ export const handle = <Root, const Intent extends Descriptor<"component", string
 export const map = <V>(value: TestCodec<V>): Codec<ReadonlyMap<string, V>, ReadonlyArray<readonly [string, V]>> & {
   readonly encode: StandardSchema<ReadonlyMap<string, V>, ReadonlyArray<readonly [string, V]>>
 } => {
-  const entries = array(make<readonly [string, V]>((raw, path) => {
-    if (!Array.isArray(raw) || raw.length !== 2 || typeof raw[0] !== "string") return fail("Expected a [key, value] entry", path)
-    const decoded = value.check(raw[1], [...path, 1])
-    return "issues" in decoded ? decoded : { value: [raw[0], decoded.value] as const }
+  const entries = array(make<readonly [string, V]>((raw) => {
+    if (!Array.isArray(raw) || raw.length !== 2 || typeof raw[0] !== "string") return fail("Expected a [key, value] entry")
+    const decoded = value.check(raw[1])
+    return "issues" in decoded ? under(1, decoded.issues) : { value: [raw[0], decoded.value] as const }
   }))
   return {
     "~standard": {
       version: 1,
       vendor: "ritmo-test",
       validate: (raw) => {
-        const decoded = entries.check(raw, [])
+        const decoded = entries.check(raw)
         return "issues" in decoded ? decoded : { value: new Map(decoded.value) }
       }
     },
@@ -100,7 +107,7 @@ export const map = <V>(value: TestCodec<V>): Codec<ReadonlyMap<string, V>, Reado
       "~standard": {
         version: 1,
         vendor: "ritmo-test",
-        validate: (raw) => raw instanceof Map ? { value: [...raw.entries()] } : fail("Expected a Map", [])
+        validate: (raw) => raw instanceof Map ? { value: [...raw.entries()] } : fail("Expected a Map")
       }
     }
   }

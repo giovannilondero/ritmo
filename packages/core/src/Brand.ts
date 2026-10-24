@@ -17,7 +17,7 @@
  * @docGroup helpers
  *
  * @categoryDescription Brand Types
- * The nominal markers and constructor contracts used by branded public values.
+ * The nominal markers used by branded public values.
  */
 import type * as internal from "./internal/brand.ts"
 
@@ -33,30 +33,3 @@ export type Brand<Key> = internal.PublicBrand<Key>
  * @category Brand Types
  */
 export type Branded<Value, Key> = internal.Branded<Value, Key>
-
-/**
- * Minimal constructor contract shared by branded helper modules.
- *
- * The constructor boundary is the only place raw input is accepted. After one
- * value has been validated, downstream helpers operate on the branded carried
- * type instead of revalidating plain structural data.
- *
- * @category Brand Types
- */
-export interface Constructor<Value, Raw, Error> {
-  /**
-   * Validates one raw value and returns an explicit success/failure result.
-   */
-  readonly result: (raw: Raw) => import("./Result.ts").Result<Value, Error>
-  /**
-   * Validates one raw value and returns `null` on failure.
-   *
-   * This is useful at internal boundaries where only presence matters and no
-   * structured error is needed.
-   */
-  readonly option: (raw: Raw) => Value | null
-  /**
-   * Checks whether one raw value already satisfies the branded invariants.
-   */
-  readonly is: (raw: Raw) => raw is Raw & Value
-}

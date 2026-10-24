@@ -24,6 +24,6 @@
 
 - **Breaking: `Entity.decodeHandle` and `InvalidHandle` are replaced by the guard `Entity.isHandle(Root, Intent?)`**, `(raw: unknown) => raw is Handle<Root, Intent>`. Build a handle schema from it with the library: `Schema.declare(Entity.isHandle(Root, Health))`, `z.custom(Entity.isHandle(Root, Health))`.
 
-- **Breaking: `Brand.refine` and `Brand.all` are removed;** the `Brand` types stay. Brand values through the schema library (`z.number().brand(...)`, `Schema.brand(...)`).
+- **Breaking: `Brand.refine`, `Brand.all`, and `Brand.Constructor` are removed;** `Brand.Brand` and `Brand.Branded` stay. Brand values through the schema library (`z.number().brand(...)`, `Schema.brand(...)`).
 
 - **Breaking: `Clock.InvalidTime` is removed.** A time saved at another rate fails restore with `SchemaIssues` whose message names both rates.

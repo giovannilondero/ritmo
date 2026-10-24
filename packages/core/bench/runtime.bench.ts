@@ -170,6 +170,24 @@ const iterateWrite: BenchCase = {
   }
 }
 
+const setRaw: BenchCase = {
+  name: "query/set-raw-10k",
+  description: "Write position through its schema (setRaw) on 10k entities",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, 0)
+    const Move = Game.System("Bench/MoveRaw", { queries: { movers: Movers } }, ({ queries }) => {
+      for (const { data } of queries.movers.each()) {
+        const position = data.position.get()
+        const velocity = data.velocity.get()
+        data.position.setRaw({ x: position.x + velocity.x, y: position.y + velocity.y })
+      }
+    })
+    const schedule = Game.Schedule(Move)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
 const sparseSingle: BenchCase = {
   name: "query/single-in-20k-x1000",
   description: "Resolve a single player entity among 20k entities, 1000 schedule runs",
@@ -624,6 +642,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   despawn,
   iterateRead,
   iterateWrite,
+  setRaw,
   entityStates,
   machineUpdates,
   sparseSingle,

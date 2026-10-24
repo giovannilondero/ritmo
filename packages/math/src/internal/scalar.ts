@@ -1,31 +1,33 @@
-import type * as Brand from "@typeonce/ritmo/Brand"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "../Scalar.ts"
 import { codecOf } from "./codec.ts"
 
-// A branded number's constructor from its check.
-const refine = <Value, Raw, Error>(
-  validate: (raw: Raw) => Result.Result<Value, Error>
-): Brand.Constructor<Value, Raw, Error> => ({
+// A branded number's constructors, guard, and codec, from its check.
+const refine = <Value extends number>(
+  validate: (raw: number) => Result.Result<Value, Scalar.Error>,
+  expected: string
+): Scalar.Constructor<Value> => ({
   result: validate,
   option: (raw) => {
     const result = validate(raw)
     return result.ok ? result.value : null
   },
-  is: (raw): raw is Raw & Value => validate(raw).ok
+  is: (raw): raw is Value => typeof raw === "number" && validate(raw).ok,
+  codec: codecOf<number, Value>((raw) => typeof raw === "number" ? validate(raw) : Result.failure(raw), expected)
 })
 
-const finiteBrand = refine<Scalar.Finite, number, Scalar.Error>((value) =>
+export const Finite = refine<Scalar.Finite>((value) =>
   Number.isFinite(value)
     ? Result.success(value as Scalar.Finite)
     : Result.failure({
         tag: "Scalar/NotFinite",
         value
-      })
+      }),
+  "a finite number"
 )
 
-const nonNegativeBrand = refine<Scalar.NonNegative, number, Scalar.Error>((value) => {
-  const finite = finiteBrand.result(value)
+export const NonNegative = refine<Scalar.NonNegative>((value) => {
+  const finite = Finite.result(value)
   if (!finite.ok) {
     return finite
   }
@@ -36,10 +38,10 @@ const nonNegativeBrand = refine<Scalar.NonNegative, number, Scalar.Error>((value
         tag: "Scalar/Negative",
         value
       })
-})
+}, "a finite number, 0 or more")
 
-const positiveBrand = refine<Scalar.Positive, number, Scalar.Error>((value) => {
-  const finite = finiteBrand.result(value)
+export const Positive = refine<Scalar.Positive>((value) => {
+  const finite = Finite.result(value)
   if (!finite.ok) {
     return finite
   }
@@ -50,17 +52,7 @@ const positiveBrand = refine<Scalar.Positive, number, Scalar.Error>((value) => {
         tag: "Scalar/NonPositive",
         value
       })
-})
-
-// Each brand with its codec: the saved form is the number itself.
-const withCodec = <Value extends number>(brand: Brand.Constructor<Value, number, Scalar.Error>, expected: string) => ({
-  ...brand,
-  codec: codecOf<number, Value>((raw) => typeof raw === "number" ? brand.result(raw) : Result.failure(raw), expected)
-})
-
-export const Finite = withCodec(finiteBrand, "a finite number")
-export const NonNegative = withCodec(nonNegativeBrand, "a finite number, 0 or more")
-export const Positive = withCodec(positiveBrand, "a finite number above 0")
+}, "a finite number above 0")
 
 export const clamp = (value: number, min: number, max: number): Scalar.Finite =>
   Math.min(Math.max(value, min), max) as Scalar.Finite

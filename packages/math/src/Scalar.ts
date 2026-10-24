@@ -36,6 +36,7 @@
  */
 import type * as Brand from "@typeonce/ritmo/Brand"
 import * as internal from "./internal/scalar.ts"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
 import type * as Result from "@typeonce/ritmo/Result"
 
 /**
@@ -86,13 +87,29 @@ export type InterpolationError = {
 }
 
 /**
+ * The constructors, guard, and schema of one scalar brand.
+ *
+ * @category Constructors
+ */
+export interface Constructor<Value> {
+  /** Validates one number and returns an explicit success/failure result. */
+  readonly result: (raw: number) => Result.Result<Value, Error>
+  /** Validates one number and returns `null` on failure. */
+  readonly option: (raw: number) => Value | null
+  /** Whether any value is a number of this brand. */
+  readonly is: (raw: unknown) => raw is Value
+  /** The Standard Schema for `Descriptor.ConstructedComponent(...)`: the saved form is the number itself. */
+  readonly codec: StandardSchema<number, Value>
+}
+
+/**
  * Constructor for {@link Finite}: `result` (explicit failure), `option`
  * (`null` on failure), `is` (a type guard), and `codec`, for
  * `Descriptor.ConstructedComponent(Scalar.Finite.codec)`.
  *
  * @category Constructors
  */
-export const Finite = internal.Finite
+export const Finite: Constructor<Finite> = internal.Finite
 /**
  * Constructor for {@link NonNegative}: `result` (explicit failure), `option`
  * (`null` on failure), `is` (a type guard), and `codec`, for
@@ -100,7 +117,7 @@ export const Finite = internal.Finite
  *
  * @category Constructors
  */
-export const NonNegative = internal.NonNegative
+export const NonNegative: Constructor<NonNegative> = internal.NonNegative
 /**
  * Constructor for {@link Positive}: `result` (explicit failure), `option`
  * (`null` on failure), `is` (a type guard), and `codec`, for
@@ -108,7 +125,7 @@ export const NonNegative = internal.NonNegative
  *
  * @category Constructors
  */
-export const Positive = internal.Positive
+export const Positive: Constructor<Positive> = internal.Positive
 
 /**
  * Clamps one finite value between two finite bounds.
