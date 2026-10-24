@@ -808,6 +808,11 @@ export interface CommandsApi<
    * until the next `applyDeferred()`, and despawns never count as writers for
    * `Game.System.thisTick` query reads.
    *
+   * That includes the rest of this system's run: a later loop over the same
+   * query still matches it, so a bug killed by one shot is hit again by the
+   * next. Keep the `match.entity.id`s this run despawned in a local `Set` and
+   * skip them.
+   *
    * Pass `match.entity` from a query proving one of the `despawns`
    * components, or the id `spawn` returned in this run (it holds its draft's
    * components); never a raw id.
