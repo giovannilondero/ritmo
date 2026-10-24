@@ -1,9 +1,12 @@
 // What the town's world holds: the components, resources, the input
 // service, and the one game-wide mode. Headless: no page or renderer here.
-import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 import type { Gamepad, InputCapture, Keyboard, Touch } from "@typeonce/ritmo-browser"
 import { Controls } from "@typeonce/ritmo-browser"
 import * as Random from "@typeonce/ritmo-math/Random"
+import { Schema as S } from "effect"
+
+import { codec } from "../codec.ts"
 
 import { directions } from "./map.ts"
 import type { Cell, Character, Page } from "./map.ts"
@@ -98,7 +101,7 @@ export const Tile = Descriptor.Component<Cell>()("Town/Tile")
 /** Where an actor is drawn: the top-left pixel, between tiles while walking. */
 export const Position = Descriptor.Component<{ x: number; y: number }>()("Town/Position")
 /** The way an actor faces: a closed set of values with no moves between them. */
-export const Facing = Descriptor.ConstructedComponent(Decode.literal(...directions))("Town/Facing")
+export const Facing = Descriptor.ConstructedComponent(codec(S.Literals(directions)))("Town/Facing")
 /** The character sheet an actor is drawn with, and a tint to tell the second player apart. */
 export const Look = Descriptor.Component<{ character: Character; tint?: number }>()("Town/Look")
 /** Facing it and pressing the action button opens these pages. */
@@ -173,5 +176,5 @@ export const Game = Schema.bind(
  */
 export const Mode = Game.StateMachine("Town/Mode", {
   Exploring: {},
-  Talking: { speaker: Decode.string, pages: Decode.array(Decode.string), page: Decode.integer, typed: Decode.integer }
+  Talking: codec(S.Struct({ speaker: S.String, pages: S.Array(S.String), page: S.Int, typed: S.Int }))
 })

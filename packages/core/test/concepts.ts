@@ -10,9 +10,8 @@ import type { Query } from "@typeonce/ritmo/Query"
 import { worldOf } from "./saved.ts"
 
 // 1. Descriptors name the data a world can hold. Constructed descriptors carry
-//    a validator, so values loaded from a save are checked; transient ones are
-//    never saved. `Decode` covers common shapes; any Standard Schema validator
-//    works through `Descriptor.fromStandardSchema(...)`.
+//    a Standard Schema from the game's schema library (here, the tests' own),
+//    so values loaded from a save are checked; transient ones are never saved.
 const Root = Schema.defineRoot("Concepts")
 const vector = Codecs.struct({ x: Codecs.number, y: Codecs.number })
 const Position = Descriptor.ConstructedComponent(vector)("Concepts/Position")

@@ -133,14 +133,14 @@ Options: `{ "packages": ["@my-game/canvas"] }` adds the game's own renderer or U
 
 ### `ritmo/no-infinity-in-simulation-data`
 
-`JSON.stringify` turns `Infinity` and `NaN` into `null`, and `Decode.number` accepts finite numbers only, so a world holding them saves but no longer loads (devtools also warns `non-finite-value`).
+`JSON.stringify` turns `Infinity` and `NaN` into `null`, and a number schema rejects `null`, so a world holding them saves but no longer loads (devtools also warns `non-finite-value`).
 
 ```ts
 dash: { remaining: 0, since: Infinity }                          // reported
 { remaining: Infinity, duration: Infinity, permanent: true }     // reported
 
 // instead
-dash: { remaining: 0, since: null }                              // since: number | null, decoded with Decode.nullable(Decode.number)
+dash: { remaining: 0, since: null }                              // since: number | null, with a nullable number schema
 { timer: null }                                                  // timer: { remaining: number; duration: number } | null
 ```
 
