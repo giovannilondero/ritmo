@@ -895,8 +895,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       bumpMembership(record, ordinal)
       appendLog(logFor(removedLogs, ordinal), id, tick)
     }
-    held.length = 0
-    record.heldBits.length = 0
+    // `held` and `heldBits` stay as they were: the record is dead from here
+    // (`alive` is false, and it leaves `records`), and resetting an array's
+    // length is a runtime call per entity.
     clearEntityScope(id)
     appendLog(despawnedLog, id, tick)
     record.alive = false
