@@ -1,5 +1,19 @@
 # @typeonce/oxlint-plugin-ritmo
 
+## 0.13.0
+
+### Minor Changes
+
+- 791b52a: **`ritmo/no-state-spread`** reports `_tag` set over a spread of the previous state, such as `{ ...ground, _tag: "air", vy: 2 }`: the old state's fields survive at runtime while the new state's type hides them. Move an entity state with `cell.transition({ from, to, data })`, queue a state machine's move with the new state's fields (`nextMachines.x.set({ _tag, ...fields })`), or write the new state's fields out. Spreads that change fields of the same state are not reported. Turn it on for every file:
+
+  ```jsonc
+  "ritmo/no-state-spread": "error"
+  ```
+
+### Patch Changes
+
+- 835f6ba: `ritmo/no-infinity-in-simulation-data` no longer names `Decode`: its fix is a nullable number schema from the game's schema library.
+
 ## 0.12.0
 
 ## 0.11.0

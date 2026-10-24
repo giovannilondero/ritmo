@@ -1,5 +1,100 @@
 # @typeonce/ritmo
 
+## 0.13.0
+
+### Minor Changes
+
+- 791b52a: **Each state of a `Descriptor.EntityState` carries its own fields, so a value can never pair a state with data from another one.**
+
+  - **Breaking: `Descriptor.EntityState(name, states, options?)` takes a record of states**, each `{}` (no data) or one schema for all of its data. The value is a tagged union: `_tag` names the state, next to that state's fields. Snapshots and `setRaw` decode each state's data with its schema, and `_tag` is the only field Ritmo adds. The `transitions` graph is unchanged. Number states are gone: state names are the record's keys.
+
+    ```diff
+    -const Phase = Descriptor.EntityState("Game/Phase", ["ready", "windup"] as const, { transitions: { ready: ["windup"], windup: ["ready"] } })
+    +const Phase = Descriptor.EntityState("Game/Phase", { ready: {}, windup: z.object({ frames: z.int() }) }, { transitions: { ready: ["windup"], windup: ["ready"] } })
+    -Game.Command.spawn([Phase, "ready"])
+    +Game.Command.spawn([Phase, { _tag: "ready" }])
+    -if (data.phase.get() === "windup")
+    +if (data.phase.get()._tag === "windup")
+    ```
+
+    A closed set of values with no moves between them (a team, a direction) is not an entity state: declare it with `Descriptor.ConstructedComponent(z.literal(["Down", "Up"]))("Game/Facing")`, with your schema library's literal schema.
+
+  - **Breaking: the write cell moves with `transition({ from, to, data })`**, which takes all of `to`'s fields, so nothing carries over from `from`. A state without fields takes no `data`. With a union `from`, `to` must be a move every one of them allows.
+
+    ```diff
+    -data.phase.transition("ready", "windup")
+    +data.phase.transition({ from: "ready", to: "windup", data: { frames: 12 } })
+    ```
+
+  - **`update({ state, data })`** changes the fields of the current state without leaving it: `data` maps the current value to the new fields, and a field the state does not have does not compile, spread or not. Like `transition`, it writes only while the entity is in `state`, and otherwise returns `EntityStateMismatch`. **Breaking:** it replaces the cell's `update(f)` and `updateRaw(f)`, which could write any state; `set(value)` and `setRaw(raw)` stay for resets. `EntityStateMismatchError`'s `expected` and `actual` are now state names.
+
+  - **`Descriptor.EntityStateOf<typeof Contact, "air">`** is the value of one state (or, without the state, of the component), for game functions that take or return it. `EntityStateValue` is removed.
+
+- b3d6502: **Each state of a `Game.StateMachine` carries its own fields, so a game-wide mode and the data only it has are one value: a dialogue with its pages, a game over with its winner.**
+
+  - **Breaking: `Game.StateMachine(name, states, options?)` takes a record of states**, each `{}` (no data) or one schema for all of its data, the same way `Descriptor.EntityState` declares states. The value is a tagged union: `_tag` names the state, next to that state's fields. The array form and number states are gone.
+
+    ```diff
+    -const Flow = Game.StateMachine("Game/Flow", ["Menu", "Playing", "GameOver"])
+    +const Flow = Game.StateMachine("Game/Flow", { Menu: {}, Playing: {}, GameOver: z.object({ winner: z.string() }) })
+    -Game.Runtime.machine(Flow, "Menu")
+    +Game.Runtime.machine(Flow, { _tag: "Menu" })
+    -nextMachines.flow.set("GameOver")
+    +nextMachines.flow.set({ _tag: "GameOver", winner: "Red" })
+    -if (machines.flow.get() === "Playing")
+    +if (machines.flow.is("Playing"))   // or machines.flow.get()._tag === "Playing"
+    ```
+
+    A machine kept next to a resource that must agree with it (`Mode` plus a `Dialogue` that is `null` while not talking) becomes one machine whose state holds the resource's data.
+
+  - **Breaking: a queued move takes the target's full value.** `nextMachines.x.set(value)` and `setIfChanged(value)` take the state with all of its fields, and nothing carries over from the current state; the state and its fields commit together at `applyStateTransitions(...)`. `getPending()` returns the full value. `setIfChanged` skips only a value equal to the current one; the same state with other fields re-enters, like `set`.
+
+  - **`Game.System.updateMachine(M)`**, declared in `machines`, reads the machine and changes the fields of its current state at once: `machines.x.update({ state, data })`, a compare-and-set like the entity-state `update` that returns `MachineStateMismatch` (and, for a sub-state without a value, `SubStateInactive`) instead of writing. A field the state does not have does not compile, spread or not. It never changes the state, runs no enter or exit schedules, and publishes no transition event; it is rolled back with a failed system or exit phase. The state name changes only at the commit; the current state's fields change immediately. Inspectors and `Condition.check` keep only `Game.System.machine(M)`, and a system declares one slot per machine.
+
+    ```ts
+    machines: {
+      mode: Game.System.updateMachine(Mode);
+    }
+    machines.mode.update({
+      state: "Talking",
+      data: (talking) => ({ ...talking, typed: talking.typed + 1 }),
+    });
+    ```
+
+  - **`Machine.StateOf<typeof Mode, "Talking">`** is the value of one state (or, without the state, of the machine), like `Descriptor.EntityStateOf`. Both build on the shared `Descriptor.StateFields`, `StateDefinitions`, `StateName`, and `StateValueOf`, which replace the `EntityState*` names of the same types.
+
+  - **Unchanged, by state name:** `machines.x.is(state)`, `Game.Condition.inState(M, state)`, `stateChanged`, `onEnter` / `onExit` / `onTransition`, `despawnOnEnter` / `despawnOnExit`, and sub-states' `within: [Parent, state]`. Transition snapshots and events keep `from` and `to` as state names; read the entered state's fields with `machines.x.get()` (in `onExit`, it is still the state being left).
+
+  - **Breaking: snapshots are format version 3.** A machine is saved as its tagged value and restored through its state codecs; `InvalidMachineState` carries the schema's issues (each `path` says which field), and `InactiveSubState.requires` is a state name. A version 2 save is rejected with `UnsupportedVersion`.
+
+  - **Breaking, debug output:** `Debug.MachineDescription.current`, `MachineDump`, `NextStateWrite.value`, and `NextStateReplacement` values are machine values (`Machine.AnyValue`), and `TransitionEvent.from` / `to` are state names. `SystemEvent.machines` lists each `update` as a `Debug.MachineWrite`, and `SystemDescription.machines.updates` lists the machines a system updates.
+
+- 835f6ba: **Values are validated and saved through the game's own Standard Schemas. Ritmo ships no validators.** Any [Standard Schema](https://standardschema.dev) works (Zod, Valibot, ArkType, Effect through `Schema.toStandardSchemaV1`); a value that changes shape when saved takes a schema with an `encode` back to its saved form, `Descriptor.Codec<Type, Encoded>`.
+
+  - **Breaking: `Decode` is removed.** Use the game's schema library. With Zod: `Decode.struct({ x: Decode.number })` becomes `z.object({ x: z.number() })`. With Effect, write the `codec` helper from the skill's `playbooks/effect.md` once and pass every schema through it: `codec(Schema.Struct({ x: Schema.Finite }))`.
+
+    ```diff
+    -const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number, y: Decode.number }))("Game/Position")
+    +const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
+    ```
+
+  - **Breaking: `ConstructedComponent` and `ConstructedResource` take a schema**, not a `{ result }` constructor. `Descriptor.fromStandardSchema` is gone: pass the schema itself. Raw input (`setRaw`, `updateRaw`, `Game.Command.entryRaw`, raw values given to `Game.Runtime.make`) is in the schema's saved form. A schema whose value is not its saved form (a `Map`, an `Option`, a class) or whose saved form is not plain data does not compile, and the error says to give it an `encode`. Validation is synchronous: a schema that answers with a promise fails. Failures are `{ _tag: "SchemaIssues", issues }`, the library's own issues with their paths.
+
+  - **Breaking: each state of `Descriptor.EntityState` and `Game.StateMachine` is `{}` or one object schema for all of its data**, instead of a record of field codecs. Ritmo adds only `_tag`. `set`, `update`, `get`, and `is` are unchanged.
+
+    ```diff
+    -Game.StateMachine("Game/Flow", { Menu: {}, GameOver: { winner: Decode.string } })
+    +Game.StateMachine("Game/Flow", { Menu: {}, GameOver: z.object({ winner: z.string() }) })
+    ```
+
+  - **Breaking: `runtime.snapshot()` returns `Result<WorldSnapshot, SnapshotError>`.** It runs each schema's `encode`, and fails with `UnencodableComponent`, `UnencodableResource`, or `UnencodableMachineState` when one rejects a value. `restore` decodes with the same schemas. A descriptor without a schema makes `snapshot` uncallable, with `"<Name> needs a schema"`. The format stays at version 3. Fix: `const saved = runtime.snapshot(); if (saved.ok) store(saved.value)`.
+
+  - **Breaking: `Entity.decodeHandle` and `InvalidHandle` are replaced by the guard `Entity.isHandle(Root, Intent?)`**, `(raw: unknown) => raw is Handle<Root, Intent>`. Build a handle schema from it with the library: `Schema.declare(Entity.isHandle(Root, Health))`, `z.custom(Entity.isHandle(Root, Health))`.
+
+  - **Breaking: `Brand.refine`, `Brand.all`, and `Brand.Constructor` are removed;** `Brand.Brand` and `Brand.Branded` stay. Brand values through the schema library (`z.number().brand(...)`, `Schema.brand(...)`).
+
+  - **Breaking: `Clock.InvalidTime` is removed.** A time saved at another rate fails restore with `SchemaIssues` whose message names both rates.
+
 ## 0.12.0
 
 ### Minor Changes
