@@ -1,17 +1,26 @@
 /**
- * Touch controls over one element: a floating stick, buttons (some of which
- * aim by dragging: tap to use, drag to aim, release to fire), and an optional
- * swipe area that reports how far a finger moved, for turning or camera
- * control (Genshin Impact style: move on the left, swipe anywhere to look).
+ * Touch controls over one element: named floating sticks, buttons (some of
+ * which aim by dragging: tap to use, drag to aim, release to fire), and an
+ * optional swipe area that reports how far a finger moved, for turning or
+ * camera control (Genshin Impact style: move on the left, swipe anywhere to
+ * look).
+ *
+ * A stick's key is the vector it drives and a button's key is the action it
+ * reports, so a twin-stick shooter declares `move` and `aim` sticks and
+ * reads `vectors.move` and `vectors.aim`. Use a stick for a direction the
+ * player holds and changes continuously (walking, aiming a stream of shots);
+ * use a button with `aimRadius` for a direction picked once per use (aim a
+ * throw, release to fire), which reports the aim on the release.
  *
  * The layout is a function of the element's size, so controls stay anchored
  * to corners on any screen. Each finger belongs to the first control it lands
- * on: a button when it lands inside one, otherwise the stick when it lands in
- * the stick's region (the stick then appears under the thumb), otherwise the
- * swipe area when it lands in its region. Fingers that land elsewhere are
- * ignored, and a control keeps its finger until it lifts.
+ * on: a button when it lands inside one, otherwise the first free stick (in
+ * the layout's key order) whose region contains it (the stick then appears
+ * under the thumb), otherwise the swipe area when it lands in its region.
+ * Fingers that land elsewhere are ignored, and a control keeps its finger
+ * until it lifts, so two thumbs drive two sticks at once.
  *
- * Games read one snapshot per update, like keyboard actions: the stick's
+ * Games read one snapshot per update, like keyboard actions: each stick's
  * vector, and per button `held`/`pressed`/`released` edges that survive taps
  * shorter than a frame, plus the drag `aim`, which is still reported on the
  * release. A touch the browser cancels (a system gesture, the window losing
@@ -29,18 +38,19 @@
  * @example
  * ```ts
  * const touch = Touch.actions(canvas, window, ({ width, height }) => ({
- *   // `vector` names the action the stick drives, so it merges into `Controls`.
- *   stick: { region: { left: 0, top: 0, width: width / 2, height }, radius: 60, vector: "move" },
- *   buttons: {
- *     attack: { center: { x: width - 90, y: height - 90 }, radius: 55, aimRadius: 80 },
- *     dash: { center: { x: width - 200, y: height - 60 }, radius: 36 }
- *   }
+ *   // Each stick drives the vector named like its key, so it merges into `Controls`.
+ *   sticks: {
+ *     move: { region: { left: 0, top: 0, width: width / 2, height }, radius: 56 },
+ *     aim: { region: { left: width / 2, top: 0, width: width / 2, height }, radius: 56 }
+ *   },
+ *   buttons: { dash: { center: { x: width - 84, y: height - 150 }, radius: 36 } }
  * }))
  *
  * // Once per update:
  * const { vectors, actions } = touch.snapshot()
  * move(vectors.move)
- * if (actions.attack.released && !actions.attack.cancelled) fire(actions.attack.aim)
+ * if (vectors.aim.active) shoot(vectors.aim)
+ * if (actions.dash.pressed) dash()
  * ```
  *
  * For tests and headless runs, `scripted(...)` plays a timeline of stick
@@ -65,17 +75,26 @@ export interface Rect {
   readonly height: number
 }
 
-/** The floating stick of a {@link Layout}. */
-export interface StickZone<V extends string = never> {
+/** One floating stick of a {@link Layout}; it drives the vector named like its key in `sticks`. */
+export interface StickZone {
   /** Where a touch starts the stick. The stick is centered where the thumb lands. */
   readonly region: Rect
   /** Drag distance in CSS pixels for full tilt. */
   readonly radius: number
   /** Fraction of `radius` that reads as zero. Defaults to 0.15. */
   readonly deadZone?: number
-  /** The vector action the stick drives (`"move"`), reported in the snapshot's `vectors`. */
-  readonly vector?: V
+  /** Not a setting: a stick drives the vector named by its key in `Layout.sticks`. */
+  readonly vector?: "a stick drives the vector named by its key in sticks: remove vector"
 }
+
+/**
+ * The zone of the stick named `K` in a {@link Layout}: a {@link StickZone},
+ * or an error naming the cause when a button has the same name (a name is
+ * either a vector a stick drives or an action a button reports).
+ */
+export type StickNamed<K extends string, B extends string> = K extends B
+  ? `${K} names both a stick and a button: give them different names`
+  : StickZone
 
 /** A round on-screen button of a {@link Layout}; it reports the action named like its key. */
 export interface ButtonZone {
@@ -90,16 +109,24 @@ export interface ButtonZone {
 
 /** The swipe area of a {@link Layout}. */
 export interface SwipeZone {
-  /** Where a touch that is not on a button or the stick starts a swipe. */
+  /** Where a touch that is not on a button or a stick starts a swipe. */
   readonly region: Rect
 }
 
 /**
  * The touch controls, returned by the layout function {@link actions} calls
- * with the element's size. The button names are fixed by the first layout.
+ * with the element's size. The stick and button names are fixed by the
+ * first layout.
  */
 export interface Layout<B extends string, V extends string = never> {
-  readonly stick: StickZone<V>
+  /**
+   * The floating sticks, each keyed by the vector it drives (`move`, `aim`);
+   * `{}` for buttons only. A finger that is not on a button goes to the
+   * first stick, in key order, that is free and whose region contains it,
+   * so where regions overlap the earlier key wins.
+   */
+  readonly sticks: { readonly [K in V]: StickNamed<K, B> }
+  /** The buttons, each keyed by the action it reports. */
   readonly buttons: { readonly [K in B]: ButtonZone }
   /** Optional: fingers here report their movement, for turning or looking around. */
   readonly swipe?: SwipeZone
@@ -111,12 +138,14 @@ export interface Size {
   readonly height: number
 }
 
-/** The stick's state in a snapshot. */
-export interface Stick {
+/**
+ * One stick's state: its vector (tilt with the dead zone removed, zero at
+ * rest, length 1 at full tilt), plus whether a thumb is on it. It is a
+ * `Controls.Vector`, so `Controls` merges it like any vector.
+ */
+export interface StickState extends Vector {
   /** Whether a thumb is on the stick. */
   readonly active: boolean
-  /** Tilt with the dead zone removed: zero at rest, length 1 at full tilt. */
-  readonly vector: Vector
 }
 
 /** One button's state: its action's edges, plus the drag aim and whether the release was cancelled. */
@@ -140,42 +169,44 @@ export interface Swipe {
 }
 
 /**
- * The controls' state. Each button is an action named like it, and the
- * stick drives the vector action its layout names, so the snapshot has the
- * same core as the other devices' (`actions`, `vectors`, and `used`) and
- * `Controls` can merge it.
+ * The controls' state. Each button is an action named like it and each
+ * stick a vector named like it, so the snapshot has the same core as the
+ * other devices' (`actions`, `vectors`, and `used`) and `Controls` can
+ * merge it.
  */
 export interface Snapshot<B extends string, V extends string = never> {
-  readonly stick: Stick
   readonly actions: { readonly [K in B]: ButtonState }
-  /** The vector action the stick drives, when the layout names one: the stick's vector. */
-  readonly vectors: { readonly [K in V]: Vector }
+  /** Each stick's vector, and whether a thumb is on it. */
+  readonly vectors: { readonly [K in V]: StickState }
   readonly swipe: Swipe
   /**
-   * A button was pressed in this window or is held, or a finger is on the
+   * A button was pressed in this window or is held, or a finger is on a
    * stick or the swipe area: the player is using the touch controls.
    */
   readonly used: boolean
 }
 
 const snapshotOf = <B extends string, V extends string>(
-  vector: V | undefined,
-  stick: Stick,
+  vectors: { readonly [K in V]: StickState },
   actions: { readonly [K in B]: ButtonState },
   swipe: Swipe
-): Snapshot<B, V> => ({
-  stick,
-  actions,
-  vectors: (vector === undefined ? {} : { [vector]: stick.vector }) as { readonly [K in V]: Vector },
-  swipe,
-  used: stick.active || swipe.active || anyUsed(actions)
-})
+): Snapshot<B, V> => {
+  let held = false
+  for (const name in vectors) held ||= vectors[name].active
+  return { actions, vectors, swipe, used: held || swipe.active || anyUsed(actions) }
+}
+
+/** Where a held stick was centered and where its knob is drawn (on the rim at most). */
+export interface StickView {
+  readonly origin: Position
+  readonly knob: Position
+}
 
 /** Live control positions for drawing, in CSS pixels. Reading it consumes nothing. */
 export interface View<B extends string, V extends string = never> {
   readonly layout: Layout<B, V>
-  /** Where the stick was centered and where the thumb is, while it is held. */
-  readonly stick: { readonly origin: Position; readonly knob: Position } | null
+  /** Each stick while a thumb holds it, `null` otherwise. */
+  readonly sticks: { readonly [K in V]: StickView | null }
   readonly buttons: { readonly [K in B]: { readonly held: boolean; readonly aim: Vector | null } }
 }
 
@@ -226,27 +257,33 @@ export interface ActionsOptions {
 
 const zero: Vector = { x: 0, y: 0 }
 
+const resting: StickState = { x: 0, y: 0, active: false }
+
 const released = (): ButtonState => ({ held: false, pressed: false, released: false, aim: null, cancelled: false })
 
 /** The names a layout's controls report, for {@link idle} and {@link scripted}. */
 export interface Names<B extends string, V extends string = never> {
+  /** The layout's button keys: the actions they report. */
   readonly buttons: ReadonlyArray<B>
-  /** The vector action the stick drives, as the layout's `stick.vector`. */
-  readonly vector?: V
+  /** The layout's stick keys: the vectors they drive (`[]` for buttons only). */
+  readonly sticks: ReadonlyArray<V>
 }
+
+/** Rejects a name given both as a stick and as a button. */
+export type DistinctNames<B extends string, V extends string> = [B & V] extends [never]
+  ? unknown
+  : `${B & V} names both a stick and a button: give them different names`
+
+const byName = <K extends string, T>(names: ReadonlyArray<K>, value: (name: K) => T): { readonly [P in K]: T } =>
+  Object.fromEntries(names.map((name) => [name, value(name)])) as { readonly [P in K]: T }
 
 /**
  * A snapshot with nothing held, for initializing an input resource before
- * the first capture: pass the layout's button names and stick vector, as
- * `Touch.idle({ buttons: ["attack", "dash"], vector: "move" })`.
+ * the first capture: pass the layout's button and stick names, as
+ * `Touch.idle({ buttons: ["dash"], sticks: ["move", "aim"] })`.
  */
-export const idle = <const B extends string, const V extends string = never>(names: Names<B, V>): Snapshot<B, V> =>
-  snapshotOf<B, V>(
-    names.vector,
-    { active: false, vector: zero },
-    Object.fromEntries(names.buttons.map((button) => [button, released()])) as { readonly [K in B]: ButtonState },
-    { active: false, delta: zero }
-  )
+export const idle = <const B extends string, const V extends string = never>(names: Names<B, V> & DistinctNames<B, V>): Snapshot<B, V> =>
+  snapshotOf<B, V>(byName(names.sticks, () => resting), byName(names.buttons, released), { active: false, delta: zero })
 
 /** `offset / radius`, clamped to length 1, with the inner `deadZone` fraction mapped to zero. */
 const tilt = (offset: Position, radius: number, deadZone: number): Vector => {
@@ -311,6 +348,13 @@ const lift = (track: ButtonTrack, cancelled: boolean): void => {
   track.cancelled = cancelled
 }
 
+/** A held stick between snapshots: its finger, where it was centered, and the thumb. */
+interface StickTrack {
+  readonly pointerId: number
+  readonly origin: Position
+  knob: Position
+}
+
 /**
  * Starts tracking touches over `target` with the controls `layout` returns
  * for the element's current size (it is read again on every new touch, so a
@@ -330,9 +374,13 @@ export const actions = <const B extends string, const V extends string = never>(
     return { width: rect.width, height: rect.height }
   }
   let current = layout(sizeOf())
+  /** The stick zones of the current layout; names that clash with a button do not compile. */
+  const zoneOf = (name: V): StickZone => current.sticks[name] as StickZone
   const names = Object.keys(current.buttons) as Array<B>
+  const stickNames = Object.keys(current.sticks) as Array<V>
   const buttons = makeButtonTracks(names)
-  let stick: { readonly pointerId: number; readonly origin: Position; knob: Position } | undefined
+  /** The finger and positions of each held stick. */
+  const sticks = new Map<V, StickTrack>()
   /** Which button each finger holds. */
   const fingers = new Map<number, B>()
   let swipe: { readonly pointerId: number; last: Position } | undefined
@@ -345,6 +393,11 @@ export const actions = <const B extends string, const V extends string = never>(
   }
 
   const tracked = (event: TouchEventLike): boolean => pointerTypes.includes(event.pointerType)
+
+  const stickOf = (pointerId: number): V | undefined => {
+    for (const [name, stick] of sticks) if (stick.pointerId === pointerId) return name
+    return undefined
+  }
 
   const onDown = (event: TouchEventLike): void => {
     if (!tracked(event)) return
@@ -365,8 +418,9 @@ export const actions = <const B extends string, const V extends string = never>(
       target.setPointerCapture?.(event.pointerId)
       return
     }
-    if (stick === undefined && inside(current.stick.region, at)) {
-      stick = { pointerId: event.pointerId, origin: at, knob: at }
+    for (const name of stickNames) {
+      if (sticks.has(name) || !inside(zoneOf(name).region, at)) continue
+      sticks.set(name, { pointerId: event.pointerId, origin: at, knob: at })
       target.setPointerCapture?.(event.pointerId)
       return
     }
@@ -379,8 +433,9 @@ export const actions = <const B extends string, const V extends string = never>(
   const onMove = (event: TouchEventLike): void => {
     if (!tracked(event)) return
     const at = locate(event)
-    if (stick !== undefined && stick.pointerId === event.pointerId) {
-      stick.knob = at
+    const stick = stickOf(event.pointerId)
+    if (stick !== undefined) {
+      sticks.get(stick)!.knob = at
       return
     }
     if (swipe !== undefined && swipe.pointerId === event.pointerId) {
@@ -394,8 +449,9 @@ export const actions = <const B extends string, const V extends string = never>(
 
   const end = (event: TouchEventLike, cancelled: boolean): void => {
     if (!tracked(event)) return
-    if (stick !== undefined && stick.pointerId === event.pointerId) {
-      stick = undefined
+    const stick = stickOf(event.pointerId)
+    if (stick !== undefined) {
+      sticks.delete(stick)
       return
     }
     if (swipe !== undefined && swipe.pointerId === event.pointerId) {
@@ -413,7 +469,7 @@ export const actions = <const B extends string, const V extends string = never>(
   const onUp = (event: TouchEventLike): void => end(event, false)
   const onCancel = (event: TouchEventLike): void => end(event, true)
   const onBlur = (): void => {
-    stick = undefined
+    sticks.clear()
     swipe = undefined
     fingers.clear()
     for (const button of buttons.values()) lift(button, true)
@@ -427,18 +483,30 @@ export const actions = <const B extends string, const V extends string = never>(
   target.addEventListener("pointercancel", onCancel)
   blurHost.addEventListener("blur", onBlur)
 
-  const stickState = (): Stick => {
-    if (stick === undefined) return { active: false, vector: zero }
+  const stickState = (name: V): StickState => {
+    const stick = sticks.get(name)
+    if (stick === undefined) return resting
+    const zone = zoneOf(name)
     const offset = { x: stick.knob.x - stick.origin.x, y: stick.knob.y - stick.origin.y }
-    return { active: true, vector: tilt(offset, current.stick.radius, current.stick.deadZone ?? 0.15) }
+    const vector = tilt(offset, zone.radius, zone.deadZone ?? 0.15)
+    return { x: vector.x, y: vector.y, active: true }
+  }
+
+  const stickView = (name: V): StickView | null => {
+    const stick = sticks.get(name)
+    if (stick === undefined) return null
+    const radius = zoneOf(name).radius
+    const offset = { x: stick.knob.x - stick.origin.x, y: stick.knob.y - stick.origin.y }
+    const length = Math.sqrt(offset.x * offset.x + offset.y * offset.y)
+    const scale = length > radius ? radius / length : 1
+    return { origin: stick.origin, knob: { x: stick.origin.x + offset.x * scale, y: stick.origin.y + offset.y * scale } }
   }
 
   return {
     snapshot() {
       const snapshot = snapshotOf<B, V>(
-        current.stick.vector,
-        stickState(),
-        Object.fromEntries(names.map((name) => [name, buttonSnapshot(buttons.get(name)!)])) as { readonly [K in B]: ButtonState },
+        byName(stickNames, stickState),
+        byName(names, (name) => buttonSnapshot(buttons.get(name)!)),
         { active: swipe !== undefined, delta: swiped }
       )
       for (const button of buttons.values()) startWindow(button)
@@ -446,21 +514,13 @@ export const actions = <const B extends string, const V extends string = never>(
       return snapshot
     },
     view() {
-      const radius = current.stick.radius
       return {
         layout: current,
-        stick: stick === undefined
-          ? null
-          : (() => {
-            const offset = { x: stick.knob.x - stick.origin.x, y: stick.knob.y - stick.origin.y }
-            const length = Math.sqrt(offset.x * offset.x + offset.y * offset.y)
-            const scale = length > radius ? radius / length : 1
-            return { origin: stick.origin, knob: { x: stick.origin.x + offset.x * scale, y: stick.origin.y + offset.y * scale } }
-          })(),
-        buttons: Object.fromEntries(names.map((name) => {
+        sticks: byName(stickNames, stickView),
+        buttons: byName(names, (name) => {
           const button = buttons.get(name)!
-          return [name, { held: button.held, aim: button.held ? button.aim : null }]
-        })) as View<B, V>["buttons"]
+          return { held: button.held, aim: button.held ? button.aim : null }
+        })
       }
     },
     dispose() {
@@ -475,15 +535,15 @@ export const actions = <const B extends string, const V extends string = never>(
 }
 
 /**
- * Control changes applied just before one snapshot, in this order: the stick
+ * Control changes applied just before one snapshot, in this order: the sticks
  * and swipe, presses, aims, releases. `frame` is the snapshot's index, counting from 0 at
  * the first `snapshot()` call. A button pressed and released in one frame is a
  * tap shorter than a frame.
  */
-export interface TimelineEntry<B extends string> {
+export interface TimelineEntry<B extends string, V extends string = never> {
   readonly frame: number
-  /** The stick's vector from this frame on; `null` lifts the thumb. */
-  readonly stick?: Vector | null
+  /** Stick vectors from this frame on, by stick name; `null` lifts the thumb. */
+  readonly sticks?: { readonly [K in V]?: Vector | null }
   /** A swipe of this many CSS pixels reported by this frame's snapshot only. */
   readonly swipe?: Vector
   readonly press?: ReadonlyArray<B>
@@ -495,7 +555,7 @@ export interface TimelineEntry<B extends string> {
 }
 
 /** Control changes by snapshot index. Plain data, so it round-trips through JSON. */
-export type Timeline<B extends string> = ReadonlyArray<TimelineEntry<B>>
+export type Timeline<B extends string, V extends string = never> = ReadonlyArray<TimelineEntry<B, V>>
 
 /** Touch controls driven by a timeline instead of an element. */
 export interface Scripted<B extends string, V extends string = never> extends Actions<B, V> {
@@ -504,13 +564,17 @@ export interface Scripted<B extends string, V extends string = never> extends Ac
 }
 
 /**
- * Plays `timeline` over controls with `names` (the buttons, and the vector
- * action the stick drives): before the snapshot at index `frame`, every
+ * Plays `timeline` over controls with `names` (the buttons, and the sticks
+ * by the vectors they drive): before the snapshot at index `frame`, every
  * entry for that frame is applied. Vectors longer than 1 are clamped.
  */
-export const scripted = <const B extends string, const V extends string = never>(names: Names<B, V>, timeline: Timeline<NoInfer<B>>): Scripted<B, V> => {
+export const scripted = <const B extends string, const V extends string = never>(
+  names: Names<B, V> & DistinctNames<B, V>,
+  timeline: Timeline<NoInfer<B>, NoInfer<V>>
+): Scripted<B, V> => {
   const buttons = names.buttons
-  const byFrame = new Map<number, Array<TimelineEntry<B>>>()
+  const stickNames = names.sticks
+  const byFrame = new Map<number, Array<TimelineEntry<B, V>>>()
   for (const entry of timeline) {
     const entries = byFrame.get(entry.frame)
     if (entries) entries.push(entry)
@@ -521,12 +585,13 @@ export const scripted = <const B extends string, const V extends string = never>
     return length <= 1 ? vector : { x: vector.x / length, y: vector.y / length }
   }
   const tracks = makeButtonTracks(buttons)
-  let stick: Vector | null = null
+  /** Each held stick's vector. */
+  const sticks = new Map<V, Vector>()
   let frame = 0
-  const layout: Layout<B, V> = {
-    stick: { region: { left: 0, top: 0, width: 0, height: 0 }, radius: 1, ...(names.vector === undefined ? {} : { vector: names.vector }) },
-    buttons: Object.fromEntries(buttons.map((button) => [button, { center: zero, radius: 0 }])) as Layout<B>["buttons"]
-  }
+  const layout = {
+    sticks: byName(stickNames, () => ({ region: { left: 0, top: 0, width: 0, height: 0 }, radius: 1 })),
+    buttons: byName(buttons, () => ({ center: zero, radius: 0 }))
+  } as Layout<B, V>
   return {
     snapshot() {
       for (const track of tracks.values()) startWindow(track)
@@ -537,7 +602,11 @@ export const scripted = <const B extends string, const V extends string = never>
           swipe.x += entry.swipe.x
           swipe.y += entry.swipe.y
         }
-        if (entry.stick !== undefined) stick = entry.stick === null ? null : clamp(entry.stick)
+        for (const [name, vector] of Object.entries(entry.sticks ?? {}) as Array<[V, Vector | null | undefined]>) {
+          if (vector === undefined || !stickNames.includes(name)) continue
+          if (vector === null) sticks.delete(name)
+          else sticks.set(name, clamp(vector))
+        }
         for (const name of entry.press ?? []) press(tracks.get(name)!, null)
         for (const [name, aim] of Object.entries(entry.aim ?? {}) as Array<[B, Vector | null | undefined]>) {
           const track = tracks.get(name)
@@ -548,20 +617,22 @@ export const scripted = <const B extends string, const V extends string = never>
       }
       frame += 1
       return snapshotOf<B, V>(
-        names.vector,
-        { active: stick !== null, vector: stick ?? zero },
-        Object.fromEntries(buttons.map((name) => [name, buttonSnapshot(tracks.get(name)!)])) as { readonly [K in B]: ButtonState },
+        byName(stickNames, (name) => {
+          const vector = sticks.get(name)
+          return vector === undefined ? resting : { x: vector.x, y: vector.y, active: true }
+        }),
+        byName(buttons, (name) => buttonSnapshot(tracks.get(name)!)),
         { active: swipe.active, delta: { x: swipe.x, y: swipe.y } }
       )
     },
     view() {
       return {
         layout,
-        stick: null,
-        buttons: Object.fromEntries(buttons.map((name) => {
+        sticks: byName(stickNames, () => null),
+        buttons: byName(buttons, (name) => {
           const track = tracks.get(name)!
-          return [name, { held: track.held, aim: track.held ? track.aim : null }]
-        })) as View<B>["buttons"]
+          return { held: track.held, aim: track.held ? track.aim : null }
+        })
       }
     },
     dispose() {},

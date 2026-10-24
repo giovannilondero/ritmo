@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { Clock, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../../core/test/codecs.ts"
+import type * as Schedule from "@typeonce/ritmo/Schedule"
 import { Invariant, Replay } from "@typeonce/ritmo-devtools"
 import { worldOf } from "../../core/test/saved.ts"
 
@@ -10,7 +11,7 @@ const hostClock = HostClock.test()
 const Position = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("Replay/Position")
 const Steps = Descriptor.ConstructedResource(Codecs.number)("Replay/Steps")
 const Bump = Descriptor.Event<number>()("Replay/Bump")
-const Input = Descriptor.Service<Replay.Source<{ readonly dx: number }>>()("Replay/Input")
+const Input = Descriptor.Service<Schedule.Source<{ readonly dx: number }>>()("Replay/Input")
 const Config = Descriptor.Service<{ readonly scale: number }>()("Replay/Config")
 const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Steps }, events: { Bump } }))
 
@@ -38,7 +39,7 @@ const FarAway = Invariant.fromInspector(Game.Inspector("far away", {
 /** A live game whose input is a scripted list of dx values, one per tick. */
 const live = (dxs: ReadonlyArray<number>) => {
   let index = 0
-  const input: Replay.Source<{ readonly dx: number }> = { snapshot: () => ({ dx: dxs[index++] ?? 0 }) }
+  const input: Schedule.Source<{ readonly dx: number }> = { snapshot: () => ({ dx: dxs[index++] ?? 0 }) }
   const made = Game.Runtime.make({
     services: Game.Runtime.services(Game.Runtime.service(Input, input), Game.Runtime.service(Config, { scale: 2 })),
     resources: { Steps: 0 },

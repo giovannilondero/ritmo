@@ -63,7 +63,7 @@ describe("Controls", () => {
   it("reports which actions the last used device has", () => {
     const controls = Actions.merge({
       keyboard: Keyboard.scripted(keyBindings, [{ frame: 2, press: ["pause"] }]),
-      touch: Actions.lacking(Touch.scripted({ buttons: ["jump"] }, [{ frame: 1, press: ["jump"], release: ["jump"] }]), ["pause"])
+      touch: Actions.lacking(Touch.scripted({ buttons: ["jump"], sticks: [] }, [{ frame: 1, press: ["jump"], release: ["jump"] }]), ["pause"])
     })
     expect(controls.snapshot().available).toEqual({ jump: true, pause: true })
     expect(controls.snapshot().available).toEqual({ jump: true, pause: false })
@@ -77,7 +77,7 @@ describe("Controls", () => {
     const rebinds: Array<unknown> = []
     const disposed: Array<string> = []
     const keyboard = { ...Keyboard.scripted(keyBindings, []), rebind: (next: unknown) => rebinds.push(next), dispose: () => disposed.push("keyboard") }
-    const touch = { ...Touch.scripted({ buttons: ["jump"] }, []), dispose: () => disposed.push("touch") }
+    const touch = { ...Touch.scripted({ buttons: ["jump"], sticks: [] }, []), dispose: () => disposed.push("touch") }
     const controls = Actions.merge({ keyboard, touch: Actions.lacking(touch, ["pause"]) })
     controls.rebind.keyboard({ jump: ["j"], pause: ["p"] })
     expect(rebinds).toEqual([{ jump: ["j"], pause: ["p"] }])
@@ -107,9 +107,9 @@ describe("Controls", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(ControlsInput, makeControls({
         keyboard: Keyboard.scripted(keyBindings, []),
-        touch: Touch.scripted({ buttons: ["jump"] }, [])
+        touch: Touch.scripted({ buttons: ["jump"], sticks: [] }, [])
       }))),
-      resources: { Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), touch: Touch.idle({ buttons: ["jump"] }) }) },
+      resources: { Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), touch: Touch.idle({ buttons: ["jump"], sticks: [] }) }) },
       debug: { hostClock: HostClock.test() }
     }).value
     runtime.debug.nameSchedules({ fixed: Game.Schedule(Capture), render: Game.Schedule(CaptureAgain) })
@@ -139,7 +139,7 @@ describe("Controls", () => {
     const pad = Gamepad.scripted(padBindings, [{ frame: 0, left: { x: 0.5, y: 0 } }, { frame: 1, press: ["east"] }, { frame: 2, connected: false }])
     expect([pad.snapshot().used, pad.snapshot().used, pad.snapshot().used]).toEqual([true, true, false])
 
-    const touch = Touch.scripted({ buttons: ["jump"] }, [{ frame: 0, stick: { x: 1, y: 0 } }, { frame: 1, stick: null, swipe: { x: 4, y: 0 } }, { frame: 2, press: ["jump"], release: ["jump"] }])
+    const touch = Touch.scripted({ buttons: ["jump"], sticks: ["move"] }, [{ frame: 0, sticks: { move: { x: 1, y: 0 } } }, { frame: 1, sticks: { move: null }, swipe: { x: 4, y: 0 } }, { frame: 2, press: ["jump"], release: ["jump"] }])
     expect([touch.snapshot().used, touch.snapshot().used, touch.snapshot().used, touch.snapshot().used]).toEqual([true, true, true, false])
   })
 
@@ -241,7 +241,7 @@ describe("Controls vector actions", () => {
   it("reports a lacking vector as unavailable, and starts idle at rest", () => {
     const controls = Moving.merge({
       keyboard: Keyboard.scripted(keys, []),
-      touch: Moving.lacking(Touch.scripted({ buttons: ["jump"] }, [{ frame: 0, press: ["jump"] }]), ["move"])
+      touch: Moving.lacking(Touch.scripted({ buttons: ["jump"], sticks: [] }, [{ frame: 0, press: ["jump"] }]), ["move"])
     })
     expect(controls.snapshot().available).toEqual({ jump: true, move: false })
     expect(Moving.idle({ keyboard: Keyboard.idle(keys) })).toMatchObject({ vectors: { move: { x: 0, y: 0 } }, available: { jump: true, move: true } })
@@ -249,11 +249,25 @@ describe("Controls vector actions", () => {
     expect(Moving.buttons).toEqual(["jump"])
   })
 
-  it("merges a touch stick that names the vector", () => {
+  it("merges the touch stick named like the vector, as a plain vector", () => {
     const controls = Moving.merge({
       keyboard: Keyboard.scripted(keys, []),
-      touch: Touch.scripted({ buttons: ["jump"], vector: "move" }, [{ frame: 0, stick: { x: 0, y: 0.6 } }])
+      touch: Touch.scripted({ buttons: ["jump"], sticks: ["move"] }, [{ frame: 0, sticks: { move: { x: 0, y: 0.6 } } }])
     })
-    expect(controls.snapshot().vectors.move).toEqual({ x: 0, y: 0.6 })
+    const snapshot = controls.snapshot()
+    expect(snapshot.vectors.move).toEqual({ x: 0, y: 0.6 })
+    expect(snapshot.devices.touch.vectors.move).toEqual({ x: 0, y: 0.6, active: true })
+  })
+
+  it("merges a twin-stick touch device, with the aim stick lacking on the keyboard", () => {
+    const Twin = Controls.actions({ buttons: ["jump"], vectors: ["move", "aim"] })
+    const controls = Twin.merge({
+      keyboard: Twin.lacking(Keyboard.scripted(keys, []), ["aim"]),
+      touch: Touch.scripted({ buttons: ["jump"], sticks: ["move", "aim"] }, [{ frame: 0, sticks: { move: { x: 0.6, y: 0 }, aim: { x: 0, y: -1 } } }])
+    })
+    const snapshot = controls.snapshot()
+    expect(snapshot.vectors).toEqual({ move: { x: 0.6, y: 0 }, aim: { x: 0, y: -1 } })
+    expect(snapshot.available).toEqual({ jump: true, move: true, aim: true })
+    expect(snapshot.lastUsed).toBe("touch")
   })
 })

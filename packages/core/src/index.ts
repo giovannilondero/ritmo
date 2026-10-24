@@ -14,6 +14,10 @@ export * as Brand from "./Brand.ts"
  */
 export * as Debug from "./Debug.ts"
 /**
+ * Rewind a runtime in memory, for rollback netcode and client prediction.
+ */
+export * as Checkpoint from "./Checkpoint.ts"
+/**
  * Simulation time: the fixed step, the clock resource, durations in whole steps.
  */
 export * as Clock from "./Clock.ts"

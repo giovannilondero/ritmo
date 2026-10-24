@@ -103,21 +103,22 @@ const clearSaved = (): void => {
 // ── Drawing ─────────────────────────────────────────────────────────────
 
 const touchLayout = ({ width, height }: Touch.Size): Touch.Layout<"dash", "move"> => ({
-  stick: { region: { left: 0, top: 0, width: width * 0.6, height }, radius: 56, vector: "move" },
+  sticks: { move: { region: { left: 0, top: 0, width: width * 0.6, height }, radius: 56 } },
   buttons: { dash: { center: { x: width - 84, y: height - 84 }, radius: 42 } }
 })
 
 const drawTouch = (context: CanvasRenderingContext2D, view: Touch.View<"dash", "move">) => {
-  if (view.stick !== null) {
+  const stick = view.sticks.move
+  if (stick !== null) {
     context.beginPath()
-    context.arc(view.stick.origin.x, view.stick.origin.y, view.layout.stick.radius, 0, Math.PI * 2)
+    context.arc(stick.origin.x, stick.origin.y, view.layout.sticks.move.radius, 0, Math.PI * 2)
     context.fillStyle = "rgba(14, 16, 19, 0.45)"
     context.fill()
     context.strokeStyle = "rgba(243, 241, 236, 0.4)"
     context.lineWidth = 2
     context.stroke()
     context.beginPath()
-    context.arc(view.stick.knob.x, view.stick.knob.y, 22, 0, Math.PI * 2)
+    context.arc(stick.knob.x, stick.knob.y, 22, 0, Math.PI * 2)
     context.fillStyle = "rgba(243, 241, 236, 0.7)"
     context.fill()
   }

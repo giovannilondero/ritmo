@@ -1,0 +1,105 @@
+---
+layout: ../../layouts/Docs.astro
+title: Rollback without rewriting
+description: Take a checkpoint every tick, rewind when real input arrives, and tick again. The world comes back exactly, and the renderer sees one change.
+---
+
+Online games hide latency with rollback: run every tick at once with a
+guess for the other player's input, and when their real input arrives and
+differs, go back to the tick it was for and run again up to now. That takes
+a simulation that plays the same on every machine (Ritmo's
+[determinism](/features/determinism/)), and a way back that puts the world
+exactly where it was.
+
+## Checkpoints
+
+`runtime.checkpoint(simulate)` marks the world between ticks;
+`runtime.rewind(checkpoint)` puts it back. Ticking `simulate` again then
+gives the same results, bit for bit, as a runtime that never went back:
+the same entity ids, values, relations, queued commands, unread events,
+machine states, and every system's read positions.
+
+```ts twoslash title="rollback.ts"
+import { Checkpoint, Descriptor, Schema } from "@typeonce/ritmo"
+const Root = Schema.defineRoot("Game")
+const Score = Descriptor.Resource<number>()("Game/Score")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }), Root)
+const simulate = Game.Schedule()
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } }).value!
+declare let tick: number
+declare const wrongTick: number
+declare const resync: (error: Checkpoint.RewindError) => void
+// ---cut---
+const history = new Map<number, Checkpoint.Checkpoint<typeof Root>>()
+
+// Every tick: keep where it starts, then run it with the input known so far.
+history.set(tick, runtime.checkpoint(simulate))
+runtime.tick(simulate)
+
+// Real input for an earlier tick differs from the guess: go back, run again.
+const rewound = runtime.rewind(history.get(wrongTick)!)
+if (!rewound.ok) resync(rewound.error) // older than the window: load a save
+else for (let at = wrongTick; at <= tick; at++) {
+  history.set(at, runtime.checkpoint(simulate))
+  runtime.tick(simulate)
+}
+```
+
+A checkpoint copies almost nothing when it is taken. The first change to a
+page of values, an entity, or a relation after it keeps what it replaced,
+so a tick costs what it changes, not what the world holds.
+
+## What cannot be rewound does not compile
+
+A rewind runs ticks again, so whatever they call runs again. A service
+that plays a sound would play it once for every tick run again, and state
+a system keeps in `local` would not come back. `checkpoint` checks the
+schedule, its state transitions included:
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Game = Schema.bind(Schema.fragment({}))
+const Sound = Descriptor.Service<{ readonly play: (name: string) => void }>()("Game/Sound")
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Sound, { play: () => {} })) }).value
+// ---cut---
+const Hit = Game.System("Game/Hit", { services: { sound: Game.System.service(Sound) } }, ({ services }) => {
+  services.sound.play("hit")
+})
+
+// @errors: 2379
+runtime.checkpoint(Game.Schedule(Hit))
+```
+
+Input comes in through a source the host fills for each tick, and effects
+leave through events and resources that host code acts on.
+
+## The screen sees one change
+
+Rendering runs outside the rewound schedule, so it never goes back. It
+sees a rollback the way it sees any tick: a value that moved, an entity
+that is gone, one that appeared. A shot the rewind took away and the ticks
+after it brought back, under the same id, is a shot that moved: its sprite
+stays where it is, never destroyed and made again.
+
+## Checking that peers agree
+
+`runtime.checksum()` is a fingerprint of the world that does not depend on
+how it was built, the same on every device. Peers exchange the checksums
+of confirmed ticks, and a desync shows up the tick it happens:
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Score = Descriptor.ConstructedResource({ "~standard": { version: 1, vendor: "example", validate: (value: unknown) => ({ value: value as number }) } })("Game/Score")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } })
+if (!made.ok) throw new Error("invalid")
+const runtime = made.value
+declare const theirs: string
+declare const reportDesync: () => void
+// ---cut---
+const mine = runtime.checksum()
+if (mine.ok && mine.value !== theirs) reportDesync()
+```
+
+Ritmo carries no transport: the game sends inputs and checksums over its
+own, and a late joiner loads a save every peer restores at the same tick.
