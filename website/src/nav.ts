@@ -18,7 +18,8 @@ export const sections = [
       { href: "/docs/concepts/", title: "Concepts" },
       { href: "/docs/type-safety/", title: "Type safety" },
       { href: "/docs/browser/", title: "Loop, input, rendering" },
-      { href: "/docs/devtools/", title: "Headless debugging" }
+      { href: "/docs/devtools/", title: "Headless debugging" },
+      { href: "/docs/comparison/", title: "Other ECS libraries" }
     ]
   },
   {

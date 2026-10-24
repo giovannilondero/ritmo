@@ -1,0 +1,83 @@
+---
+// The comparison benchmark, read at build time from the committed run in
+// `bench/compare/results.json` (refresh it with
+// `pnpm bench:compare --json bench/compare/results.json`), so the numbers on
+// the page are always the ones the repository measured.
+import run from "../../../bench/compare/results.json"
+
+const libraries = [
+  { key: "ritmo", name: "Ritmo" },
+  { key: "bitecs", name: "bitECS" },
+  { key: "koota", name: "Koota" },
+  { key: "miniplex", name: "Miniplex" }
+] as const
+
+const cases = [
+  { key: "packed_5", name: "packed_5", what: "1,000 entities, five systems each write one number" },
+  { key: "simple_iter", name: "simple_iter", what: "4,000 entities in four shapes, three systems swap two numbers" },
+  { key: "frag_iter", name: "frag_iter", what: "26 shapes of 100 entities, one system writes a number" },
+  { key: "entity_cycle", name: "entity_cycle", what: "1,000 entities spawn one each, then all of those despawn" },
+  { key: "add_remove", name: "add_remove", what: "1,000 entities gain a component, then lose it" }
+] as const
+
+type Result = { readonly minMs: number }
+const results = run.results as Record<string, Record<string, Result>>
+const opsPerSecond = (result: Result) => Math.round(1000 / result.minMs)
+const format = (value: number) => value.toLocaleString("en-US")
+
+const rows = cases.map((bench) => {
+  const byLibrary = results[bench.key]!
+  const best = Math.min(...libraries.map((library) => byLibrary[library.key]!.minMs))
+  return {
+    ...bench,
+    cells: libraries.map((library) => {
+      const result = byLibrary[library.key]!
+      const slower = result.minMs / best
+      return { ops: format(opsPerSecond(result)), slower: slower < 1.05 ? undefined : `${slower.toFixed(1)}× slower`, fastest: slower < 1.05 }
+    })
+  }
+})
+
+// packed_5 is 5,000 number writes per operation: Ritmo's cost per write, and
+// how many fit in a 60 fps frame.
+const ritmoPacked = results.packed_5!.ritmo!.minMs
+const nanosecondsPerWrite = (ritmoPacked * 1e6) / 5000
+const writesPerFrame = Math.floor((1000 / 60) * 1e6 / nanosecondsPerWrite / 1000) * 1000
+---
+
+<table class="benchmarks">
+  <thead>
+    <tr>
+      <th>Case</th>
+      {libraries.map((library) => <th>{library.name}</th>)}
+    </tr>
+  </thead>
+  <tbody>
+    {rows.map((row) => (
+      <tr>
+        <td><code>{row.name}</code><br /><span class="muted">{row.what}</span></td>
+        {row.cells.map((cell) => (
+          <td class={cell.fastest ? "fastest" : undefined}>
+            {cell.ops}
+            {cell.slower !== undefined && <><br /><span class="muted">{cell.slower}</span></>}
+          </td>
+        ))}
+      </tr>
+    ))}
+  </tbody>
+</table>
+<p class="muted">
+  Operations per second, from the fastest sample; higher is better. Measured on {run.date}, {run.machine}, with
+  bitECS {run.versions.bitecs}, Koota {run.versions.koota}, Miniplex {run.versions.miniplex}, and the Ritmo this
+  site documents.
+</p>
+<p>
+  In <code>packed_5</code>, a Ritmo write costs about {Math.round(nanosecondsPerWrite)} ns, change detection and
+  rollback included: about {format(writesPerFrame)} writes fit in one frame at 60 fps.
+</p>
+
+<style>
+  .benchmarks td.fastest {
+    font-weight: 600;
+  }
+</style>

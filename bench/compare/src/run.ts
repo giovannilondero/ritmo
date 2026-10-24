@@ -6,14 +6,18 @@
  *
  *   pnpm bench:compare                      every library, every case
  *   pnpm bench:compare --filter add_remove  cases or libraries whose name contains the text
- *   pnpm bench:compare --json <path>        also write the raw results
+ *   pnpm bench:compare --json <path>        also write the results, with the machine, date, and versions
+ *
+ * `bench/compare/results.json` is the run the website's comparison page shows
+ * (`website/src/pages/docs/comparison.mdx`): refresh it with
+ * `pnpm bench:compare --json bench/compare/results.json` on a quiet machine.
  *
  * Each library/case pair runs in a fresh process, so one library's code never
  * shares V8's optimization state with another's. Results are operations per
  * second from the fastest sample; higher is better.
  */
 import { execFileSync } from "node:child_process"
-import { writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import { fileURLToPath } from "node:url"
 import { measure, type MeasureOptions } from "../../../packages/core/bench/harness.ts"
@@ -81,5 +85,23 @@ const rows = Object.entries(results).map(([name, byLibrary]) => {
 const widths = header.map((_, column) => Math.max(...[header, ...rows].map((row) => row[column]!.length)))
 for (const row of [header, ...rows]) console.log(row.map((cell, column) => cell.padEnd(widths[column]!)).join("  "))
 
+const versionOf = (name: string): string => {
+  const manifest = fileURLToPath(new URL(`../node_modules/${name}/package.json`, import.meta.url))
+  return (JSON.parse(readFileSync(manifest, "utf8")) as { readonly version: string }).version
+}
+
 const json = flag("--json")
-if (json !== undefined) writeFileSync(json, `${JSON.stringify(results, null, 2)}\n`)
+if (json !== undefined) {
+  const run = {
+    date: new Date().toISOString().slice(0, 10),
+    machine: `${os.cpus()[0]?.model ?? "unknown cpu"} / node ${process.version} / ${os.platform()}`,
+    versions: {
+      ritmo: versionOf("@typeonce/ritmo"),
+      bitecs: versionOf("bitecs"),
+      koota: versionOf("koota"),
+      miniplex: versionOf("miniplex")
+    },
+    results
+  }
+  writeFileSync(json, `${JSON.stringify(run, null, 2)}\n`)
+}
