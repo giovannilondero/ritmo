@@ -166,18 +166,22 @@ const ticked = runtime.tick(update)
 ## State machines
 
 ```ts twoslash title="flow.ts"
-import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
-// A closed list of states
-const Flow = Game.StateMachine("Arena/Flow", ["Menu", "Playing", "Paused"])
+// A closed list of states, each with the data only it has
+const Flow = Game.StateMachine("Arena/Flow", {
+  Menu: {},
+  Playing: {},
+  GameOver: { winner: Decode.string }
+})
 
-// Asks for the next state...
-const Pause = Game.System(
-  "Arena/Pause",
+// Asks for the next state, with its data...
+const EndRound = Game.System(
+  "Arena/EndRound",
   { nextMachines: { flow: Game.System.nextState(Flow) } },
-  ({ nextMachines }) => nextMachines.flow.set("Paused") // [!code highlight]
+  ({ nextMachines }) => nextMachines.flow.set({ _tag: "GameOver", winner: "Red" }) // [!code highlight]
 )
 
 // ...and this one runs only while playing
@@ -188,7 +192,8 @@ const Simulate = Game.System(
 )
 ```
 
-The change applies at `applyStateTransitions()`.
+The change applies at `applyStateTransitions()`, the state and its data
+together. A game over always has a winner, and nothing else does.
 
 ## Same input, same game
 

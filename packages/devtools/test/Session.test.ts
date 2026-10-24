@@ -14,7 +14,7 @@ const Game = Schema.bind(Schema.fragment({
   resources: { Score },
   events: { Hit }
 }))
-const Flow = Game.StateMachine("Dev/Flow", ["Playing", "Paused"])
+const Flow = Game.StateMachine("Dev/Flow", { Playing: {}, Paused: {} })
 
 const Movers = Game.Query({ selection: { position: Game.Query.write(Position) } })
 const Healthy = Game.Query({ selection: { health: Game.Query.write(Health) } })
@@ -43,7 +43,7 @@ const ReadHitsWhenPaused = Game.System("Dev/ReadHitsWhenPaused", {
 }, () => {})
 
 const Play = Game.System("Dev/Play", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-  nextMachines.flow.set("Playing")
+  nextMachines.flow.set({ _tag: "Playing" })
 })
 
 const NearOrigin = Invariant.fromInspector(Game.Inspector("near origin", {
@@ -60,7 +60,7 @@ const update = Game.Schedule(Move, Idle, Damage, ReadHitsWhenPaused)
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Score: 0 },
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Paused" })),
   debug: { hostClock }
 }).value
 
@@ -74,7 +74,7 @@ describe("Session", () => {
   it("records host sends and reports held pauses separately from discarded skips", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
-      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
+      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Paused" })),
       debug: { hostClock }
     }).value
     const Read = Game.System("Dev/HeldReader", { events: { hit: Game.System.readEvent(Hit) } }, () => {})
@@ -110,7 +110,7 @@ describe("Session", () => {
       const runtime = Game.Runtime.make({
         services: Game.Runtime.services(),
         resources: { Score: 0 },
-        machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
+        machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Paused" })),
         debug: { hostClock: clock }
       }).value
       const session = Session.make(runtime, { hostClock: clock, schedules: { setup, update } })
@@ -302,6 +302,22 @@ describe("Format.transition", () => {
   })
 })
 
+describe("Format.state", () => {
+  it("prints a machine value as its state, then its fields", () => {
+    expect(Format.state({ _tag: "Exploring" })).toBe("Exploring")
+    expect(Format.state({ _tag: "Talking", speaker: "Mira", page: 2 } as { readonly _tag: string })).toBe('Talking {speaker:"Mira",page:2}')
+  })
+
+  it("prints an update of a machine's fields as a journal line", () => {
+    const lines = Format.lines({
+      type: "system", frame: 3, tick: 7, schedule: "update", system: "Dev/Type", outcome: "ok", ms: 0,
+      writes: [], resources: [], events: [], nextStates: [], commands: [], missed: [],
+      machines: [{ machine: "Dev/Mode", before: { _tag: "Talking", typed: 1 } as { readonly _tag: string }, after: { _tag: "Talking", typed: 2 } as { readonly _tag: string } }]
+    })
+    expect(lines.map((line) => [line.kind, line.subject, line.text])).toEqual([["machine", "Dev/Mode", "machine Dev/Mode {_tag:\"Talking\",typed:1} -> {_tag:\"Talking\",typed:2}"]])
+  })
+})
+
 describe("Session report streams", () => {
   it("lists streams held past the frame window by a reader", () => {
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value
@@ -323,7 +339,7 @@ describe("Session next states and resources", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Score: 0 },
-      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
+      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Paused" })),
       debug: { hostClock }
     }).value
     const session = Session.make(runtime, { hostClock, schedules: { update: Game.Schedule(Play, Game.Schedule.applyDeferred()) } })
@@ -365,7 +381,7 @@ describe("describe-only schedules", () => {
   const headless = () => Game.Runtime.make({
     services: Game.Runtime.services(),
     resources: { Score: 0 },
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing")),
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" })),
     debug: { hostClock }
   }).value
   const update = Game.Schedule(Damage)

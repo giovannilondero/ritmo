@@ -8,6 +8,7 @@
  */
 import type { ResultConstructor } from "../Descriptor.ts"
 import * as Result from "../Result.ts"
+import { emptyStates } from "./states.ts"
 import type { EntityRecord, World } from "./world.ts"
 import { ABSENT } from "./world.ts"
 
@@ -54,13 +55,9 @@ export interface EntityStatePlan {
   readonly empty: ReadonlyMap<string, { readonly _tag: string }>
 }
 
-export const entityStatePlan = (component: string, states: Readonly<Record<string, object>>): EntityStatePlan => ({
+export const entityStatePlan = (component: string, states: Parameters<typeof emptyStates>[0]): EntityStatePlan => ({
   component,
-  empty: new Map(
-    Object.entries(states)
-      .filter(([, fields]) => Object.keys(fields).length === 0)
-      .map(([state]) => [state, Object.freeze({ _tag: state })])
-  )
+  empty: emptyStates(states)
 })
 
 type EntityStateMismatch = { readonly _tag: "EntityStateMismatch"; readonly component: string; readonly expected: string; readonly actual: string }

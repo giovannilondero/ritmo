@@ -97,19 +97,19 @@ describe("Game.System.changedResource", () => {
   })
 
   it("lets a reader skipped by a run condition see the change when it runs again", () => {
-    const Flow = Game.StateMachine("Changed/Flow", ["On", "Off"] as const)
+    const Flow = Game.StateMachine("Changed/Flow", { On: {}, Off: {} })
     const w = writer()
     const base = reader("Gated")
     // A gated copy shares the base system's cursor.
     const r = { seen: base.seen, system: Game.Schedule.when([Game.Condition.inState(Flow, "On")], base.system) }
     const SetFlow = Game.System("Changed/SetFlow", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-      nextMachines.flow.set(flowNext)
+      nextMachines.flow.set({ _tag: flowNext })
     })
     let flowNext: "On" | "Off" = "On"
     const runtime = unwrap(Game.Runtime.make({
       services: Runtime.services(),
       resources: { Score: 0, Hud: { label: "a", tags: ["x"] }, Open: true },
-      machines: Runtime.machines(Runtime.machine(Flow, "On")),
+      machines: Runtime.machines(Runtime.machine(Flow, { _tag: "On" })),
       debug: { hostClock }
     }))
     const schedule = Game.Schedule(SetFlow, Game.Schedule.applyStateTransitions(), w.system, r.system)

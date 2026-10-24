@@ -181,7 +181,7 @@ describe("Runtime change detection", () => {
   })
 
   it("keeps removal records while a reader is skipped by its run conditions", () => {
-    const Flow = Game.StateMachine("Lifecycle/Flow", ["On", "Off"])
+    const Flow = Game.StateMachine("Lifecycle/Flow", { On: {}, Off: {} })
     const ids: Array<Id> = []
     const seen: Array<Array<number>> = []
     const Reader = Game.System("Lifecycle/GatedReader", {
@@ -191,7 +191,7 @@ describe("Runtime change detection", () => {
       seen.push(despawned.entities.all().map((id) => id))
     })
     const Toggle = Game.System("Lifecycle/Toggle", { machines: { flow: Game.System.machine(Flow) }, nextMachines: { flow: Game.System.nextState(Flow) } }, ({ machines, nextMachines }) => {
-      nextMachines.flow.set(machines.flow.get() === "On" ? "Off" : "On")
+      nextMachines.flow.set({ _tag: machines.flow.is("On") ? "Off" : "On" })
     })
     const Despawn = Game.System("Lifecycle/DespawnAll", {
       queries: { positions: Positions },
@@ -204,7 +204,7 @@ describe("Runtime change detection", () => {
     })
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
-      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "On"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "On" }))
     }).value
     runtime.tick(Game.Schedule(spawner([1], ids), Game.Schedule.applyDeferred(), Reader))
     runtime.tick(Game.Schedule(Toggle, Game.Schedule.applyStateTransitions()))

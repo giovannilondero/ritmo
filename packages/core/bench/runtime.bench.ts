@@ -591,6 +591,31 @@ const entityStates: BenchCase = {
   }
 }
 
+// A separate schema, so adding the machine leaves every other case's world unchanged.
+const MachineGame = Schema.bind(Schema.fragment({}))
+const Dialogue = MachineGame.StateMachine("Bench/Dialogue", {
+  Closed: {},
+  Open: { page: Decode.integer, typed: Decode.integer }
+})
+
+const machineUpdates: BenchCase = {
+  name: "machine/update-10k",
+  description: "Update the current state's fields of a game-wide machine 10k times in one system run",
+  setup: () => {
+    const runtime = MachineGame.Runtime.make({
+      services: MachineGame.Runtime.services(),
+      machines: MachineGame.Runtime.machines(MachineGame.Runtime.machine(Dialogue, { _tag: "Open", page: 0, typed: 0 }))
+    }).value
+    const Type = MachineGame.System("Bench/TypeDialogue", { machines: { dialogue: MachineGame.System.updateMachine(Dialogue) } }, ({ machines }) => {
+      for (let index = 0; index < N; index++) {
+        machines.dialogue.update({ state: "Open", data: (open) => ({ ...open, typed: open.typed + 1 }) })
+      }
+    })
+    const schedule = MachineGame.Schedule(Type)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
 export const cases: ReadonlyArray<BenchCase> = [
   clockAdvance,
   spawn,
@@ -598,6 +623,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   iterateRead,
   iterateWrite,
   entityStates,
+  machineUpdates,
   sparseSingle,
   changedFilter,
   churn,

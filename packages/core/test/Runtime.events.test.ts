@@ -140,7 +140,7 @@ describe("Runtime events", () => {
 
   it("discards events published while a reader is skipped by its run conditions", () => {
     const Local = Schema.bind(Schema.fragment({ events: { Ping } }))
-    const Mode = Local.StateMachine("Events/Mode", ["On", "Off"])
+    const Mode = Local.StateMachine("Events/Mode", { On: {}, Off: {} })
     const log: Array<ReadonlyArray<number>> = []
     const gated = Local.System("Events/Gated", {
       when: [Local.Condition.inState(Mode, "On")],
@@ -154,11 +154,11 @@ describe("Runtime events", () => {
     const toggle = (value: "On" | "Off") => Local.System(`Events/Set${value}`, {
       nextMachines: { mode: Local.System.nextState(Mode) }
     }, ({ nextMachines }) => {
-      nextMachines.mode.set(value)
+      nextMachines.mode.set({ _tag: value })
     })
     const runtime = Local.Runtime.make({
       services: Local.Runtime.services(),
-      machines: Local.Runtime.machines(Local.Runtime.machine(Mode, "On"))
+      machines: Local.Runtime.machines(Local.Runtime.machine(Mode, { _tag: "On" }))
     }).value
     runtime.tick(Local.Schedule(gated))
     runtime.tick(Local.Schedule(toggle("Off"), Local.Schedule.applyStateTransitions()))

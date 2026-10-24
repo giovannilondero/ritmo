@@ -19,7 +19,7 @@ const unwrap = <T>(result: { readonly ok: true; readonly value: T } | { readonly
   if (!result.ok) throw new Error("expected success")
   return result.value
 }
-const old = { version: 2, nextEntity: 1, entities: [], relations: {}, resources: { "Migrations/Coins": 5 }, machines: {}, scopes: {} }
+const old = { version: 3, nextEntity: 1, entities: [], relations: {}, resources: { "Migrations/Coins": 5 }, machines: {}, scopes: {} }
 
 describe("save migrations", () => {
   it("runs every step after the save's game version, in order, then validates", () => {

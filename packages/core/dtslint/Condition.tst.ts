@@ -9,11 +9,11 @@ const Ping = Descriptor.Event<number>()("CheckTypes/Ping")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CheckTypes/Clock")
 
 const Game = Schema.bind(Schema.fragment({ components: { Enemy, Health }, resources: { Freeze }, events: { Ping } }))
-const Flow = Game.StateMachine("CheckTypes/Flow", ["Playing", "Over"] as const)
+const Flow = Game.StateMachine("CheckTypes/Flow", { Playing: {}, Over: {} })
 
 const OtherFreeze = Descriptor.Resource<number>()("CheckTypes/OtherFreeze")
 const Other = Schema.bind(Schema.fragment({ resources: { OtherFreeze } }))
-const OtherFlow = Other.StateMachine("CheckTypes/OtherFlow", ["A", "B"] as const)
+const OtherFlow = Other.StateMachine("CheckTypes/OtherFlow", { A: {}, B: {} })
 
 const Noop = Game.System("CheckTypes/Noop", {}, () => {})
 
@@ -25,7 +25,7 @@ describe("Game.Condition.check", () => {
       queries: { enemies: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] }) }
     }, (context) => {
       expect(context.resources.freeze.get().remaining).type.toBe<number>()
-      expect(context.machines.flow.get()).type.toBe<"Playing" | "Over">()
+      expect(context.machines.flow.get()).type.toBe<{ readonly _tag: "Playing" } | { readonly _tag: "Over" }>()
       expect(context.queries.enemies.each()[0]?.data.health.get()).type.toBe<number | undefined>()
       // @ts-expect-error Property 'set' does not exist on type 'ResourceReadView<{ readonly remaining: number; }>'.
       context.resources.freeze.set({ remaining: 0 })
@@ -86,7 +86,7 @@ describe("Game.Condition.check", () => {
     const gatedSystem = Game.System("CheckTypes/Gated", { when: [Game.Condition.not(frozen)] }, () => {})
     const group = Game.Schedule.when([Game.Condition.and(frozen, Game.Condition.inState(Flow, "Playing"))], Noop)
 
-    const withoutFreeze = Game.Runtime.make({ services: Runtime.services(), machines: Runtime.machines(Runtime.machine(Flow, "Playing")) }).value
+    const withoutFreeze = Game.Runtime.make({ services: Runtime.services(), machines: Runtime.machines(Runtime.machine(Flow, { _tag: "Playing" })) }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "CheckTypes/Freeze"
     withoutFreeze.tick(Game.Schedule(gatedSystem))
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "CheckTypes/Freeze"
@@ -95,7 +95,7 @@ describe("Game.Condition.check", () => {
     const ready = Game.Runtime.make({
       services: Runtime.services(),
       resources: { Freeze: { remaining: 0 } },
-      machines: Runtime.machines(Runtime.machine(Flow, "Playing"))
+      machines: Runtime.machines(Runtime.machine(Flow, { _tag: "Playing" }))
     }).value
     expect(ready.tick(Game.Schedule(gatedSystem, group)).ok).type.toBe<boolean>()
   })

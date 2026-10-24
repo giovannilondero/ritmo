@@ -45,7 +45,7 @@ describe("host APIs", () => {
     const supplied = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Ready: true } }).value
     supplied.tick(gated)
     const Other = Schema.bind(Schema.fragment({ resources: { Ready } }), Schema.defineRoot("Other"))
-    const mode = Other.StateMachine("Other/Mode", ["Playing"])
+    const mode = Other.StateMachine("Other/Mode", { Playing: {} })
     // @ts-expect-error Type '"Other"' is not assignable to type '"HostTypes"'.
     Game.Schedule.pauseWhen([Other.Condition.inState(mode, "Playing")], system)
   })

@@ -64,12 +64,8 @@ export const Game = Schema.bind(
 
 export const schema = Game.schema
 
-export const Facing = Game.StateMachine(
-  "TopDown/Facing",
-  ["Down", "Left", "Right", "Up"]
+export const Facing = Game.StateMachine("TopDown/Facing", { Down: {}, Left: {}, Right: {}, Up: {} }
 )
 
-export const Locomotion = Game.StateMachine(
-  "TopDown/Locomotion",
-  ["Idle", "Walking"]
+export const Locomotion = Game.StateMachine("TopDown/Locomotion", { Idle: {}, Walking: {} }
 )

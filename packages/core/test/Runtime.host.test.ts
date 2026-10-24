@@ -8,21 +8,21 @@ const Ping = Descriptor.Event<number>()("Host/Ping")
 const Ready = Descriptor.TransientResource<boolean>()("Host/Ready")
 const Count = Descriptor.ConstructedResource(Decode.number)("Host/Count")
 const Game = Schema.bind(Schema.fragment({ events: { Ping }, resources: { Ready, Count } }))
-const Flow = Game.StateMachine("Host/Flow", ["Playing", "Menu"])
+const Flow = Game.StateMachine("Host/Flow", { Playing: {}, Menu: {} })
 const ready = Game.Condition.check("Host/Ready", { resources: { ready: Game.System.readResource(Ready) } }, ({ resources }) => resources.ready.get())
 const playing = Game.Condition.inState(Flow, "Playing")
 const make = () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
     resources: { Ready: true, Count: 0 },
-    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing")),
+    machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" })),
     debug: { hostClock }
   })
   if (!made.ok) throw new Error("invalid fixture")
   return made.value
 }
 const setReady = (value: boolean) => Game.System(`Host/Ready/${value}`, { resources: { ready: Game.System.writeResource(Ready) } }, ({ resources }) => { resources.ready.set(value) })
-const setFlow = (value: "Playing" | "Menu") => Game.System(`Host/Flow/${value}`, { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => { nextMachines.flow.set(value) })
+const setFlow = (value: "Playing" | "Menu") => Game.System(`Host/Flow/${value}`, { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => { nextMachines.flow.set({ _tag: value }) })
 const read = (name: string, log: Array<ReadonlyArray<number>>) => Game.System(name, { events: { ping: Game.System.readEvent(Ping) } }, ({ events }) => { log.push(events.ping.all()) })
 
 describe("host events and pause gates", () => {

@@ -7,7 +7,6 @@ import { cellInFront, cellPosition, directions, isOpenGround, opposite, playerSt
 import type { Cell, Direction } from "./map.ts"
 import {
   BUMP,
-  Dialogue,
   Facing,
   Game,
   Host,
@@ -108,7 +107,7 @@ export const JoinWhileExploring = Game.System(
     services: { players: Game.System.service(PlayersInput) },
     machines: { mode: Game.System.machine(Mode) }
   },
-  ({ services, machines }) => services.players.setJoining(machines.mode.get() === "Exploring")
+  ({ services, machines }) => services.players.setJoining(machines.mode.is("Exploring"))
 )
 
 /** The second player is the same boy, tinted, so the two are told apart. */
@@ -410,10 +409,7 @@ export const StartTalk = Game.System(
       talkables: Game.Query({ selection: { tile: Game.Query.read(Tile), talkable: Game.Query.read(Talkable), stride: Game.Query.optional(Stride) } }),
       listeners: Game.Query({ selection: { facing: Game.Query.write(Facing) }, with: [Villager], without: [Player] })
     },
-    resources: {
-      input: Game.System.readResource(Input),
-      dialogue: Game.System.writeResource(Dialogue)
-    },
+    resources: { input: Game.System.readResource(Input) },
     nextMachines: { mode: Game.System.nextState(Mode) }
   },
   ({ queries, resources, nextMachines }) => {
@@ -428,13 +424,13 @@ export const StartTalk = Game.System(
       const other = players.find((match) => match.entity.id !== player.entity.id && sameCell(match.data.tile.get(), target))
       if (other !== undefined) {
         if (other.data.stride.get().kind !== "still") continue
-        resources.dialogue.set({
+        nextMachines.mode.set({
+          _tag: "Talking",
           speaker: `Player ${playerNumber(seat)}`,
           pages: [`Ah, it's player ${playerNumber(other.data.seat.get())}.`, "Ritmo supports multiplayer, of course!"],
           page: 0,
           typed: 0
         })
-        nextMachines.mode.set("Talking")
         other.data.facing.set(opposite[facing])
         return
       }
@@ -443,8 +439,7 @@ export const StartTalk = Game.System(
       if (found === undefined || (found.data.stride.value()?.kind ?? "still") !== "still") continue
 
       const { speaker, pages } = found.data.talkable.get()
-      resources.dialogue.set({ speaker, pages, page: 0, typed: 0 })
-      nextMachines.mode.set("Talking")
+      nextMachines.mode.set({ _tag: "Talking", speaker, pages, page: 0, typed: 0 })
       const listener = queries.listeners.get(found.entity.id)
       if (listener.ok) listener.value.data.facing.set(opposite[facing])
       return
@@ -452,20 +447,23 @@ export const StartTalk = Game.System(
   }
 )
 
-/** Types the open page out, one letter every `TYPE`. */
+/**
+ * Types the open page out, one letter every `TYPE`. The letters typed change
+ * every few steps, so they change at once (`update`), without waiting for a
+ * mode change.
+ */
 export const TypeDialogue = Game.System(
   "Town/TypeDialogue",
   {
-    resources: {
-      time: Game.System.readResource(Time),
-      dialogue: Game.System.writeResource(Dialogue)
-    }
+    resources: { time: Game.System.readResource(Time) },
+    machines: { mode: Game.System.updateMachine(Mode) }
   },
-  ({ resources }) => {
-    const dialogue = resources.dialogue.get()
-    if (dialogue === null || !Clock.every(resources.time.get(), TYPE)) return
-    const page = dialogue.pages[dialogue.page] ?? ""
-    if (dialogue.typed < page.length) resources.dialogue.set({ ...dialogue, typed: dialogue.typed + 1 })
+  ({ resources, machines }) => {
+    if (!Clock.every(resources.time.get(), TYPE)) return
+    machines.mode.update({
+      state: "Talking",
+      data: (talking) => ({ ...talking, typed: Math.min(talking.typed + 1, (talking.pages[talking.page] ?? "").length) })
+    })
   }
 )
 
@@ -481,25 +479,22 @@ const anyPressedAction = (input: Readonly<Record<SeatValue, { readonly actions: 
 export const AdvanceDialogue = Game.System(
   "Town/AdvanceDialogue",
   {
-    resources: {
-      input: Game.System.readResource(Input),
-      dialogue: Game.System.writeResource(Dialogue)
-    },
+    resources: { input: Game.System.readResource(Input) },
+    machines: { mode: Game.System.updateMachine(Mode) },
     nextMachines: { mode: Game.System.nextState(Mode) }
   },
-  ({ resources, nextMachines }) => {
+  ({ resources, machines, nextMachines }) => {
     if (!anyPressedAction(resources.input.get())) return
-    const dialogue = resources.dialogue.get()
-    const page = dialogue?.pages[dialogue.page]
-    if (dialogue !== null && page !== undefined && dialogue.typed < page.length) {
-      resources.dialogue.set({ ...dialogue, typed: page.length })
-      return
+    const mode = machines.mode.get()
+    // Gated on `Talking`: this only narrows the mode to its conversation.
+    if (mode._tag !== "Talking") return
+    const page = mode.pages[mode.page] ?? ""
+    if (mode.typed < page.length) {
+      machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, typed: page.length }) })
+    } else if (mode.page + 1 < mode.pages.length) {
+      machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1, typed: 0 }) })
+    } else {
+      nextMachines.mode.set({ _tag: "Exploring" })
     }
-    if (dialogue !== null && dialogue.page + 1 < dialogue.pages.length) {
-      resources.dialogue.set({ ...dialogue, page: dialogue.page + 1, typed: 0 })
-      return
-    }
-    resources.dialogue.set(null)
-    nextMachines.mode.set("Exploring")
   }
 )

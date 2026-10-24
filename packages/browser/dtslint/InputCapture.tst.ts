@@ -36,7 +36,7 @@ describe("InputCapture", () => {
   })
 
   it("requires the machines its run conditions read", () => {
-    const Pace = Game.StateMachine("CaptureTypes/Pace", ["Running", "Frozen"] as const)
+    const Pace = Game.StateMachine("CaptureTypes/Pace", { Running: {}, Frozen: {} })
     const Capture = InputCapture.system(Game, {
       name: "CaptureTypes/Gated",
       source: KeyboardInput,
@@ -48,7 +48,7 @@ describe("InputCapture", () => {
     const withoutMachine = Game.Runtime.make({ services, resources }).value
     // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "CaptureTypes/Pace"
     withoutMachine.tick(Game.Schedule(Capture))
-    const ready = Game.Runtime.make({ services, resources, machines: Game.Runtime.machines(Game.Runtime.machine(Pace, "Running")) }).value
+    const ready = Game.Runtime.make({ services, resources, machines: Game.Runtime.machines(Game.Runtime.machine(Pace, { _tag: "Running" })) }).value
     expect(ready.tick(Game.Schedule(Capture)).ok).type.toBe<boolean>()
   })
 

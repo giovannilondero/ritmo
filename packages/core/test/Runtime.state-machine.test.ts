@@ -14,8 +14,8 @@ const Game = Schema.bind(Schema.fragment({
   }
 }))
 const schema = Game.schema
-const AppState = Game.StateMachine("AppState", ["Menu", "Playing", "Paused"] as const)
-const RoundState = Game.StateMachine("RoundState", ["Warmup", "Live", "SuddenDeath"] as const)
+const AppState = Game.StateMachine("AppState", { Menu: {}, Playing: {}, Paused: {} })
+const RoundState = Game.StateMachine("RoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
 const makeRuntime = () =>
   Game.Runtime.make({
@@ -25,8 +25,8 @@ const makeRuntime = () =>
       Log: []
     },
     machines: Runtime.machines(
-      Runtime.machine(AppState, "Menu"),
-      Runtime.machine(RoundState, "Warmup")
+      Runtime.machine(AppState, { _tag: "Menu" }),
+      Runtime.machine(RoundState, { _tag: "Warmup" })
     )
   }).value
 
@@ -53,8 +53,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     runtime.tick(Game.Schedule(increment))
@@ -70,7 +70,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -91,7 +91,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -108,7 +108,7 @@ describe("Runtime state machine", () => {
       },
       ({ machines, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `before:${machines.app.get()}`])
+          resources.log.update((entries) => [...entries, `before:${machines.app.get()._tag}`])
         }
     )
 
@@ -125,7 +125,7 @@ describe("Runtime state machine", () => {
       },
       ({ machines, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `after:${machines.app.get()}`])
+          resources.log.update((entries) => [...entries, `after:${machines.app.get()._tag}`])
         }
     )
 
@@ -136,8 +136,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     const transitionVisibilitySchedule = Game.Schedule(queuePlaying, before, Game.Schedule.applyStateTransitions(), after)
@@ -156,7 +156,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -210,7 +210,7 @@ describe("Runtime state machine", () => {
       ({ transitions, machines, resources }) =>
         {
           const transition = transitions.app.get()
-          resources.log.update((entries) => [...entries, `enter:${transition?.from}->${transition?.to}:${machines.app.get()}`])
+          resources.log.update((entries) => [...entries, `enter:${transition?.from}->${transition?.to}:${machines.app.get()._tag}`])
         }
     )
 
@@ -227,8 +227,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     const bundledTransitionSchedule = Game.Schedule(queuePlaying, Game.Schedule.applyStateTransitions(transitions))
@@ -272,7 +272,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -297,8 +297,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     const changedSchedule = Game.Schedule(queuePlaying, Game.Schedule.applyStateTransitions(), observeChanged)
@@ -343,8 +343,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     runtime.tick(Game.Schedule(first, second))
@@ -363,8 +363,8 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
-          nextMachines.round.set("Live")
+          nextMachines.app.set({ _tag: "Playing" })
+          nextMachines.round.set({ _tag: "Live" })
         }
     )
 
@@ -394,8 +394,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     const gatedSchedule = Game.Schedule(queueStates, Game.Schedule.applyStateTransitions(), gated)
@@ -431,8 +431,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(AppState, "Menu"),
-        Runtime.machine(RoundState, "Warmup")
+        Runtime.machine(AppState, { _tag: "Menu" }),
+        Runtime.machine(RoundState, { _tag: "Warmup" })
       )
     }).value
     const incrementSchedule = Game.Schedule(increment)
@@ -443,8 +443,8 @@ describe("Runtime state machine", () => {
 
   it("applies multiple machine transitions in definition order", () => {
     const LocalGame = Schema.bind(schema)
-    const LocalAppState = LocalGame.StateMachine("LocalAppState", ["Menu", "Playing", "Paused"] as const)
-    const LocalRoundState = LocalGame.StateMachine("LocalRoundState", ["Warmup", "Live", "SuddenDeath"] as const)
+    const LocalAppState = LocalGame.StateMachine("LocalAppState", { Menu: {}, Playing: {}, Paused: {} })
+    const LocalRoundState = LocalGame.StateMachine("LocalRoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
     const queueStates = LocalGame.System(
       "StateMachineRuntime/QueueDefinitionOrder",
@@ -457,8 +457,8 @@ describe("Runtime state machine", () => {
       ({ nextMachines }) =>
         {
           // Intentionally queued in reverse declaration order.
-          nextMachines.round.set("Live")
-          nextMachines.app.set("Playing")
+          nextMachines.round.set({ _tag: "Live" })
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -508,8 +508,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(LocalAppState, "Menu"),
-        Runtime.machine(LocalRoundState, "Warmup")
+        Runtime.machine(LocalAppState, { _tag: "Menu" }),
+        Runtime.machine(LocalRoundState, { _tag: "Warmup" })
       )
     }).value
     const localTransitionSchedule = LocalGame.Schedule(queueStates, LocalGame.Schedule.applyStateTransitions(transitions))
@@ -523,8 +523,8 @@ describe("Runtime state machine", () => {
 
   it("defers transitions queued during transition schedules to the next marker", () => {
     const LocalGame = Schema.bind(schema)
-    const LocalAppState = LocalGame.StateMachine("LocalAppStateDeferred", ["Menu", "Playing", "Paused"] as const)
-    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateDeferred", ["Warmup", "Live", "SuddenDeath"] as const)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateDeferred", { Menu: {}, Playing: {}, Paused: {} })
+    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateDeferred", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
     const queueApp = LocalGame.System(
       "StateMachineRuntime/QueueAppOnly",
@@ -535,7 +535,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -556,7 +556,7 @@ describe("Runtime state machine", () => {
         {
           const transition = transitions.app.get()
           resources.log.update((entries) => [...entries, `enter-app:${transition?.to}`])
-          nextMachines.round.set("SuddenDeath")
+          nextMachines.round.set({ _tag: "SuddenDeath" })
         }
     )
 
@@ -586,7 +586,7 @@ describe("Runtime state machine", () => {
       },
       ({ machines, resources }) =>
         {
-          resources.log.update((entries) => [...entries, `round:${machines.round.get()}`])
+          resources.log.update((entries) => [...entries, `round:${machines.round.get()._tag}`])
         }
     )
 
@@ -601,8 +601,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(LocalAppState, "Menu"),
-        Runtime.machine(LocalRoundState, "Warmup")
+        Runtime.machine(LocalAppState, { _tag: "Menu" }),
+        Runtime.machine(LocalRoundState, { _tag: "Warmup" })
       )
     }).value
     const localRoundSchedule = LocalGame.Schedule(queueApp, LocalGame.Schedule.applyStateTransitions(transitions), observeRoundChange, observeRoundState)
@@ -626,26 +626,26 @@ describe("Runtime state machine", () => {
 
   it("commits a request queued before the marker even when a transition schedule queues the same machine", () => {
     const LocalGame = Schema.bind(schema)
-    const LocalAppState = LocalGame.StateMachine("LocalAppStateReplaced", ["Menu", "Playing", "Paused"] as const)
-    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateReplaced", ["Warmup", "Live", "SuddenDeath"] as const)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateReplaced", { Menu: {}, Playing: {}, Paused: {} })
+    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateReplaced", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
     const queueBoth = LocalGame.System("StateMachineRuntime/QueueBoth", {
       nextMachines: { app: System.nextState(LocalAppState), round: System.nextState(LocalRoundState) }
     }, ({ nextMachines }) => {
-      nextMachines.app.set("Playing")
-      nextMachines.round.set("Live")
+      nextMachines.app.set({ _tag: "Playing" })
+      nextMachines.round.set({ _tag: "Live" })
     })
     const queueRoundDuringEnter = LocalGame.System("StateMachineRuntime/QueueRoundDuringEnterReplaced", {
       nextMachines: { round: System.nextState(LocalRoundState) }
     }, ({ nextMachines }) => {
-      nextMachines.round.set("SuddenDeath")
+      nextMachines.round.set({ _tag: "SuddenDeath" })
     })
     const observe = LocalGame.System("StateMachineRuntime/ObserveReplacedRound", {
       machines: { round: System.machine(LocalRoundState) },
       transitionEvents: { round: System.readTransitionEvent(LocalRoundState) },
       resources: { log: System.writeResource(Log) }
     }, ({ machines, transitionEvents, resources }) => {
-      resources.log.update((entries) => [...entries, `round:${machines.round.get()} ${JSON.stringify(transitionEvents.round.all())}`])
+      resources.log.update((entries) => [...entries, `round:${machines.round.get()._tag} ${JSON.stringify(transitionEvents.round.all())}`])
     })
 
     const transitions = LocalGame.Schedule.transitions(
@@ -654,7 +654,7 @@ describe("Runtime state machine", () => {
     const runtime = LocalGame.Runtime.make({
       services: Runtime.services(),
       resources: { Counter: 0, Log: [] },
-      machines: Runtime.machines(Runtime.machine(LocalAppState, "Menu"), Runtime.machine(LocalRoundState, "Warmup"))
+      machines: Runtime.machines(Runtime.machine(LocalAppState, { _tag: "Menu" }), Runtime.machine(LocalRoundState, { _tag: "Warmup" }))
     }).value
 
     // Live was queued before the marker: it commits there. SuddenDeath was
@@ -670,7 +670,7 @@ describe("Runtime state machine", () => {
 
   it("reports a transition schedule's machine as a missing requirement in tryTick", () => {
     const LocalGame = Schema.bind(schema)
-    const LocalAppState = LocalGame.StateMachine("LocalAppStateMissing", ["Menu", "Playing"] as const)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateMissing", { Menu: {}, Playing: {} })
     const bundle = LocalGame.Schedule.transitions(LocalGame.Schedule.onEnter(LocalAppState, "Playing", []))
     const runtime = LocalGame.Runtime.make({ services: Runtime.services(), resources: { Counter: 0, Log: [] } }).value
     const erasedTryTick = runtime.tryTick as (schedule: unknown) => unknown
@@ -690,7 +690,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -736,7 +736,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -752,7 +752,7 @@ describe("Runtime state machine", () => {
       },
       ({ machines, resources }) =>
         {
-          resources.log.update((entries) => [...entries, machines.app.get()])
+          resources.log.update((entries) => [...entries, machines.app.get()._tag])
         }
     )
 
@@ -772,7 +772,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -828,8 +828,8 @@ describe("Runtime state machine", () => {
 
   it("emits transition events in machine definition order", () => {
     const LocalGame = Schema.bind(schema)
-    const LocalAppState = LocalGame.StateMachine("LocalAppStateEvents", ["Menu", "Playing", "Paused"] as const)
-    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateEvents", ["Warmup", "Live", "SuddenDeath"] as const)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateEvents", { Menu: {}, Playing: {}, Paused: {} })
+    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateEvents", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
     const queueStates = LocalGame.System(
       "StateMachineRuntime/QueueEventOrderStates",
@@ -841,8 +841,8 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.round.set("Live")
-          nextMachines.app.set("Playing")
+          nextMachines.round.set({ _tag: "Live" })
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -889,8 +889,8 @@ describe("Runtime state machine", () => {
         Log: []
       },
       machines: Runtime.machines(
-        Runtime.machine(LocalAppState, "Menu"),
-        Runtime.machine(LocalRoundState, "Warmup")
+        Runtime.machine(LocalAppState, { _tag: "Menu" }),
+        Runtime.machine(LocalRoundState, { _tag: "Warmup" })
       )
     }).value
 
@@ -917,7 +917,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -959,7 +959,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -1001,7 +1001,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -1043,7 +1043,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -1075,7 +1075,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.set("Playing")
+          nextMachines.app.set({ _tag: "Playing" })
         }
     )
 
@@ -1101,10 +1101,10 @@ describe("Runtime state machine", () => {
 
   it("rejects duplicate machine names on one bound game", () => {
     const LocalGame = Schema.bind(schema)
-    LocalGame.StateMachine("DuplicateMachine", ["A", "B"] as const)
+    LocalGame.StateMachine("DuplicateMachine", { A: {}, B: {} })
 
     expect(() =>
-      LocalGame.StateMachine("DuplicateMachine", ["X", "Y"] as const)
+      LocalGame.StateMachine("DuplicateMachine", { X: {}, Y: {} })
     ).toThrow("Duplicate state machine name")
   })
 
@@ -1118,7 +1118,7 @@ describe("Runtime state machine", () => {
       },
       ({ nextMachines }) =>
         {
-          nextMachines.app.setIfChanged("Menu")
+          nextMachines.app.setIfChanged({ _tag: "Menu" })
         }
     )
 

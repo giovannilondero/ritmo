@@ -383,19 +383,24 @@ export const Tag = <const Name extends string>(
   ConstructedComponent(DecodeModule.struct({}))(name)
 
 /**
- * The fields of one state of a {@link EntityState} component: each field's
- * codec, by name. A state without data has no fields (`{}`).
+ * The fields of one state of a {@link EntityState} component or a
+ * `Game.StateMachine(...)`: each field's codec, by name. A state without data
+ * has no fields (`{}`).
  */
-export type EntityStateFields = Readonly<Record<string, DecodeModule.Codec<any>>>
+export type StateFields = Readonly<Record<string, DecodeModule.Codec<any>>>
 
-/** Every state of a {@link EntityState} component: each state's fields, by state name. */
-export type EntityStateDefinitions = Readonly<Record<string, EntityStateFields>>
+/** Every state of an entity state or a state machine: each state's fields, by state name. */
+export type StateDefinitions = Readonly<Record<string, StateFields>>
 
 /** The name of a state in `States`. */
-export type EntityStateName<States extends EntityStateDefinitions> = keyof States & string
+export type StateName<States extends StateDefinitions> = keyof States & string
 
-/** The value of state `State`: its name in `_tag`, and its fields. */
-export type EntityStateValueOf<States extends EntityStateDefinitions, State extends EntityStateName<States>> = State extends unknown
+/**
+ * The value of state `State` (of every state, for a union): its name in
+ * `_tag`, and its fields. Use {@link EntityStateOf} or `Machine.StateOf` in
+ * game code.
+ */
+export type StateValueOf<States extends StateDefinitions, State extends StateName<States>> = State extends unknown
   ? { readonly _tag: State } & { readonly [Field in keyof States[State]]: DecodeModule.Type<States[State][Field]> } extends infer Value
     ? { readonly [Key in keyof Value]: Value[Key] }
     : never
@@ -405,7 +410,7 @@ export type EntityStateValueOf<States extends EntityStateDefinitions, State exte
  * The allowed moves of a {@link EntityState} component: for every state, the
  * states it may move to (`[]` for a state with no way out).
  */
-export type EntityStateTransitions<States extends EntityStateDefinitions> = {
+export type EntityStateTransitions<States extends StateDefinitions> = {
   readonly [From in keyof States & string]: ReadonlyArray<keyof States & string>
 }
 
@@ -415,13 +420,13 @@ export type EntityStateTransitions<States extends EntityStateDefinitions> = {
  */
 export interface EntityStateDescriptor<
   out Name extends string,
-  in out States extends EntityStateDefinitions,
+  in out States extends StateDefinitions,
   in out Transitions extends EntityStateTransitions<States> | undefined
 > extends DecodableDescriptor<
   "component",
   Name,
-  EntityStateValueOf<States, EntityStateName<States>>,
-  EntityStateValueOf<States, EntityStateName<States>>,
+  StateValueOf<States, StateName<States>>,
+  StateValueOf<States, StateName<States>>,
   DecodeModule.DecodeError
 > {
   readonly states: States
@@ -441,33 +446,20 @@ export interface EntityStateDescriptor<
 export type EntityStateOf<
   D extends EntityStateDescriptor<string, any, any>,
   State extends keyof D["states"] & string = keyof D["states"] & string
-> = EntityStateValueOf<D["states"], State>
+> = StateValueOf<D["states"], State>
 
-/** The `states` argument, or the message naming what is wrong with it. */
-type CheckedStates<States extends EntityStateDefinitions> = [EntityStateName<States>] extends [never]
-  ? { readonly "an entity state needs at least one state": EntityStateFields }
+/**
+ * The `states` argument of an entity state or a state machine, or the message
+ * naming what is wrong with it: `Empty` is the message for a record without
+ * states.
+ */
+export type CheckedStates<States extends StateDefinitions, Empty extends string> = [StateName<States>] extends [never]
+  ? { readonly [Message in Empty]: StateFields }
   : {
     readonly [State in keyof States]: "_tag" extends keyof States[State]
       ? { readonly _tag: "`_tag` holds the state's name: give this field another name" }
       : unknown
   }
-
-/** The codec of every value of `states`: its `_tag` names a state, and the rest decodes as that state's fields. */
-const entityStateCodec = (states: EntityStateDefinitions): DecodeModule.Codec<{ readonly _tag: string }> => {
-  const names = Object.keys(states) as [string, ...Array<string>]
-  const tag = DecodeModule.literal(...names)
-  const fields = new Map(names.map((name) => [name, DecodeModule.struct(states[name]!)]))
-  const decode = (raw: unknown): ResultModule.Result<{ readonly _tag: string }, DecodeModule.DecodeError> => {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return ResultModule.failure({ _tag: "DecodeError", path: "$", expected: "object", actual: raw })
-    }
-    const name = tag.decode((raw as { readonly _tag?: unknown })._tag)
-    if (!name.ok) return ResultModule.failure({ ...name.error, path: "$._tag" })
-    const value = fields.get(name.value)!.decode(raw)
-    return value.ok ? ResultModule.success({ _tag: name.value, ...value.value }) : value
-  }
-  return { decode, result: decode }
-}
 
 /**
  * Defines a per-entity state: a component whose value is one of `states`,
@@ -514,16 +506,16 @@ const entityStateCodec = (states: EntityStateDefinitions): DecodeModule.Codec<{ 
  */
 export const EntityState = <
   const Name extends string,
-  const States extends EntityStateDefinitions,
+  const States extends StateDefinitions,
   const Transitions extends EntityStateTransitions<States> | undefined = undefined
 >(
   name: Name,
-  states: States & CheckedStates<States>,
+  states: States & CheckedStates<States, "an entity state needs at least one state">,
   options?: {
     readonly transitions: Transitions & { readonly [Key in Exclude<keyof Transitions, keyof States>]: never }
   }
 ): EntityStateDescriptor<Name, States, Transitions> => ({
-  ...makeConstructedDescriptor("component", name, entityStateCodec(states)),
+  ...makeConstructedDescriptor("component", name, stateCodec(states)),
   states,
   transitions: options?.transitions
 }) as unknown as EntityStateDescriptor<Name, States, Transitions>
@@ -531,7 +523,7 @@ export const EntityState = <
 /** Whether a descriptor was built with {@link EntityState}. */
 export const isEntityState = (
   descriptor: Descriptor.Any
-): descriptor is EntityStateDescriptor<string, EntityStateDefinitions, EntityStateTransitions<EntityStateDefinitions> | undefined> =>
+): descriptor is EntityStateDescriptor<string, StateDefinitions, EntityStateTransitions<StateDefinitions> | undefined> =>
   "states" in descriptor
 
 /**
@@ -751,4 +743,5 @@ export const Relation = <const Name extends string, const RelatedName extends st
 ) => makePair("relation", name, relatedName)
 import * as DecodeModule from "./Decode.ts"
 import { makePair } from "./internal/relations.ts"
+import { stateCodec } from "./internal/states.ts"
 import * as ResultModule from "./Result.ts"

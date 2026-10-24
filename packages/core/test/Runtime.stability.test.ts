@@ -12,7 +12,7 @@ describe("Runtime stabilization APIs", () => {
       resources: { Count },
       events: { Signal }
     }))
-    const Mode = Game.StateMachine("Stability/Mode", ["Ready", "Broken"] as const)
+    const Mode = Game.StateMachine("Stability/Mode", { Ready: {}, Broken: {} })
     const Positions = Game.Query({
       selection: {
         position: Game.Query.write(Position)
@@ -42,7 +42,7 @@ describe("Runtime stabilization APIs", () => {
         }
         resources.count.set(99)
         events.signal.emit(99)
-        nextMachines.mode.set("Broken")
+        nextMachines.mode.set({ _tag: "Broken" })
         commands.spawn(Game.Command.spawn([Position, { x: 99 }]))
         return Result.failure("Rejected" as const)
       }
@@ -69,14 +69,14 @@ describe("Runtime stabilization APIs", () => {
         observedPosition = position.ok ? position.value.data.position.get().x : -1
         observedCount = resources.count.get()
         observedSignals = events.signal.all()
-        observedMode = machines.mode.get()
+        observedMode = machines.mode.get()._tag
       }
     )
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Count: 1 },
-      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Ready"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Ready" }))
     }).value
 
     expect(runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))).toEqual({ ok: true, value: undefined })
@@ -171,11 +171,11 @@ describe("Runtime stabilization APIs", () => {
 
   it("propagates an expected failure from a state-transition schedule", () => {
     const Game = Schema.bind(Schema.fragment({}))
-    const Mode = Game.StateMachine("TransitionFailure/Mode", ["Menu", "Playing"] as const)
+    const Mode = Game.StateMachine("TransitionFailure/Mode", { Menu: {}, Playing: {} })
     const start = Game.System(
       "TransitionFailure/Start",
       { nextMachines: { mode: Game.System.nextState(Mode) } },
-      ({ nextMachines }) => { nextMachines.mode.set("Playing") }
+      ({ nextMachines }) => { nextMachines.mode.set({ _tag: "Playing" }) }
     )
     const load = Game.System(
       "TransitionFailure/Load",
@@ -192,7 +192,7 @@ describe("Runtime stabilization APIs", () => {
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
-      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Menu"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Menu" }))
     }).value
 
     expect(runtime.tick(schedule)).toEqual({

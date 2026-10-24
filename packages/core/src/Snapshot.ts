@@ -48,6 +48,7 @@
  * }
  * ```
  */
+import type { DecodeError } from "./Decode.ts"
 import type { DecodableDescriptor, Descriptor, TransientDescriptor } from "./Descriptor.ts"
 import * as Result from "./Result.ts"
 import type { Schema } from "./Schema.ts"
@@ -92,9 +93,12 @@ export interface EntitySnapshot {
 /**
  * The snapshot format version `snapshot()` writes and `restore()` accepts.
  * Version 1 had no scope membership; restoring one would leave every scoped
- * entity outside its scope, so it is rejected (`UnsupportedVersion`).
+ * entity outside its scope. Version 2 saved a machine as its state's name
+ * (`"Playing"`), where version 3 saves the state with its fields
+ * (`{ _tag: "Playing", level: 2 }`). Older versions are rejected
+ * (`UnsupportedVersion`).
  */
-export const version = 2
+export const version = 3
 
 /** What `runtime.snapshot()` writes and `runtime.restore(...)` reads: the world as plain data. */
 export interface WorldSnapshot {
@@ -112,8 +116,12 @@ export interface WorldSnapshot {
   readonly relations: Readonly<Record<string, ReadonlyArray<readonly [number, ReadonlyArray<number>]>>>
   /** Resource values by descriptor name. */
   readonly resources: Readonly<Record<string, unknown>>
-  /** Committed machine values by machine name. */
-  readonly machines: Readonly<Record<string, string | number>>
+  /**
+   * Committed machine values by machine name: the state's name in `_tag`,
+   * next to its fields. `restore` decodes each with the machine's state
+   * codecs.
+   */
+  readonly machines: Readonly<Record<string, unknown>>
   /**
    * Entity scope membership: per scope name, the ids of the entities spawned
    * into it (`commands.spawnIn`), so `despawnScope` still finds them after a
@@ -139,9 +147,10 @@ export type RestoreError =
   | { readonly _tag: "UnknownRelation"; readonly name: string }
   | { readonly _tag: "InvalidRelation"; readonly name: string; readonly sourceId: number; readonly targetId: number }
   | { readonly _tag: "UnknownMachine"; readonly name: string }
-  | { readonly _tag: "InvalidMachineState"; readonly name: string; readonly value: unknown }
+  /** A saved machine value that is not one of its states with that state's fields; `error.path` says where. */
+  | { readonly _tag: "InvalidMachineState"; readonly name: string; readonly error: DecodeError }
   /** A saved sub-state value while its parent machine is not in the state the sub-state exists in. */
-  | { readonly _tag: "InactiveSubState"; readonly name: string; readonly parent: string; readonly requires: unknown }
+  | { readonly _tag: "InactiveSubState"; readonly name: string; readonly parent: string; readonly requires: string }
   | { readonly _tag: "DuplicateEntity"; readonly entityId: number }
   /** A scope name that no `Game.EntityScope(...)` of this game defines. */
   | { readonly _tag: "UnknownScope"; readonly name: string }
@@ -187,11 +196,7 @@ export const parse = (data: unknown): Result.Result<WorldSnapshot, RestoreError>
     }
   }
   if (!isRecord(data["resources"])) return invalid("$.resources")
-  const machines = data["machines"]
-  if (!isRecord(machines)) return invalid("$.machines")
-  for (const [name, value] of Object.entries(machines)) {
-    if (typeof value !== "string" && typeof value !== "number") return invalid(`$.machines.${name}`)
-  }
+  if (!isRecord(data["machines"])) return invalid("$.machines")
   const scopes = data["scopes"]
   if (!isRecord(scopes)) return invalid("$.scopes")
   for (const [name, members] of Object.entries(scopes)) {

@@ -3,17 +3,17 @@ import { Decode, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 
 const Name = Descriptor.ConstructedComponent(Decode.string)("SubStates/Name")
 const Game = Schema.bind(Schema.fragment({ components: { Name } }))
-const Session = Game.StateMachine("SubStates/Session", ["Menu", "Playing"] as const)
-const Phase = Game.StateMachine("SubStates/Phase", ["Setup", "Battle"] as const, { within: [Session, "Playing"] })
-const Turn = Game.StateMachine("SubStates/Turn", ["Mine", "Theirs"] as const, { within: [Phase, "Battle"] })
+const Session = Game.StateMachine("SubStates/Session", { Menu: {}, Playing: {} })
+const Phase = Game.StateMachine("SubStates/Phase", { Setup: {}, Battle: {} }, { within: [Session, "Playing"] })
+const Turn = Game.StateMachine("SubStates/Turn", { Mine: {}, Theirs: {} }, { within: [Phase, "Battle"] })
 const Battlefield = Game.EntityScope("SubStates/Battlefield", { despawnOnExit: [Phase, "Battle"] })
 
 const makeRuntime = (session: "Menu" | "Playing") => Game.Runtime.make({
   services: Game.Runtime.services(),
   machines: Game.Runtime.machines(
-    Game.Runtime.machine(Session, session),
-    Game.Runtime.machine(Phase, "Setup"),
-    Game.Runtime.machine(Turn, "Mine")
+    Game.Runtime.machine(Session, { _tag: session }),
+    Game.Runtime.machine(Phase, { _tag: "Setup" }),
+    Game.Runtime.machine(Turn, { _tag: "Mine" })
   )
 }).value
 
@@ -24,7 +24,7 @@ const Read = Game.System("SubStates/Read", {
   machines: { phase: Game.System.machine(Phase), turn: Game.System.machine(Turn) },
   transitionEvents: { phase: Game.System.readTransitionEvent(Phase) }
 }, ({ machines, transitionEvents }) => {
-  log.push(`phase=${String(machines.phase.get())} turn=${String(machines.turn.get())} events=${JSON.stringify(transitionEvents.phase.all())}`)
+  log.push(`phase=${String(machines.phase.get()?._tag)} turn=${String(machines.turn.get()?._tag)} events=${JSON.stringify(transitionEvents.phase.all())}`)
 })
 
 const InBattle = Game.Schedule.when([Game.Condition.inState(Phase, "Battle")], note("inBattle"))
@@ -33,12 +33,12 @@ const sets: Array<unknown> = []
 const setPhase = (value: "Setup" | "Battle") => Game.System(`SubStates/Set${value}`, {
   nextMachines: { phase: Game.System.nextState(Phase) }
 }, ({ nextMachines }) => {
-  sets.push(nextMachines.phase.set(value))
+  sets.push(nextMachines.phase.set({ _tag: value }))
 })
 const setSession = (value: "Menu" | "Playing") => Game.System(`SubStates/Session${value}`, {
   nextMachines: { session: Game.System.nextState(Session) }
 }, ({ nextMachines }) => {
-  nextMachines.session.set(value)
+  nextMachines.session.set({ _tag: value })
 })
 
 const SpawnBattlefield = Game.System("SubStates/SpawnBattlefield", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
@@ -117,7 +117,7 @@ describe("sub-states", () => {
     const runtime = makeRuntime("Playing")
     runtime.tick(Game.Schedule(setPhase("Battle"), Game.Schedule.applyStateTransitions(transitions), Read))
     const again = Game.System("SubStates/PlayingAgain", { nextMachines: { session: Game.System.nextState(Session) } }, ({ nextMachines }) => {
-      nextMachines.session.setIfChanged("Playing")
+      nextMachines.session.setIfChanged({ _tag: "Playing" })
     })
     log.length = 0
     runtime.tick(Game.Schedule(again, Game.Schedule.applyStateTransitions(transitions), Read))
@@ -177,7 +177,7 @@ describe("sub-states", () => {
     const bundle = Game.Schedule.transitions(Game.Schedule.onEnter(Session, "Playing", [SpawnLobby, Game.Schedule.applyDeferred()]))
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
-      machines: Game.Runtime.machines(Game.Runtime.machine(Session, "Menu"), Game.Runtime.machine(Phase, "Setup"), Game.Runtime.machine(Turn, "Mine"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Session, { _tag: "Menu" }), Game.Runtime.machine(Phase, { _tag: "Setup" }), Game.Runtime.machine(Turn, { _tag: "Mine" }))
     }).value
     runtime.tick(Game.Schedule(setSession("Playing"), Game.Schedule.applyStateTransitions(bundle)))
     // The sub-state enters together with its parent, before the parent's onEnter, so the spawn survives.
@@ -188,11 +188,11 @@ describe("sub-states", () => {
     const playing = makeRuntime("Playing")
     playing.tick(Game.Schedule(setPhase("Battle"), Game.Schedule.applyStateTransitions(transitions)))
     const battle = playing.snapshot()
-    expect(battle.machines).toEqual({ "SubStates/Session": "Playing", "SubStates/Phase": "Battle", "SubStates/Turn": "Mine" })
+    expect(battle.machines).toEqual({ "SubStates/Session": { _tag: "Playing" }, "SubStates/Phase": { _tag: "Battle" }, "SubStates/Turn": { _tag: "Mine" } })
 
     const menu = makeRuntime("Menu")
     const atMenu = menu.snapshot()
-    expect(atMenu.machines).toEqual({ "SubStates/Session": "Menu" })
+    expect(atMenu.machines).toEqual({ "SubStates/Session": { _tag: "Menu" } })
 
     // Restoring the menu save into a playing runtime clears the sub-states.
     expect(playing.restore(atMenu)).toEqual({ ok: true, value: undefined })
@@ -207,13 +207,13 @@ describe("sub-states", () => {
     expect(log).toEqual(["phase=Battle turn=Mine events=[]"])
 
     // A sub-state value whose parent is elsewhere is rejected.
-    expect(menu.restore({ ...atMenu, machines: { "SubStates/Session": "Menu", "SubStates/Phase": "Battle" } })).toEqual({
+    expect(menu.restore({ ...atMenu, machines: { "SubStates/Session": { _tag: "Menu" }, "SubStates/Phase": { _tag: "Battle" } } })).toEqual({
       ok: false,
       error: { _tag: "InactiveSubState", name: "SubStates/Phase", parent: "SubStates/Session", requires: "Playing" }
     })
 
     // A save without the sub-state while its parent is there enters the entry value.
-    expect(menu.restore({ ...atMenu, machines: { "SubStates/Session": "Playing" } })).toEqual({ ok: true, value: undefined })
+    expect(menu.restore({ ...atMenu, machines: { "SubStates/Session": { _tag: "Playing" } } })).toEqual({ ok: true, value: undefined })
     log.length = 0
     menu.tick(Game.Schedule(Read))
     expect(log).toEqual(["phase=Setup turn=undefined events=[]"])
@@ -222,13 +222,13 @@ describe("sub-states", () => {
   it("is described with its parent, and a scope on it counts its parent's next states", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
-      machines: Game.Runtime.machines(Game.Runtime.machine(Session, "Menu"), Game.Runtime.machine(Phase, "Setup")),
+      machines: Game.Runtime.machines(Game.Runtime.machine(Session, { _tag: "Menu" }), Game.Runtime.machine(Phase, { _tag: "Setup" })),
       debug: { hostClock: HostClock.test() }
     }).value
     runtime.debug.nameSchedules({ update: Game.Schedule(setSession("Playing"), Game.Schedule.applyStateTransitions(transitions)) })
     const description = runtime.debug.describe()
     expect(description.machines.map(({ name, current, provided, within }) => ({ name, current, provided, within }))).toEqual([
-      { name: "SubStates/Session", current: "Menu", provided: true, within: undefined },
+      { name: "SubStates/Session", current: { _tag: "Menu" }, provided: true, within: undefined },
       { name: "SubStates/Phase", current: undefined, provided: true, within: "SubStates/Session=Playing" },
       { name: "SubStates/Turn", current: undefined, provided: false, within: "SubStates/Phase=Battle" }
     ])

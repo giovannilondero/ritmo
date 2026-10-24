@@ -10,13 +10,13 @@ const Enemy = Descriptor.Tag("Check/Enemy")
 const Ping = Descriptor.Event<number>()("Check/Ping")
 
 const Game = Schema.bind(Schema.fragment({ components: { Enemy }, resources: { Freeze, Log }, events: { Ping } }))
-const Flow = Game.StateMachine("Check/Flow", ["Playing", "Over"] as const)
+const Flow = Game.StateMachine("Check/Flow", { Playing: {}, Over: {} })
 
 const makeRuntime = (freeze = 0, flow: "Playing" | "Over" = "Playing") =>
   Game.Runtime.make({
     services: Runtime.services(),
     resources: { Freeze: { remaining: freeze }, Log: [] },
-    machines: Runtime.machines(Runtime.machine(Flow, flow)),
+    machines: Runtime.machines(Runtime.machine(Flow, { _tag: flow })),
     debug: { hostClock }
   }).value
 
@@ -35,7 +35,7 @@ describe("Condition.check", () => {
     const playingUnfrozen = Game.Condition.check("playingUnfrozen", {
       resources: { freeze: Game.System.readResource(Freeze) },
       machines: { flow: Game.System.machine(Flow) }
-    }, ({ resources, machines }) => machines.flow.get() === "Playing" && resources.freeze.get().remaining <= 0)
+    }, ({ resources, machines }) => machines.flow.is("Playing") && resources.freeze.get().remaining <= 0)
     const schedule = Game.Schedule.when([playingUnfrozen], logs("a"), logs("b"))
 
     for (const [freeze, flow, expected] of [[0, "Playing", ["a", "b"]], [1, "Playing", []], [0, "Over", []]] as const) {
@@ -117,7 +117,7 @@ describe("Condition.check", () => {
     const withoutFreeze = Game.Runtime.make({
       services: Runtime.services(),
       resources: { Log: [] },
-      machines: Runtime.machines(Runtime.machine(Flow, "Playing"))
+      machines: Runtime.machines(Runtime.machine(Flow, { _tag: "Playing" }))
     }).value
     expect(withoutFreeze.tryTick(Game.Schedule.when([Game.Condition.not(frozen)], logs("a")))).toEqual({
       ok: false,

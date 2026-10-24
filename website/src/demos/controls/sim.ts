@@ -96,7 +96,7 @@ export const Game = Schema.bind(
   Schema.defineRoot("Controls")
 )
 
-export const Mode = Game.StateMachine("Controls/Mode", ["Playing", "Paused"])
+export const Mode = Game.StateMachine("Controls/Mode", { Playing: {}, Paused: {} })
 
 // ── Rules ───────────────────────────────────────────────────────────────
 
@@ -121,7 +121,7 @@ const TogglePause = Game.System(
     nextMachines: { mode: Game.System.nextState(Mode) }
   },
   ({ resources, machines, nextMachines }) => {
-    if (resources.input.get().actions.pause.pressed) nextMachines.mode.set(machines.mode.get() === "Playing" ? "Paused" : "Playing")
+    if (resources.input.get().actions.pause.pressed) nextMachines.mode.set({ _tag: machines.mode.is("Playing") ? "Paused" : "Playing" })
   }
 )
 
@@ -208,7 +208,7 @@ export const ReadLab = Game.Inspector("Controls/ReadLab", {
     heading: found?.data.ball.get().heading ?? 0,
     ready: (found?.data.ball.get().cooldown ?? 0) === 0,
     dashes: resources.dashes.get(),
-    paused: machines.mode.get() === "Paused",
+    paused: machines.mode.is("Paused"),
     input: resources.input.get()
   }
 })
@@ -225,7 +225,7 @@ export const initialResources = () => ({
   })
 } as const)
 
-export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, "Playing"))
+export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Playing" }))
 
 const world = (controls: ControlsSource) => ({
   services: Game.Runtime.services(Game.Runtime.service(ControlsInput, controls)),

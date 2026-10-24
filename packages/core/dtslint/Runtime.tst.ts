@@ -402,21 +402,21 @@ describe("Decode", () => {
 })
 
 describe("Runtime.services and Runtime.machines", () => {
-  const Flow = Game.StateMachine("RuntimeTypes/Flow", ["Menu", "Playing"] as const)
+  const Flow = Game.StateMachine("RuntimeTypes/Flow", { Menu: {}, Playing: {} })
   const silent = { log: (_: string) => {} }
 
   it("collects one provision per service and machine", () => {
     expect(Runtime.services(Runtime.service(Logger, silent), Runtime.service(PrefixedLogger, silent))).type.toBe<
       Runtime.RuntimeServices<{ readonly Logger: { readonly log: (message: string) => void }; readonly "RuntimeTypes/Logger": { readonly log: (message: string) => void } }>
     >()
-    expect(Runtime.machines(Runtime.machine(Flow, "Menu"))).type.toBe<Runtime.RuntimeMachines<{ readonly "RuntimeTypes/Flow": "Menu" | "Playing" }>>()
+    expect(Runtime.machines(Runtime.machine(Flow, { _tag: "Menu" }))).type.toBe<Runtime.RuntimeMachines<{ readonly "RuntimeTypes/Flow": { readonly _tag: "Menu" } | { readonly _tag: "Playing" } }>>()
   })
 
   it("rejects a service or machine provided twice", () => {
     // @ts-expect-error Logger is provided twice: keep one Game.Runtime.service(...) for it
     Runtime.services(Runtime.service(Logger, silent), Runtime.service(Logger, silent))
     // @ts-expect-error RuntimeTypes/Flow is provided twice: keep one Game.Runtime.machine(...) for it
-    Runtime.machines(Runtime.machine(Flow, "Menu"), Runtime.machine(Flow, "Playing"))
+    Runtime.machines(Runtime.machine(Flow, { _tag: "Menu" }), Runtime.machine(Flow, { _tag: "Playing" }))
   })
 })
 

@@ -6,7 +6,7 @@ const Ping = Descriptor.Event<number>()("Documented/Ping")
 const Gold = Descriptor.ConstructedResource(Decode.number)("Documented/Gold")
 const Gems = Descriptor.ConstructedResource(Decode.number)("Documented/Gems")
 const Game = Schema.bind(Schema.fragment({ components: { Count }, events: { Ping }, resources: { Gold, Gems } }))
-const Flow = Game.StateMachine("Documented/Flow", ["A", "B"] as const)
+const Flow = Game.StateMachine("Documented/Flow", { A: {}, B: {} })
 
 const unwrap = <T>(result: { readonly ok: true; readonly value: T } | { readonly ok: false }): T => {
   if (!result.ok) throw new Error("expected success")
@@ -15,7 +15,7 @@ const unwrap = <T>(result: { readonly ok: true; readonly value: T } | { readonly
 const makeRuntime = () => unwrap(Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Gold: 1, Gems: 1 },
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "A"))
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "A" }))
 }))
 
 describe("documented semantics", () => {
@@ -48,7 +48,7 @@ describe("documented semantics", () => {
     const Watch = Game.System("Documented/Watch", { machines: { flow: Game.System.machine(Flow) } }, () => {})
     const changed = (label: string) => Game.Schedule.when([Game.Condition.stateChanged(Flow)], Game.System(`Documented/${label}`, {}, () => { seen.push(true) }))
     const ToB = Game.System("Documented/ToB", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
-      nextMachines.flow.set("B")
+      nextMachines.flow.set({ _tag: "B" })
     })
     runtime.tick(Game.Schedule(Watch, ToB, Game.Schedule.applyStateTransitions(), changed("First"), changed("Second")))
     runtime.tick(Game.Schedule(changed("Later")))

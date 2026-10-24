@@ -16,7 +16,7 @@
  * @example
  * ```ts
  * // Model a gameplay phase whose transition timing matters.
- * const GameFlow = Machine.StateMachine("Game/GameFlow", ["Menu", "Playing"] as const)
+ * const GameFlow = Game.StateMachine("Game/GameFlow", { Menu: {}, Playing: { level: Decode.integer } })
  *
  * // Gate one system so it only runs in the committed playing phase.
  * const isPlaying = Machine.inState(GameFlow, "Playing")
@@ -37,6 +37,7 @@
  * @groupDescription Functions
  * Public constructors for machines, conditions, and explicit transition bundles.
  */
+import type { StateDefinitions, StateValueOf } from "./Descriptor.ts"
 import type { AnyScheduleOrder, Schedule } from "./Schedule.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
@@ -44,26 +45,19 @@ import type { Schema } from "./Schema.ts"
 import type { SystemFailure } from "./System.ts"
 
 /**
- * Allowed literal values for the first finite-state-machine API.
- *
- * This stays intentionally small and serializable. String and number literals
- * cover the common "phase enum" use cases cleanly in TypeScript.
- */
-export type StateValue = string | number
-
-/**
- * One schema-bound finite state machine definition.
+ * One schema-bound finite state machine definition: its states, each with its
+ * own fields (`{}` for a state without data).
  */
 export interface StateMachineDefinition<
   out Name extends string = string,
-  out Values extends readonly [StateValue, ...StateValue[]] = readonly [StateValue, ...StateValue[]],
+  out States extends StateDefinitions = StateDefinitions,
   out Root = unknown,
   out Parent = unknown
 > {
   readonly kind: "stateMachine"
   readonly name: Name
   readonly key: symbol
-  readonly values: Values
+  readonly states: States
   /** For a sub-state: the machine and the state it exists in. */
   readonly within?: SubStateParent | undefined
   readonly __schemaRoot?: Root | undefined
@@ -74,7 +68,32 @@ export interface StateMachineDefinition<
 /** Where a sub-state exists: while `machine` is in `state`. */
 export interface SubStateParent {
   readonly machine: StateMachine.Any
-  readonly state: StateValue
+  readonly state: string
+}
+
+/**
+ * The value of a machine, or of one of its states: its name in `_tag`, next
+ * to that state's fields. What game functions that work on the mode take and
+ * return.
+ *
+ * @example
+ * ```ts
+ * const Mode = Game.StateMachine("Town/Mode", {
+ *   Exploring: {},
+ *   Talking: { speaker: Decode.string, page: Decode.integer }
+ * })
+ * const nextPage = (talking: Machine.StateOf<typeof Mode, "Talking">) => talking.page + 1
+ * const describe = (mode: Machine.StateOf<typeof Mode>) => mode._tag
+ * ```
+ */
+export type StateOf<
+  M extends StateMachine.Any,
+  State extends StateMachine.State<M> = StateMachine.State<M>
+> = StateValueOf<M["states"], State>
+
+/** Any machine's value, as tools that print every machine see it. */
+export interface AnyValue {
+  readonly _tag: string
 }
 
 /**
@@ -90,10 +109,14 @@ export type IsSubState<M> =
  * always has one.
  */
 export type CurrentValue<M extends StateMachine.Any> =
-  IsSubState<M> extends true ? StateMachine.Value<M> | undefined : StateMachine.Value<M>
+  IsSubState<M> extends true ? StateOf<M> | undefined : StateOf<M>
+
+/** The name of `M`'s committed state; `undefined` for a sub-state without a value. */
+export type CurrentState<M extends StateMachine.Any> =
+  IsSubState<M> extends true ? StateMachine.State<M> | undefined : StateMachine.State<M>
 
 /**
- * Why queuing a sub-state's next value failed: its parent machine is not in
+ * Why queuing or updating a sub-state failed: its parent machine is not in
  * the state the sub-state exists in, so there is nothing to change.
  */
 export interface SubStateInactive {
@@ -103,7 +126,20 @@ export interface SubStateInactive {
   /** The parent machine's name. */
   readonly parent: string
   /** The parent state the sub-state exists in. */
-  readonly requires: StateValue
+  readonly requires: string
+}
+
+/**
+ * An `update` found the machine in another state, so nothing was written.
+ */
+export interface MachineStateMismatch<State extends string = string> {
+  readonly _tag: "MachineStateMismatch"
+  /** The machine's name. */
+  readonly machine: string
+  /** The state `update` was given. */
+  readonly expected: State
+  /** The state the machine was actually in. */
+  readonly actual: State
 }
 
 /**
@@ -115,13 +151,25 @@ export type SetResult<M extends StateMachine.Any> =
   IsSubState<M> extends true ? Result.Result<void, SubStateInactive> : void
 
 /**
- * The runtime-visible transition payload for one machine. For a sub-state,
- * `from` is `undefined` when it starts existing (its parent entered its
- * state) and `to` is `undefined` when it stops.
+ * What `machines.x.update(...)` returns: a failure with
+ * `MachineStateMismatch` when the machine is in another state, and for a
+ * sub-state with `SubStateInactive` when it has no value.
+ */
+export type UpdateResult<M extends StateMachine.Any> = Result.Result<
+  void,
+  MachineStateMismatch<StateMachine.State<M>> | (IsSubState<M> extends true ? SubStateInactive : never)
+>
+
+/**
+ * The runtime-visible transition payload for one machine: the names of the
+ * states it left and entered. The entered state's fields are the machine's
+ * value (`machines.x.get()`); in `onExit` the value is still the state being
+ * left. For a sub-state, `from` is `undefined` when it starts existing (its
+ * parent entered its state) and `to` is `undefined` when it stops.
  */
 export interface TransitionSnapshot<M extends StateMachineDefinition = StateMachineDefinition> {
-  readonly from: CurrentValue<M>
-  readonly to: CurrentValue<M>
+  readonly from: CurrentState<M>
+  readonly to: CurrentState<M>
 }
 
 /**
@@ -129,6 +177,16 @@ export interface TransitionSnapshot<M extends StateMachineDefinition = StateMach
  */
 export interface MachineRead<M extends StateMachineDefinition = StateMachineDefinition> {
   readonly machine: M
+  readonly mode: "read"
+}
+
+/**
+ * Immediate write access to the fields of the current state in a system spec
+ * (`Game.System.updateMachine`). It reads too.
+ */
+export interface MachineUpdate<M extends StateMachineDefinition = StateMachineDefinition> {
+  readonly machine: M
+  readonly mode: "update"
 }
 
 /**
@@ -156,18 +214,19 @@ export interface TransitionEventRead<M extends StateMachineDefinition = StateMac
  * A typed declarative run condition.
  */
 export type Condition<Root = unknown> =
-  | InStateCondition<StateMachineDefinition<string, readonly [StateValue, ...StateValue[]], Root>>
-  | StateChangedCondition<StateMachineDefinition<string, readonly [StateValue, ...StateValue[]], Root>>
+  | InStateCondition<StateMachineDefinition<string, StateDefinitions, Root>>
+  | StateChangedCondition<StateMachineDefinition<string, StateDefinitions, Root>>
   | NotCondition<Condition<Root>, Requirement.Requirement>
   | AndCondition<ReadonlyArray<Condition<Root>>, Requirement.Requirement>
   | OrCondition<ReadonlyArray<Condition<Root>>, Requirement.Requirement>
   | CheckCondition<Root>
 
-/** Made by `inState(machine, value)`. */
+/** Made by `inState(machine, state)`. */
 export interface InStateCondition<M extends StateMachineDefinition = StateMachineDefinition> {
   readonly kind: "inState"
   readonly machine: M
-  readonly value: StateMachine.Value<M>
+  /** Checked against `M` by `inState`; a plain string keeps the condition covariant in `M`. */
+  readonly state: string
   readonly requirements: ReadonlyArray<Requirement.RequirementValue>
   readonly __conditionNeeds?: M | undefined
 }
@@ -270,9 +329,12 @@ export interface TransitionScheduleDefinition<
   readonly transition: {
     readonly machine: M
     readonly phase: "enter" | "exit" | "transition"
-    readonly state?: StateMachine.Value<M>
-    readonly from?: StateMachine.Value<M>
-    readonly to?: StateMachine.Value<M>
+    // State names as plain strings: `onEnter` / `onExit` / `onTransition`
+    // check them against `M`, and a name type here would make the schedule
+    // invariant in `M` (`keyof`), so it would not fit `AnyTransitionSchedule`.
+    readonly state?: string
+    readonly from?: string
+    readonly to?: string
   }
 }
 
@@ -280,9 +342,10 @@ export interface TransitionScheduleDefinition<
  * Type-level and value-level helpers for finite-state machines.
  */
 export namespace StateMachine {
-  export type Any = StateMachineDefinition<string, readonly [StateValue, ...StateValue[]], unknown, unknown>
-  export type Value<M extends Any> = M["values"][number]
-  export type Root<M extends Any> = M extends StateMachineDefinition<string, readonly [StateValue, ...StateValue[]], infer R> ? R : never
+  export type Any = StateMachineDefinition<string, StateDefinitions, unknown, unknown>
+  /** The names of `M`'s states. */
+  export type State<M extends Any> = keyof M["states"] & string
+  export type Root<M extends Any> = M extends StateMachineDefinition<string, StateDefinitions, infer R> ? R : never
   export type AnyCondition<Root = unknown> = Condition<Root>
   export type AnyTransitionSchedule<S extends Schema.Any = Schema.Any, Root = unknown> =
     TransitionScheduleDefinition<S, Any, Requirement.Requirement, Root, SystemFailure>
@@ -294,7 +357,7 @@ export namespace StateMachine {
  * message.
  */
 export type SameGame<M, Root> =
-  M extends StateMachineDefinition<infer Name, readonly [StateValue, ...StateValue[]], infer MachineRoot>
+  M extends StateMachineDefinition<infer Name, StateDefinitions, infer MachineRoot>
     ? [Root] extends [MachineRoot]
       ? [MachineRoot] extends [Root]
         ? unknown
@@ -335,38 +398,27 @@ export type MachineNeedsFromConditions<C extends ReadonlyArray<Condition>> =
 
 /**
  * Creates a schema-bound finite-state machine definition: one game-wide mode.
- *
- * This is the intended default for gameplay phases and other discrete modes
- * where the transition boundary itself matters.
- *
- * Prefer a machine over a plain resource when code depends on:
- *
- * - queued `nextState(...)` writes
- * - explicit `applyStateTransitions(...)`
- * - `inState(...)` gating
- * - transition events or enter/exit schedules
+ * Games declare machines with `Game.StateMachine(...)`, whose JSDoc describes
+ * the states and their data.
  *
  * Use `Descriptor.EntityState(...)` instead when every entity carries its own
  * state (per-entity, written immediately, no enter/exit schedules).
- *
- * Pass `within` for a sub-state: a machine that exists only while another
- * machine is in one state (`Game.StateMachine(name, values, { within })`).
  */
 export const StateMachine = <
   const Name extends string,
-  const Values extends readonly [StateValue, ...StateValue[]],
+  const States extends StateDefinitions,
   Root = unknown
 >(
   name: Name,
-  values: Values,
+  states: States,
   within?: SubStateParent
-): StateMachineDefinition<Name, Values, Root> => ({
+): StateMachineDefinition<Name, States, Root> => ({
   kind: "stateMachine",
   name,
   key: Symbol.for(`ritmo/stateMachine/${name}`),
-  values,
+  states,
   ...(within === undefined ? {} : { within })
-}) as StateMachineDefinition<Name, Values, Root>
+}) as StateMachineDefinition<Name, States, Root>
 
 /**
  * Declares that a system wants to read the current committed state.
@@ -375,7 +427,18 @@ export const StateMachine = <
  * until the schedule reaches `applyStateTransitions(...)`.
  */
 export const read = <M extends StateMachine.Any>(machine: M): MachineRead<M> => ({
-  machine
+  machine,
+  mode: "read"
+})
+
+/**
+ * Declares that a system wants to change the fields of the current state
+ * immediately, without leaving it. The state name changes only at the commit;
+ * the current state's fields change immediately.
+ */
+export const update = <M extends StateMachine.Any>(machine: M): MachineUpdate<M> => ({
+  machine,
+  mode: "update"
 })
 
 /**
@@ -406,7 +469,8 @@ export const readTransitionEvent = <M extends StateMachine.Any>(machine: M): Tra
 })
 
 /**
- * Creates a condition that only passes in one exact machine state.
+ * Creates a condition that only passes in one machine state, whatever its
+ * fields.
  *
  * Use this to gate systems or schedule entries by the committed gameplay phase.
  * If you need this kind of gating, the value should generally be modeled as a
@@ -414,11 +478,11 @@ export const readTransitionEvent = <M extends StateMachine.Any>(machine: M): Tra
  */
 export const inState = <M extends StateMachine.Any>(
   machine: M,
-  value: StateMachine.Value<M>
+  state: StateMachine.State<M>
 ): InStateCondition<M> => ({
   kind: "inState",
   machine,
-  value,
+  state,
   requirements: [machine]
 })
 

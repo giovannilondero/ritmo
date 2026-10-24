@@ -7,7 +7,7 @@ describe("Runtime dynamic requirements", () => {
     const Counter = Descriptor.Resource<number>()("RuntimeRequirements/Counter")
     const Logger = Descriptor.Service<{ readonly log: (value: number) => void }>()("RuntimeRequirements/Logger")
     const Game = Schema.bind(Schema.fragment({ resources: { Counter } }))
-    const Phase = Game.StateMachine("RuntimeRequirements/Phase", ["Ready", "Running"] as const)
+    const Phase = Game.StateMachine("RuntimeRequirements/Phase", { Ready: {}, Running: {} })
 
     const run = Game.System("RuntimeRequirements/Run", {
       resources: { counter: Game.System.writeResource(Counter) },
@@ -42,7 +42,7 @@ describe("Runtime dynamic requirements", () => {
       ),
       resources: { Counter: 0 },
       machines: Game.Runtime.machines(
-        Game.Runtime.machine(Phase, "Ready")
+        Game.Runtime.machine(Phase, { _tag: "Ready" })
       )
     }).value
 

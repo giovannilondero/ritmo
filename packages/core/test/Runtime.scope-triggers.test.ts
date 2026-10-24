@@ -8,13 +8,13 @@ const Game = Schema.bind(Schema.fragment({
   components: { Name, Player },
   requires: [Schema.requires(Player, Name)]
 }))
-const Flow = Game.StateMachine("ScopeTriggers/Flow", ["Menu", "Playing", "Paused"] as const)
+const Flow = Game.StateMachine("ScopeTriggers/Flow", { Menu: {}, Playing: {}, Paused: {} })
 const Run = Game.EntityScope("ScopeTriggers/Run", { despawnOnExit: [Flow, "Playing"] })
 const Overlay = Game.EntityScope("ScopeTriggers/Overlay", { despawnOnEnter: [Flow, "Menu"] })
 
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
-  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu")),
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" })),
   debug: { hostClock: HostClock.test() }
 }).value
 
@@ -44,7 +44,7 @@ const ReadDespawned = Game.System("ScopeTriggers/ReadDespawned", {
 const goTo = (state: "Menu" | "Playing" | "Paused") => Game.System(`ScopeTriggers/GoTo${state}`, {
   nextMachines: { flow: Game.System.nextState(Flow) }
 }, ({ nextMachines }) => {
-  nextMachines.flow.set(state)
+  nextMachines.flow.set({ _tag: state })
 })
 
 const transitions = Game.Schedule.transitions(

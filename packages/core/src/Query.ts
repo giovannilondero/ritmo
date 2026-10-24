@@ -70,7 +70,7 @@
  */
 import type { DecodeError, Type } from "./Decode.ts"
 import * as DescriptorModule from "./Descriptor.ts"
-import type { Descriptor, EntityStateDefinitions, EntityStateDescriptor, EntityStateName, EntityStateValueOf } from "./Descriptor.ts"
+import type { Descriptor, StateDefinitions, EntityStateDescriptor, StateName, StateValueOf } from "./Descriptor.ts"
 import type { EntityId, EntityMut, EntityRef } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
@@ -647,27 +647,32 @@ type EntityStateTargets<Transitions, From extends keyof Transitions> =
     (to: infer To) => void ? To : never
 
 /** A state's fields as a write takes them: the value without `_tag`. */
-type EntityStateData<States extends EntityStateDefinitions, State extends EntityStateName<States>> = ReadonlyValue<
+export type StateData<States extends StateDefinitions, State extends StateName<States>> = ReadonlyValue<
   { readonly [Field in keyof States[State]]: Type<States[State][Field]> }
 >
 
 /** `data` of a move into `To`: required with all of `To`'s fields, and absent for a state without fields. */
-type EntityStateMoveData<States extends EntityStateDefinitions, To extends EntityStateName<States>> =
-  [keyof States[To]] extends [never] ? { readonly data?: never } : { readonly data: EntityStateData<States, To> }
-
-/** What `update`'s callback returns for `State`: its fields, and optionally its own `_tag` (from a spread of the current value). */
-type EntityStateUpdateResult<States extends EntityStateDefinitions, State extends EntityStateName<States>> =
-  EntityStateData<States, State> & { readonly _tag?: State }
+type EntityStateMoveData<States extends StateDefinitions, To extends StateName<States>> =
+  [keyof States[To]] extends [never] ? { readonly data?: never } : { readonly data: StateData<States, To> }
 
 /**
- * Rejects `update`'s callback when its result has a field `State` does not
- * have. A spread in a callback's result escapes TypeScript's excess property
- * check, and a field of another state would otherwise be written next to this
- * state's fields.
+ * What the callback of an `update` (of an entity state or a state machine)
+ * returns for `State`: its fields, and optionally its own `_tag` (from a
+ * spread of the current value).
  */
-type EntityStateExactFields<States extends EntityStateDefinitions, State extends EntityStateName<States>, Next> =
+export type StateUpdateResult<States extends StateDefinitions, State extends StateName<States>> =
+  StateData<States, State> & { readonly _tag?: State }
+
+/**
+ * Rejects an `update` callback (of an entity state or a state machine) when
+ * its result has a field `State` does not have. A spread in a callback's
+ * result escapes TypeScript's excess property check, and a field of another
+ * state would otherwise be written next to this state's fields. `Move` names
+ * the way to change state instead.
+ */
+export type StateExactFields<States extends StateDefinitions, State extends StateName<States>, Next, Move extends string> =
   [Exclude<keyof Next, keyof States[State] | "_tag">] extends [never] ? unknown
-    : { readonly data: `${State} has no field ${Exclude<keyof Next, keyof States[State] | "_tag"> & string}: write only this state's fields, or move with transition` }
+    : { readonly data: `${State} has no field ${Exclude<keyof Next, keyof States[State] | "_tag"> & string}: write only this state's fields, or move with ${Move}` }
 
 /**
  * Writable cell for an entity state component (`Descriptor.EntityState`).
@@ -679,8 +684,8 @@ type EntityStateExactFields<States extends EntityStateDefinitions, State extends
  * one of the moves the graph allows from `from`; without one, any pair of
  * states is accepted.
  */
-export interface EntityStateWriteCell<States extends EntityStateDefinitions, Transitions>
-  extends ReadCell<EntityStateValueOf<States, EntityStateName<States>>>
+export interface EntityStateWriteCell<States extends StateDefinitions, Transitions>
+  extends ReadCell<StateValueOf<States, StateName<States>>>
 {
   /**
    * Moves from `from` to `to` if the component is still in `from`, writing
@@ -699,7 +704,7 @@ export interface EntityStateWriteCell<States extends EntityStateDefinitions, Tra
    */
   transition<const From extends keyof States & keyof Transitions & string, const To extends EntityStateTargets<Transitions, From> & keyof States & string>(
     move: { readonly from: From; readonly to: To } & EntityStateMoveData<States, To>
-  ): Result.Result<void, EntityStateMismatchError<EntityStateName<States>>>
+  ): Result.Result<void, EntityStateMismatchError<StateName<States>>>
   /**
    * Changes the fields of `state` if the component is still in it, without
    * leaving it: `data` maps the current value to the new fields.
@@ -709,21 +714,21 @@ export interface EntityStateWriteCell<States extends EntityStateDefinitions, Tra
    * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
    * ```
    */
-  update<const State extends keyof States & string, Next extends EntityStateUpdateResult<States, State>>(
+  update<const State extends keyof States & string, Next extends StateUpdateResult<States, State>>(
     change: {
       readonly state: State
-      readonly data: (current: ReadonlyValue<EntityStateValueOf<States, State>>) => Next
-    } & EntityStateExactFields<States, State, Next>
-  ): Result.Result<void, EntityStateMismatchError<EntityStateName<States>>>
+      readonly data: (current: ReadonlyValue<StateValueOf<States, State>>) => Next
+    } & StateExactFields<States, State, Next, "transition">
+  ): Result.Result<void, EntityStateMismatchError<StateName<States>>>
   /**
    * Writes any value without checking the transition graph or the current
    * state: a reset, or the value a pure function computed from the current
    * one. Use `transition` and `update` for the moves a system makes itself,
    * so the graph and the current state are checked.
    */
-  set(value: ReadonlyValue<EntityStateValueOf<States, EntityStateName<States>>>): void
+  set(value: ReadonlyValue<StateValueOf<States, StateName<States>>>): void
   /** Validates an untrusted value and writes it only on success, like `set`. */
-  setRaw(raw: EntityStateValueOf<States, EntityStateName<States>>): Result.Result<void, DecodeError>
+  setRaw(raw: StateValueOf<States, StateName<States>>): Result.Result<void, DecodeError>
 }
 
 /**
@@ -731,7 +736,7 @@ export interface EntityStateWriteCell<States extends EntityStateDefinitions, Tra
  */
 export type WriteCellForDescriptor<D extends ComponentDescriptor> =
   D extends EntityStateDescriptor<string, infer States, infer Transitions>
-    ? EntityStateWriteCell<States, Transitions extends undefined ? { readonly [State in EntityStateName<States>]: ReadonlyArray<EntityStateName<States>> } : Transitions>
+    ? EntityStateWriteCell<States, Transitions extends undefined ? { readonly [State in StateName<States>]: ReadonlyArray<StateName<States>> } : Transitions>
     : D extends import("./Descriptor.ts").ConstructedDescriptor<"component", string, infer Value, infer Raw, infer Error>
     ? ConstructedWriteCell<Value, Raw, Error>
     : WriteCell<Descriptor.Value<D>>

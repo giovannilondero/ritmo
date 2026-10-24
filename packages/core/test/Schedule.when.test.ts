@@ -7,14 +7,14 @@ const Ping = Descriptor.Event<number>()("ScheduleWhen/Ping")
 const Marker = Descriptor.Tag("ScheduleWhen/Marker")
 
 const Game = Schema.bind(Schema.fragment({ components: { Marker }, resources: { Log }, events: { Ping } }))
-const Mode = Game.StateMachine("ScheduleWhen/Mode", ["Playing", "Paused"] as const)
-const Round = Game.StateMachine("ScheduleWhen/Round", ["Live", "Over"] as const)
+const Mode = Game.StateMachine("ScheduleWhen/Mode", { Playing: {}, Paused: {} })
+const Round = Game.StateMachine("ScheduleWhen/Round", { Live: {}, Over: {} })
 
 const makeRuntime = (mode: "Playing" | "Paused" = "Playing", round: "Live" | "Over" = "Live") =>
   Game.Runtime.make({
     services: Runtime.services(),
     resources: { Log: [] },
-    machines: Runtime.machines(Runtime.machine(Mode, mode), Runtime.machine(Round, round))
+    machines: Runtime.machines(Runtime.machine(Mode, { _tag: mode }), Runtime.machine(Round, { _tag: round }))
   }).value
 
 const ReadLog = Game.Inspector("ScheduleWhen/ReadLog", { resources: { log: Game.System.readResource(Log) } }, ({ resources }) => resources.log.get())

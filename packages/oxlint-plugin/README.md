@@ -65,7 +65,7 @@ const started = performance.now()
 | [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
-| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, or the new state's fields written out |
+| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
 
 ## Simulation rules
 
@@ -194,13 +194,14 @@ Check `cell.present` alone to branch without reading.
 
 ### `ritmo/no-state-spread`
 
-A tagged value, such as the value of a `Descriptor.EntityState` component, changes state with the new state's own fields. Setting `_tag` over a spread of the previous state keeps every field of that state at runtime, while the new state's type hides them: they come back when the value is saved, compared, or spread again.
+A tagged value, such as the value of a `Descriptor.EntityState` component or of a `Game.StateMachine`, changes state with the new state's own fields. Setting `_tag` over a spread of the previous state keeps every field of that state at runtime, while the new state's type hides them: they come back when the value is saved, compared, or spread again.
 
 ```ts
 const popped = { ...ground, _tag: "air", vy: 2 }   // reported: `platform` survives in the air
 
 // instead
 data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+nextMachines.mode.set({ _tag: "Exploring" })       // a machine's move, not { ...talking, _tag: "Exploring" }
 const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
 ```
 

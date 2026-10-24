@@ -36,7 +36,7 @@ describe("InputCapture", () => {
     const Source = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("CaptureTest/Keys")
     const Input = Descriptor.TransientResource<Keyboard.Snapshot<typeof bindings>>()("CaptureTest/Held")
     const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
-    const Pace = Game.StateMachine("CaptureTest/Pace", ["Running", "Frozen"] as const)
+    const Pace = Game.StateMachine("CaptureTest/Pace", { Running: {}, Frozen: {} })
     const keyboard = Keyboard.scripted(bindings, [{ frame: 0, press: ["jump"], release: ["jump"] }])
     const Capture = InputCapture.system(Game, {
       name: "CaptureTest/Gated",
@@ -45,14 +45,14 @@ describe("InputCapture", () => {
       when: [Game.Condition.inState(Pace, "Running")]
     })
     const Resume = Game.System("CaptureTest/Resume", { nextMachines: { pace: Game.System.nextState(Pace) } }, ({ nextMachines }) => {
-      nextMachines.pace.set("Running")
+      nextMachines.pace.set({ _tag: "Running" })
     })
     const ReadInput = Game.Inspector("CaptureTest/ReadInput", { resources: { input: Game.System.readResource(Input) } }, ({ resources }) => resources.input.get())
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Source, keyboard)),
       resources: { Input: Keyboard.idle(bindings) },
-      machines: Game.Runtime.machines(Game.Runtime.machine(Pace, "Frozen"))
+      machines: Game.Runtime.machines(Game.Runtime.machine(Pace, { _tag: "Frozen" }))
     }).value
     runtime.tick(Game.Schedule(Capture))
     expect(keyboard.frames()).toBe(0)

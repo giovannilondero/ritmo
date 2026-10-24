@@ -30,13 +30,13 @@ export const ResolveFacingSystem = Game.System(
         return
       }
 
-      const current = machines.facing.get()
+      const current = machines.facing.get()._tag
       const nextFacing =
         ax > ay ? (velocity.x < 0 ? "Left" : "Right")
         : ay > ax ? (velocity.y < 0 ? "Up" : "Down")
         : current
 
-      nextMachines.facing.setIfChanged(nextFacing)
+      nextMachines.facing.setIfChanged({ _tag: nextFacing })
     }
 )
 
@@ -58,8 +58,8 @@ export const ResolveLocomotionSystem = Game.System(
       }
 
       const velocity = player.value.data.velocity.get()
-      nextMachines.locomotion.setIfChanged(
-        lengthSquared(velocity) > 0 ? "Walking" : "Idle"
-      )
+      nextMachines.locomotion.setIfChanged({
+        _tag: lengthSquared(velocity) > 0 ? "Walking" : "Idle"
+      })
     }
 )

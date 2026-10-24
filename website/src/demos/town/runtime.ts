@@ -13,11 +13,10 @@ export const initialResources = (host: HostValue) => ({
   Time: Clock.start(step),
   Rng: Random.seed(0x7017),
   Host: host,
-  Input: Players.idle({ left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padBindings), touch: Touch.idle({ buttons: touchButtons }) }),
-  Dialogue: null
+  Input: Players.idle({ left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padBindings), touch: Touch.idle({ buttons: touchButtons }) })
 } as const)
 
-export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, "Exploring"))
+export const initialMachines = () => Game.Runtime.machines(Game.Runtime.machine(Mode, { _tag: "Exploring" }))
 
 /**
  * The town without a page: scripted devices, the debug handle on, and the

@@ -10,6 +10,7 @@ tester.run("no-state-spread", rule, {
     "const next = { _tag: \"air\", vy: body.vy, coyote: 0 }",
     // Spreading to change fields of the same state.
     "data.contact.update({ state: \"air\", data: (air) => ({ ...air, vy: air.vy - 1 }) })",
+    "machines.mode.update({ state: \"Talking\", data: (talking) => ({ ...talking, typed: talking.typed + 1 }) })",
     "const next = { ...air, vy: air.vy - 1 }",
     // The tag written before the spread names the state the spread's fields belong to.
     "const value = { _tag: to, ...data }",
@@ -32,6 +33,11 @@ tester.run("no-state-spread", rule, {
     {
       code: "const value = { ...current.action, \"_tag\": next }",
       errors: [{ messageId: "spread", data: { spread: "current.action" } }]
+    },
+    {
+      // A state machine's move: the conversation's fields would survive into Exploring.
+      code: "nextMachines.mode.set({ ...talking, _tag: \"Exploring\" })",
+      errors: [{ messageId: "spread", data: { spread: "talking" } }]
     },
     {
       // A tag written before a spread is fine; one written after it re-tags it.

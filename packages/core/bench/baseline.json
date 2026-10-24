@@ -34,6 +34,11 @@
         "medianMs": 2.064,
         "score": 0.597
       },
+      "machine/update-10k": {
+        "minMs": 4.692,
+        "medianMs": 4.955,
+        "score": 0.944
+      },
       "query/single-in-20k-x1000": {
         "minMs": 0.2661,
         "medianMs": 0.2861,

@@ -175,7 +175,7 @@ const accessOf = (system: Debug.SystemDescription): Access => {
     eventReads: system.events.reads,
     eventWrites: system.events.writes,
     machineReads: system.machines.reads.filter((name) => !system.machines.next.includes(name)),
-    machineWrites: system.machines.next
+    machineWrites: [...system.machines.next, ...system.machines.updates]
   }
 }
 
@@ -371,8 +371,8 @@ export const attach = <S extends Schema.Any, Root>(runtime: Target<S, Root>, opt
     if (machines.length > 0) {
       parts.push("<h3>State machines</h3>")
       for (const [name, machine] of machines) {
-        const pending = machine.pending === undefined ? "" : ` <span class="btm-dim">→ ${escape(String(machine.pending))} (queued)</span>`
-        parts.push(`<div class="btm-row"><span>${escape(short(name))}</span><span class="btm-num">${escape(String(machine.current))}${pending}</span><span></span></div>`)
+        const pending = machine.pending === undefined ? "" : ` <span class="btm-dim">→ ${escape(Format.state(machine.pending))} (queued)</span>`
+        parts.push(`<div class="btm-row"><span>${escape(short(name))}</span><span class="btm-num">${escape(Format.state(machine.current))}${pending}</span><span></span></div>`)
       }
     }
 
