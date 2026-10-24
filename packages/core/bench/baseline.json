@@ -144,6 +144,11 @@
         "medianMs": 0.5775,
         "score": 0.193
       },
+      "math/collide-move-circle-segments-1k": {
+        "minMs": 5.5744,
+        "medianMs": 5.78,
+        "score": 1.836
+      },
       "math/random-next-100k": {
         "minMs": 0.7917,
         "medianMs": 0.8074,

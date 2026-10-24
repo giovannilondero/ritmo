@@ -79,7 +79,7 @@ const Chase = Game.System("Algorithms/Chase", {
       const distance = Vec2.length(away)
       if (distance < radius * 2) way = Vec2.add(way, Vec2.scale(Vec2.normalizeOr(away, Vec2.zero), (radius * 2 - distance) / (radius * 2)))
     })
-    const moved = Collide2.moveCircle(at, Vec2.scale(Vec2.clampLength(way, 1), speed * services.frame.dt), radius, walls)
+    const moved = Collide2.moveCircle(at, Vec2.scale(Vec2.clampLength(way, 1), speed * services.frame.dt), radius, { boxes: walls })
     data.position.set(moved.position)
   }
 })
@@ -100,7 +100,7 @@ const MoveShots = Game.System("Algorithms/MoveShots", {
     const delta = Vec2.scale(velocity, services.frame.dt)
     // The earliest contact along the whole step wins.
     let first: { kind: "wall" | "chaser"; time: number } | undefined
-    const wall = Collide2.sweepCircleBoxes(at, delta, radius, walls)
+    const wall = Collide2.sweepCircle(at, delta, radius, { boxes: walls })
     if (wall !== undefined) first = { kind: "wall", time: wall.time }
     for (const target of queries.chasers.each()) {
       const time = Collide2.sweepCircleCircle(at, delta, radius, target.data.position.get(), target.data.body.get().radius)
