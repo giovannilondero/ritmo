@@ -54,11 +54,10 @@ export interface Page {
   /** The id of the page's first slot. */
   readonly base: number
   /**
-   * Whether the component is stored in a number column (`columns: "number"`):
-   * its values are in `numbers`, and `values` only marks presence (`PRESENT`
-   * or `ABSENT`).
+   * Each slot's value, `ABSENT`, or `PRESENT` when the value is a number:
+   * numbers are kept unboxed in `numbers`, which the page creates with its
+   * first number.
    */
-  readonly numeric: boolean
   values: Array<unknown>
   numbers: Float64Array
   added: Float64Array
@@ -68,12 +67,17 @@ export interface Page {
   /**
    * The transaction that last wrote to the page. While it runs, `saved` has
    * a bit for every slot it wrote, and `before` holds those slots' values
-   * from before it (other slots of `before` are `undefined`).
+   * from before it like `values` does, with `PRESENT` for a number (in
+   * `beforeNumbers`). Every other slot of `before` is `PRESENT`, so saving a
+   * number writes only `beforeNumbers`. A slot saved as a number still holds
+   * a number: a write that replaces it with another value moves the saved
+   * number to `before`.
    */
   savedIn: number
   readonly saved: Uint32Array
+  /** Whether the running transaction saved a value that is not a number: commit then checks `before` per slot. */
+  savedObjects: boolean
   before: Array<unknown> | undefined
-  /** `before` of a number page. */
   beforeNumbers: Float64Array | undefined
   /** The phase that copied the page, and its values and changed ticks then. */
   phaseIn: number
@@ -93,11 +97,9 @@ export interface TransactionState {
 /** One component's pages, by page index. */
 export interface Store {
   readonly pages: Array<Page | undefined>
-  /** Whether the component is stored in a number column (`columns: "number"`). */
-  readonly numeric: boolean
 }
 
-/** What a number page's `values` holds for an entity with the component. */
+/** What a page's `values` holds for a slot whose value is a number (in `numbers`). */
 export const PRESENT: unique symbol = Symbol("ritmo/present")
 
 /** A packed array (not holey, which V8 reads more slowly) of `PAGE_SIZE` copies of `value`. */
@@ -111,13 +113,22 @@ const emptyValues: Array<unknown> = filled(ABSENT)
 const emptyTicks = new Float64Array(PAGE_SIZE)
 const emptyNumbers = new Float64Array(PAGE_SIZE)
 
-/** A value a number column takes; anything else is a defect (an `any` that leaked). */
-export const checkNumber = (name: string, value: unknown): number => {
-  if (typeof value !== "number") {
-    throw new Error(`${name} is stored in a number column (columns: "number"), so its value must be a number, got ${typeof value}`)
-  }
-  return value
+/** The page's `numbers`, created on its first number. */
+export const numbersOf = (page: Page): Float64Array =>
+  page.numbers === emptyNumbers ? (page.numbers = new Float64Array(PAGE_SIZE)) : page.numbers
+
+/**
+ * Whether a slot holds a number, or, when empty, whether its page holds
+ * numbers: which cell class to make for it (both read every value).
+ */
+export const holdsNumber = (page: Page, slot: number): boolean => {
+  const value = page.values[slot]
+  return value === PRESENT || (value === ABSENT && page.numbers !== emptyNumbers)
 }
+
+/** The page's `beforeNumbers`, created on the first number a transaction saves. */
+export const beforeNumbersOf = (page: Page): Float64Array =>
+  page.beforeNumbers ??= new Float64Array(PAGE_SIZE)
 
 export interface EntityRecord {
   readonly id: number
@@ -529,7 +540,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     ordinals.set(descriptor.key, ordinal)
     descriptors.push(descriptor)
     members.push(new Set())
-    stores.push({ pages: [], numeric: (descriptor as { readonly columns?: unknown }).columns === "number" })
+    stores.push({ pages: [] })
     componentVersions.push(0)
     membershipRecords.push([])
     membershipVersions.push([])
@@ -553,7 +564,6 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       page = {
         ordinal,
         base: index << PAGE_BITS,
-        numeric: stores[ordinal]!.numeric,
         values: emptyValues,
         numbers: emptyNumbers,
         added: emptyTicks,
@@ -561,6 +571,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         count: 0,
         savedIn: 0,
         saved: new Uint32Array(PAGE_SIZE >>> 5),
+        savedObjects: false,
         before: undefined,
         beforeNumbers: undefined,
         phaseIn: 0,
@@ -605,7 +616,6 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (newestMark !== undefined) keepPage(page)
     if (page.values === emptyValues) {
       page.values = filled(ABSENT)
-      if (page.numeric) page.numbers = new Float64Array(PAGE_SIZE)
       page.added = new Float64Array(PAGE_SIZE)
       page.changed = new Float64Array(PAGE_SIZE)
     }
@@ -723,14 +733,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    */
   const writeOutsideTransaction = (page: Page, slot: number, value: unknown): void => {
     if (newestMark !== undefined) keepPage(page)
-    if (page.numeric) {
-      const before = page.numbers[slot]
-      page.numbers[slot] = value as number
-      if (differs(before, value)) stampChanged(page, slot)
-      return
-    }
-    const before = page.values[slot]
-    page.values[slot] = value
+    const before = slotValue(page, slot)
+    writeSlot(page, slot, value)
     if (differs(before, value)) stampChanged(page, slot)
   }
 
@@ -742,31 +746,54 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const touchPage = (page: Page): void => {
     // `saved` is all zero here: commit and rollback clear every word they visit.
     page.savedIn = transaction
-    if (page.numeric) page.beforeNumbers ??= new Float64Array(PAGE_SIZE)
-    else page.before ??= filled(undefined)
+    page.before ??= filled(PRESENT)
+    // A slot that holds a number and is not saved yet held it now: its first write can save into `beforeNumbers`.
+    if (page.numbers !== emptyNumbers) page.beforeNumbers ??= new Float64Array(PAGE_SIZE)
     savedPages[savedCount++] = page
   }
 
-  /**
-   * Visits the slots the running transaction saved on a page, lowest first,
-   * with the value from before the transaction.
-   */
-  const forEachSaved = (page: Page, visit: (slot: number, before: unknown) => void): void => {
+  /** Visits the slots the running transaction saved on a page, lowest first. */
+  const forEachSaved = (page: Page, visit: (slot: number) => void): void => {
     const saved = page.saved
-    const before: ArrayLike<unknown> = page.numeric ? page.beforeNumbers! : page.before!
     for (let word = 0; word < saved.length; word++) {
       let bits = saved[word]!
       while (bits !== 0) {
         const lowest = bits & -bits
-        const slot = (word << 5) + 31 - Math.clz32(lowest)
-        visit(slot, before[slot])
+        visit((word << 5) + 31 - Math.clz32(lowest))
         bits ^= lowest
       }
     }
   }
 
   /** The current value in a page's slot (the page holds it). */
-  const slotValue = (page: Page, slot: number): unknown => page.numeric ? page.numbers[slot] : page.values[slot]
+  const slotValue = (page: Page, slot: number): unknown => {
+    const value = page.values[slot]
+    return value === PRESENT ? page.numbers[slot] : value
+  }
+
+  /** Whether a saved slot held a number before the running transaction (in `beforeNumbers`). */
+  const savedNumber = (page: Page, slot: number): boolean => page.before![slot] === PRESENT
+
+  /** A saved slot's value from before the running transaction. */
+  const savedValue = (page: Page, slot: number): unknown =>
+    savedNumber(page, slot) ? page.beforeNumbers![slot] : page.before![slot]
+
+  /** Puts a value in a slot: a number goes unboxed into `numbers`. */
+  const writeSlot = (page: Page, slot: number, value: unknown): void => {
+    if (typeof value === "number") {
+      numbersOf(page)[slot] = value
+      page.values[slot] = PRESENT
+    } else {
+      page.values[slot] = value
+    }
+  }
+
+  /** Whether a saved slot's value differs from the one it had before the running transaction. */
+  const savedDiffers = (page: Page, slot: number): boolean => {
+    if (savedNumber(page, slot)) return differs(page.beforeNumbers![slot], page.numbers[slot])
+    const after = page.values[slot]
+    return differs(page.before![slot], after === PRESENT ? page.numbers[slot] : after)
+  }
 
   /**
    * Starts a transaction for one system run.
@@ -789,38 +816,53 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       const page = savedPages[index]!
       if (newestMark !== undefined && page.keptIn !== newestMark.id) keepCommittedPage(page)
       if (inPhase && page.phaseIn !== phase) savePhasePage(page)
-      const saved = page.saved
-      if (page.numeric) {
-        const before = page.beforeNumbers!
-        const numbers = page.numbers
-        for (let word = 0; word < saved.length; word++) {
-          let bits = saved[word]!
-          while (bits !== 0) {
-            const lowest = bits & -bits
-            const slot = (word << 5) + 31 - Math.clz32(lowest)
-            if (differs(before[slot], numbers[slot])) stampChanged(page, slot)
-            bits ^= lowest
-          }
-          saved[word] = 0
-        }
-        continue
-      }
-      const before = page.before!
-      const values = page.values
-      for (let word = 0; word < saved.length; word++) {
-        let bits = saved[word]!
-        while (bits !== 0) {
-          const lowest = bits & -bits
-          const slot = (word << 5) + 31 - Math.clz32(lowest)
-          if (differs(before[slot], values[slot])) stampChanged(page, slot)
-          // Old values do not outlive the transaction.
-          before[slot] = undefined
-          bits ^= lowest
-        }
-        saved[word] = 0
-      }
+      if (page.savedObjects) commitMixed(page)
+      else commitNumbers(page)
     }
     savedCount = 0
+  }
+
+  /** Commits a page on which the transaction saved only numbers. */
+  const commitNumbers = (page: Page): void => {
+    const saved = page.saved
+    const beforeNumbers = page.beforeNumbers!
+    const numbers = page.numbers
+    for (let word = 0; word < saved.length; word++) {
+      let bits = saved[word]!
+      while (bits !== 0) {
+        const lowest = bits & -bits
+        const slot = (word << 5) + 31 - Math.clz32(lowest)
+        if (differs(beforeNumbers[slot], numbers[slot])) stampChanged(page, slot)
+        bits ^= lowest
+      }
+      saved[word] = 0
+    }
+  }
+
+  /** Commits a page on which the transaction saved values that are not numbers, and maybe numbers. */
+  const commitMixed = (page: Page): void => {
+    const saved = page.saved
+    const before = page.before!
+    const values = page.values
+    for (let word = 0; word < saved.length; word++) {
+      let bits = saved[word]!
+      while (bits !== 0) {
+        const lowest = bits & -bits
+        const slot = (word << 5) + 31 - Math.clz32(lowest)
+        const old = before[slot]
+        if (old === PRESENT) {
+          if (differs(page.beforeNumbers![slot], page.numbers[slot])) stampChanged(page, slot)
+        } else {
+          const after = values[slot]
+          if (differs(old, after === PRESENT ? page.numbers[slot] : after)) stampChanged(page, slot)
+          // Old values do not outlive the transaction.
+          before[slot] = PRESENT
+        }
+        bits ^= lowest
+      }
+      saved[word] = 0
+    }
+    page.savedObjects = false
   }
 
   /**
@@ -832,20 +874,19 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     transactionState.active = false
     for (let index = 0; index < savedCount; index++) {
       const page = savedPages[index]!
-      if (page.numeric) {
-        const numbers = page.numbers
-        forEachSaved(page, (slot, value) => {
-          numbers[slot] = value as number
-        })
-      } else {
-        const values = page.values
-        const before = page.before!
-        forEachSaved(page, (slot, value) => {
-          values[slot] = value
-          before[slot] = undefined
-        })
-      }
+      const values = page.values
+      const before = page.before!
+      forEachSaved(page, (slot) => {
+        if (savedNumber(page, slot)) {
+          values[slot] = PRESENT
+          page.numbers[slot] = page.beforeNumbers![slot]!
+        } else {
+          writeSlot(page, slot, before[slot])
+          before[slot] = PRESENT
+        }
+      })
       page.saved.fill(0)
+      page.savedObjects = false
     }
     savedCount = 0
   }
@@ -857,19 +898,25 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    */
   const savePhasePage = (page: Page): void => {
     page.phaseIn = phase
-    if (page.numeric) {
-      const numbers = page.numbers.slice()
-      forEachSaved(page, (slot, before) => {
-        numbers[slot] = before as number
-      })
-      page.phaseNumbers = numbers
-    } else {
-      const values = page.values.slice()
-      forEachSaved(page, (slot, before) => {
-        values[slot] = before
-      })
-      page.phaseValues = values
-    }
+    const values = page.values.slice()
+    const numbers = page.numbers === emptyNumbers ? undefined : page.numbers.slice()
+    const before = page.before!
+    forEachSaved(page, (slot) => {
+      if (savedNumber(page, slot)) {
+        values[slot] = PRESENT
+        numbers![slot] = page.beforeNumbers![slot]!
+      } else {
+        const value = before[slot]
+        if (typeof value === "number") {
+          values[slot] = PRESENT
+          numbers![slot] = value
+        } else {
+          values[slot] = value
+        }
+      }
+    })
+    page.phaseValues = values
+    page.phaseNumbers = numbers
     page.phaseChanged = page.changed.slice()
     phasePages.push(page)
   }
@@ -893,13 +940,10 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /** Restores every page written in the phase, with its change ticks. */
   const rollbackPhase = (): void => {
     for (const page of phasePages) {
-      if (page.numeric) {
-        page.numbers.set(page.phaseNumbers!)
-      } else {
-        const values = page.values
-        const saved = page.phaseValues!
-        for (let slot = 0; slot < PAGE_SIZE; slot++) values[slot] = saved[slot]
-      }
+      const values = page.values
+      const saved = page.phaseValues!
+      for (let slot = 0; slot < PAGE_SIZE; slot++) values[slot] = saved[slot]
+      if (page.phaseNumbers !== undefined) page.numbers.set(page.phaseNumbers)
       page.changed.set(page.phaseChanged!)
     }
     clearPhase()
@@ -939,18 +983,31 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     const mark = newestMark!
     page.keptIn = mark.id
     const kept = keptPage(page)
-    if (page.numeric) {
-      const numbers = kept.numbers
-      forEachSaved(page, (slot, before) => {
-        numbers[slot] = before as number
-      })
-    } else {
-      const values = kept.values
-      forEachSaved(page, (slot, before) => {
-        values[slot] = before
-      })
+    const values = kept.values
+    let numbers = kept.numbers
+    const before = page.before!
+    const saved = page.saved
+    for (let word = 0; word < saved.length; word++) {
+      let bits = saved[word]!
+      while (bits !== 0) {
+        const lowest = bits & -bits
+        const slot = (word << 5) + 31 - Math.clz32(lowest)
+        bits ^= lowest
+        const value = before[slot]
+        if (value === PRESENT) {
+          // Saved as a number (`beforeNumbers`).
+          values[slot] = PRESENT
+          numbers[slot] = page.beforeNumbers![slot]!
+        } else if (typeof value === "number") {
+          if (numbers === emptyNumbers) numbers = new Float64Array(PAGE_SIZE)
+          values[slot] = PRESENT
+          numbers[slot] = value
+        } else {
+          values[slot] = value
+        }
+      }
     }
-    mark.pages.set(page, kept)
+    mark.pages.set(page, numbers === kept.numbers ? kept : { ...kept, numbers })
   }
 
   /** Keeps an entity's record and held components before their first change after the newest mark. */
@@ -1239,12 +1296,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     } else if (hooks !== undefined && hookDepth === 0) {
       hooks.overwritten(record.id, ordinal, slotValue(page, slot), value)
     }
-    if (page.numeric) {
-      page.numbers[slot] = checkNumber(descriptors[ordinal]!.name, value)
-      page.values[slot] = PRESENT
-    } else {
-      page.values[slot] = value
-    }
+    writeSlot(page, slot, value)
     stampChanged(page, slot)
   }
 
@@ -1561,9 +1613,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const forEachJournaled = (visit: (id: number, ordinal: number, before: unknown, after: unknown) => void): void => {
     for (let index = 0; index < savedCount; index++) {
       const page = savedPages[index]!
-      forEachSaved(page, (slot, before) => {
-        const after = slotValue(page, slot)
-        if (differs(before, after)) visit(page.base + slot, page.ordinal, before, after)
+      forEachSaved(page, (slot) => {
+        if (savedDiffers(page, slot)) visit(page.base + slot, page.ordinal, savedValue(page, slot), slotValue(page, slot))
       })
     }
   }
@@ -1581,8 +1632,6 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     valueAt,
     /** The page holding `id`'s slot of a component, for cells that read it directly. */
     pageFor,
-    /** One component's store: whether it is a number column. */
-    storeOf: (ordinal: number): Store => stores[ordinal]!,
     entityIdOf,
     allocateEntity,
     spawnEntity,

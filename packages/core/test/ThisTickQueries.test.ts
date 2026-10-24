@@ -4,7 +4,7 @@ import type { ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
 
 const hostClock = HostClock.test()
 
-const Position = Descriptor.Component<number>()("TickQuery/Position", { columns: "number" })
+const Position = Descriptor.Component<number>()("TickQuery/Position")
 const Enemy = Descriptor.Component<{}>()("TickQuery/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy } }))
 const Flow = Game.StateMachine("TickQuery/Flow", { Menu: {}, Playing: {} })

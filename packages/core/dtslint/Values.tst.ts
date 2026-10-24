@@ -18,7 +18,7 @@ describe("Result", () => {
 
 describe("Codecs", () => {
   const Root = Schema.defineRoot("Values")
-  const Health = Descriptor.Component<number>()("Values/Health", { columns: "number" })
+  const Health = Descriptor.Component<number>()("Values/Health")
 
   it("infers the decoded type of each test codec", () => {
     expect(Codecs.literal("idle", "run")).type.toBe<Codecs.TestCodec<"idle" | "run">>()
@@ -55,7 +55,7 @@ describe("Codecs", () => {
     // @ts-expect-error Property '"~standard"' is missing
     Descriptor.ConstructedComponent(constructor)
     const roundTrip = { ...parsed, encode: {} as Descriptor.StandardSchema<number, string> }
-    expect(Descriptor.ConstructedComponent(roundTrip)("Values/Parsed", { columns: "number" })).type.toBe<
+    expect(Descriptor.ConstructedComponent(roundTrip)("Values/Parsed")).type.toBe<
       Descriptor.ConstructedDescriptor<"component", "Values/Parsed", number, string, Descriptor.SchemaIssues>
     >()
   })
@@ -70,7 +70,7 @@ describe("Codecs", () => {
 
 describe("Descriptor values", () => {
   it("infers the descriptor of a typed value", () => {
-    const Health = Descriptor.Component<number>()("Values/TypedHealth", { columns: "number" })
+    const Health = Descriptor.Component<number>()("Values/TypedHealth")
     expect(Health).type.toBe<Descriptor.Descriptor<"component", "Values/TypedHealth", number>>()
     expect(Descriptor.Resource<unknown>()("Values/Blob")).type.toBe<Descriptor.Descriptor<"resource", "Values/Blob", unknown>>()
   })

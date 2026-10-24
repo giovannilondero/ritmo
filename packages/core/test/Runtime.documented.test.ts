@@ -3,7 +3,7 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import * as Codecs from "./codecs.ts"
 import { worldOf } from "./saved.ts"
 
-const Count = Descriptor.ConstructedComponent(Codecs.number)("Documented/Count", { columns: "number" })
+const Count = Descriptor.ConstructedComponent(Codecs.number)("Documented/Count")
 const Ping = Descriptor.Event<number>()("Documented/Ping")
 const Gold = Descriptor.ConstructedResource(Codecs.number)("Documented/Gold")
 const Gems = Descriptor.ConstructedResource(Codecs.number)("Documented/Gems")

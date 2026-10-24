@@ -163,7 +163,6 @@ export const makeQueryEngine = (world: World) => {
       DescriptorModule.isEntityState(candidate as never) ? "an entity state" : undefined,
       DescriptorModule.hasConstructor(candidate) ? "constructed" : undefined,
       DescriptorModule.isImmutable(candidate) ? "immutable" : undefined,
-      DescriptorModule.isNumberColumn(candidate) ? "stored in a number column" : undefined,
       DescriptorModule.isTransient(candidate) ? "transient" : undefined
     ].filter((trait) => trait !== undefined).join(", ") || "plain"
     const expected = traits(registered)

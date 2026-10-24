@@ -10,7 +10,7 @@ const expectOk = (result: { readonly ok: boolean; readonly error?: unknown }): v
 // One small game that touches everything a checkpoint has to put back.
 const Root = Schema.defineRoot("CheckpointTest")
 const Pos = Descriptor.Component<{ readonly x: number }>()("Checkpoint/Pos")
-const Health = Descriptor.Component<number>()("Checkpoint/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("Checkpoint/Health")
 const Shield = Descriptor.Tag("Checkpoint/Shield")
 const Owner = Descriptor.Component<{ readonly id: number }>()("Checkpoint/Owner")
 const Sprite = Descriptor.TransientComponent<{ readonly frame: number }>()("Checkpoint/Sprite")
@@ -412,5 +412,61 @@ describe("Runtime checkpoints", () => {
     const ids = new Set<number>(game.state().world.filter((entity) => entity.pos !== undefined).map((entity) => entity.id))
     expect([...game.mirror.nodes.keys()].every((id) => ids.has(id))).toBe(true)
     expect(game.mirror.created - created).toBeLessThanOrEqual(reference.mirror.created)
+  })
+})
+
+// Numbers are kept unboxed, so a page can hold numbers and other values side
+// by side: a rewind across a write that swaps one for the other puts back both.
+describe("Runtime checkpoints of mixed pages", () => {
+  const Charge = Descriptor.Component<number | "full">()("CheckpointMixed/Charge")
+  const Turn = Descriptor.Resource<number>()("CheckpointMixed/Turn")
+  const Mixed = Schema.bind(Schema.fragment({ components: { Charge }, resources: { Turn } }), Schema.defineRoot("CheckpointMixed"))
+
+  const Setup = Mixed.System("CheckpointMixed/Setup", {
+    commands: Mixed.System.commands(Mixed.System.spawns(Charge))
+  }, ({ commands }) => {
+    for (let index = 0; index < 4; index++) commands.spawn(Mixed.Command.spawn([Charge, index]))
+  })
+  const Step = Mixed.System("CheckpointMixed/Step", {
+    resources: { turn: Mixed.System.writeResource(Turn) },
+    queries: { all: Mixed.Query({ selection: { charge: Mixed.Query.write(Charge) } }) }
+  }, ({ resources, queries }) => {
+    const turn = resources.turn.get() + 1
+    resources.turn.set(turn)
+    for (const { entity, data } of queries.all.each()) {
+      // Each entity alternates between a number and "full", out of step with the others.
+      data.charge.set((entity.id + turn) % 2 === 0 ? "full" : entity.id * 10 + turn)
+    }
+  })
+  const simulate = Mixed.Schedule(Step)
+  const ReadCharges = Mixed.Inspector("CheckpointMixed/Read", {
+    queries: { all: Mixed.Query({ selection: { charge: Mixed.Query.read(Charge) } }) }
+  }, ({ queries }) => queries.all.each().map(({ entity, data }) => [entity.id, data.charge.get()] as const))
+
+  const make = () => {
+    const runtime = Mixed.Runtime.make({ services: Mixed.Runtime.services(), resources: { Turn: 0 } }).value
+    expectOk(runtime.tick(Mixed.Schedule(Setup, Mixed.Schedule.applyDeferred())))
+    return runtime
+  }
+
+  it("puts back numbers and other values a committed write swapped", () => {
+    const reference = make()
+    const runtime = make()
+    for (let tick = 0; tick < 3; tick++) {
+      expectOk(reference.tick(simulate))
+      expectOk(runtime.tick(simulate))
+    }
+    const before = runtime.inspect(ReadCharges)
+    const checkpoint = runtime.checkpoint(simulate)
+    for (let tick = 0; tick < 3; tick++) expectOk(runtime.tick(simulate))
+    expect(runtime.inspect(ReadCharges)).not.toEqual(before)
+
+    expectOk(runtime.rewind(checkpoint))
+    expect(runtime.inspect(ReadCharges)).toEqual(before)
+    for (let tick = 0; tick < 3; tick++) {
+      expectOk(reference.tick(simulate))
+      expectOk(runtime.tick(simulate))
+    }
+    expect(runtime.inspect(ReadCharges)).toEqual(reference.inspect(ReadCharges))
   })
 })
