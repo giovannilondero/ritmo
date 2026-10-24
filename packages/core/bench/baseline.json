@@ -183,6 +183,16 @@
         "minMs": 3.3081,
         "medianMs": 3.5784,
         "score": 1.117
+      },
+      "netcode/rollback-frame-2-peers": {
+        "minMs": 0.0549,
+        "medianMs": 0.0656,
+        "score": 0.0186
+      },
+      "netcode/lockstep-frame-2-peers": {
+        "minMs": 0.0076,
+        "medianMs": 0.0085,
+        "score": 0.0026
       }
     }
   },

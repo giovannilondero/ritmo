@@ -21,7 +21,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
-const packages = ["core", "math", "browser", "render", "pixi", "devtools", "oxlint-plugin"] as const
+const packages = ["core", "math", "browser", "render", "pixi", "netcode", "devtools", "oxlint-plugin"] as const
 
 const run = (command: string, args: ReadonlyArray<string>, cwd: string): string =>
   execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })
@@ -108,7 +108,8 @@ import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
 import * as Pixi from "@typeonce/ritmo-pixi"
-import { Determinism, Session } from "@typeonce/ritmo-devtools"
+import { Desync, Determinism, Session } from "@typeonce/ritmo-devtools"
+import { MemoryNetworkLink, Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
 
 const step = Clock.hz(60)
 const Time = Clock.resource("Consumer/Time", step)
@@ -159,6 +160,10 @@ loop.value.stop()
 if ("FixedLoop" in Browser) throw new Error("Browser publishes the moved FixedLoop")
 if (!moved.blocked || Random.make(42).next() !== 0.6011037519201636 || Ops.hypot(3, 4) !== 5 || Ops.sin(0) !== 0) throw new Error("math helpers misbehave when packed")
 if ("NodeRegistry" in Pixi || "RenderSync" in Pixi) throw new Error("Pixi publishes removed compatibility exports")
+const seats = Netcode.seats({ "~standard": { version: 1, vendor: "consumer", validate: (value: unknown) => ({ value: value as { readonly fire: boolean } }) } }, { count: 2, idle: { fire: false } })
+const links = MemoryNetworkLink.make({ peers: 2, hostClock, seed: 1, latencyMS: 16 })
+const saved = runtime.snapshot()
+if (!seats.ok || !links.ok || !saved.ok || typeof WebSocketNetworkLink.make !== "function" || Desync.compare(saved.value, saved.value).data.length !== 0) throw new Error("netcode misbehaves when packed")
 console.log(JSON.stringify({
   ok: ran.data.ok && Result.isSuccess(Result.success(1)),
   entities: session.dump().data.entityCount,
