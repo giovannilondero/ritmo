@@ -101,6 +101,28 @@ const banner = () => {
   const mark = iconShapes({ color: palette.paper, dot: palette.tick }) + nested(130, 0, width - 130, 100, box, wordmarkShapes({ color: palette.paper, dot: palette.tick, ruler: false }))
   return svg(720, 380, `<title>Ritmo: ${tagline}</title><rect width="720" height="380" rx="20" fill="${palette.ink}"/>` + nested(145, 110, 430, 43000 / width, { x: 0, y: 0, width, height: 100 }, mark) + `<text x="360" y="266" text-anchor="middle" fill="${palette.steel}" font-family="ui-monospace, SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="22">${tagline}</text>`)
 }
+// The link preview (Open Graph, X): the banner's composition on a full-bleed 1200x630 card, with the
+// tick ruler along the bottom and the site address.
+const social = () => {
+  const box = wordmarkBox(false)
+  const width = 130 + (box.width * 100) / box.height
+  const mark = iconShapes({ color: palette.paper, dot: palette.tick }) + nested(130, 0, width - 130, 100, box, wordmarkShapes({ color: palette.paper, dot: palette.tick, ruler: false }))
+  const ticks = Array.from({ length: 41 }, (_, k) => {
+    const x = 100 + k * 25
+    const major = k % 10 === 0
+    return `<rect x="${x - (major ? 2 : 1)}" y="${major ? 520 : 530}" width="${major ? 4 : 2}" height="${major ? 30 : 20}" fill="${k === 30 ? palette.tick : major ? palette.paper : palette.steel}"/>`
+  }).join("")
+  const mono = `font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace"`
+  return svg(
+    1200,
+    630,
+    `<title>Ritmo: ${tagline}</title><rect width="1200" height="630" fill="${palette.ink}"/>` +
+      nested(270, 140, 660, 66000 / width, { x: 0, y: 0, width, height: 100 }, mark) +
+      `<text x="600" y="400" text-anchor="middle" fill="${palette.steel}" ${mono} font-size="34">${tagline}</text>` +
+      ticks +
+      `<text x="1100" y="600" text-anchor="end" fill="${palette.steel}" ${mono} font-size="22">ritmo.typeonce.dev</text>`
+  )
+}
 const stacked = ({ color, dot }) => {
   const box = wordmarkBox(false)
   const w = 200
@@ -131,6 +153,7 @@ export const files = {
   "ritmo-lockup-padded.svg": paddedLockup(onLight),
   "ritmo-lockup-padded-inverse.svg": paddedLockup(onDark),
   "ritmo-banner.svg": banner(),
+  "ritmo-social.svg": social(),
   "ritmo-lockup-stacked.svg": stacked(onLight),
   "ritmo-lockup-stacked-inverse.svg": stacked(onDark),
   "ritmo-app-icon.svg": appIcon(),
@@ -205,11 +228,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for (const [name, content] of Object.entries(files)) writeFileSync(join(out, name), content)
   writeFileSync(join(here, "sheet.html"), sheet())
   if (process.argv.includes("--png")) {
-    const png = (source, target, size) => execFileSync("rsvg-convert", ["-w", String(size), "-h", String(size), "-o", join(out, target), join(out, source)])
+    const png = (source, target, width, height = width) => execFileSync("rsvg-convert", ["-w", String(width), "-h", String(height), "-o", join(out, target), join(out, source)])
     png("ritmo-app-icon.svg", "ritmo-app-icon-512.png", 512)
     png("ritmo-avatar.svg", "ritmo-avatar-512.png", 512)
     png("ritmo-icon.svg", "favicon-32.png", 32)
     png("ritmo-icon.svg", "favicon-16.png", 16)
+    png("ritmo-social.svg", "ritmo-social-1200x630.png", 1200, 630)
   }
   console.log(`wrote ${Object.keys(files).length} SVGs to ${out}`)
 }

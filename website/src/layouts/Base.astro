@@ -3,9 +3,9 @@ import "../styles/global.css"
 import "../styles/twoslash.css"
 import "../styles/code.css"
 
-import { brand } from "../brand.ts"
 import Footer from "../components/Footer.astro"
 import Header from "../components/Header.astro"
+import Meta from "../components/Meta.astro"
 import TypePopups from "../components/TypePopups.astro"
 
 interface Props {
@@ -17,7 +17,6 @@ interface Props {
 
 const { title, description = "The agent-first, type-safe ECS runtime for games.", bare = false } = Astro.props
 const fullTitle = bare ? title : `${title} · Ritmo`
-const social = new URL(brand.appIcon.src, Astro.site)
 ---
 
 <!doctype html>
@@ -25,16 +24,7 @@ const social = new URL(brand.appIcon.src, Astro.site)
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{fullTitle}</title>
-    <meta name="description" content={description} />
-    <meta name="theme-color" content="#0E1013" />
-    <link rel="icon" type="image/svg+xml" href={brand.favicon.src} />
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
-    <link rel="describedby" type="text/plain" href="/llms.txt" />
-    <meta property="og:title" content={fullTitle} />
-    <meta property="og:description" content={description} />
-    <meta property="og:image" content={social} />
-    <meta name="twitter:card" content="summary" />
+    <Meta title={fullTitle} description={description} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
