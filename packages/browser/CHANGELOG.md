@@ -1,5 +1,14 @@
 # @typeonce/ritmo-browser
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies [791b52a]
+- Updated dependencies [b3d6502]
+- Updated dependencies [835f6ba]
+  - @typeonce/ritmo@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes

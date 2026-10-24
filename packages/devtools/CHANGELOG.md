@@ -1,5 +1,19 @@
 # @typeonce/ritmo-devtools
 
+## 0.13.0
+
+### Minor Changes
+
+- b3d6502: **Machine values print with their fields.** Dumps, `describe()`, the monitor, and the journal print a machine as its state, then its fields (`Talking {speaker:"Mira",page:2}`), through the new `Format.state(value)`. A system's access lists `updates machine fields` for `Game.System.updateMachine`, and each immediate update is a journal line of the new kind `"machine"` (`machine Game/Mode {...} -> {...}`), filterable with `journal({ kinds: ["machine"] })`.
+- 835f6ba: **Replays follow `runtime.snapshot()` returning a `Result`.** `Replay.Target`'s and `ReplaySession`'s `snapshot` return `Result<WorldSnapshot, SnapshotError>`, the recorder skips a tick whose world an `encode` rejects, and `extract` fails with the new `SnapshotFailed` when its start cannot be saved. **Breaking** for a custom `Replay.Target`: return the runtime's `snapshot()` result as it is.
+
+### Patch Changes
+
+- Updated dependencies [791b52a]
+- Updated dependencies [b3d6502]
+- Updated dependencies [835f6ba]
+  - @typeonce/ritmo@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes
