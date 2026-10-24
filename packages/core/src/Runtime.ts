@@ -309,6 +309,22 @@ type ServiceEntriesToRecord<
  * The brand ensures callers provide services through descriptors rather than
  * raw string keys, which prevents runtime mismatches between descriptor names
  * and manually repeated object properties.
+ *
+ * To pass services through your own function (one `makeRuntime` shared by
+ * the host, the tests, and the lint target), bound its parameter by
+ * `RuntimeServices`, never `RuntimeServices<any>`: every service set
+ * satisfies the bound, `const` keeps the exact one, and a system that needs
+ * a service the caller did not provide still fails to compile at `tick`.
+ *
+ * @example
+ * ```ts
+ * import type { RuntimeServices } from "@typeonce/ritmo/Runtime"
+ *
+ * export const makeRuntime = <const Services extends RuntimeServices>(services: Services) =>
+ *   Game.Runtime.make({ services, resources: { Score: 0 } })
+ *
+ * makeRuntime(Game.Runtime.services(Game.Runtime.service(Input, Keyboard.scripted(bindings, []))))
+ * ```
  */
 export type RuntimeServices<Services extends Record<string, unknown> = {}> = Readonly<Services> & {
   readonly [runtimeServicesTypeId]: {
