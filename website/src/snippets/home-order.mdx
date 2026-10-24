@@ -1,6 +1,6 @@
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Health, Enemy } }))
 const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Health, Enemy)) }, () => {})

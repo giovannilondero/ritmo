@@ -9,7 +9,7 @@ interface Node {
 
 const Position = Descriptor.Component<{ x: number }>()("RenderTypes/Position")
 const Sprite = Descriptor.Component<{ label: string }>()("RenderTypes/Sprite")
-const Health = Descriptor.Component<number>()("RenderTypes/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("RenderTypes/Health")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<Node>>()("RenderTypes/Nodes")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
 

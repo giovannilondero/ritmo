@@ -22,7 +22,7 @@ const vec = Codecs.struct({ x: Codecs.number, y: Codecs.number })
 
 const Position = Descriptor.ConstructedComponent(vec)("Bench/Position")
 const Velocity = Descriptor.ConstructedComponent(vec)("Bench/Velocity")
-const Health = Descriptor.ConstructedComponent(Codecs.number)("Bench/Health", { columns: "number" })
+const Health = Descriptor.ConstructedComponent(Codecs.number)("Bench/Health")
 const Static = Descriptor.Tag("Bench/Static")
 const Player = Descriptor.Tag("Bench/Player")
 const Hot = Descriptor.Tag("Bench/Hot")
@@ -172,7 +172,7 @@ const iterateWrite: BenchCase = {
 
 const numberWrite: BenchCase = {
   name: "query/number-write-10k",
-  description: "Write a number column (Health) on 10k entities",
+  description: "Write a number component (Health) on 10k entities",
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N, 0)

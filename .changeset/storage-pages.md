@@ -2,7 +2,7 @@
 "@typeonce/ritmo": minor
 ---
 
-**Component values are stored per component, in pages of entity ids**, and a system's run keeps the old values of only the slots it writes. This is the storage layout typed number columns build on. Performance is about the same as before; queries, cells and snapshots keep their API.
+**Component values are stored per component, in pages of entity ids**, and a system's run keeps the old values of only the slots it writes. This is the storage layout unboxed numbers build on. Performance is about the same as before; queries, cells and snapshots keep their API.
 
 - **Breaking: `changed` means the value differs.** A write counts as a change only when the new value differs from the one before the system's run: a different number or string (`NaN` equals `NaN`), or a different object. Writing back the value you read, or an equal number, no longer counts. Inserting a component still counts as added and changed. The devtools journal records only these writes.
 

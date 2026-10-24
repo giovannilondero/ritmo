@@ -7,7 +7,7 @@ import { describe, expect, it } from "tstyche"
 const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("ImmutableTypes/Position")
 const Kind = Descriptor.Component<"wall" | "pickup">()("ImmutableTypes/Kind", { immutable: true })
 const Team = Descriptor.ConstructedComponent(Codecs.literal("red", "blue"))("ImmutableTypes/Team", { immutable: true })
-const Cache = Descriptor.TransientComponent<number>()("ImmutableTypes/Cache", { columns: "number", immutable: true })
+const Cache = Descriptor.TransientComponent<number>()("ImmutableTypes/Cache", { immutable: true })
 
 const Game = Schema.bind(Schema.fragment({ components: { Position, Kind, Team, Cache } }))
 
