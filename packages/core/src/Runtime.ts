@@ -688,7 +688,8 @@ export interface Runtime<
    * Replaces the world with a snapshot after validating it against the
    * schema. On failure nothing changes. See the `Snapshot` module. Restore
    * between ticks: calling it while a schedule is running throws. A current
-   * resource the save lacks keeps its value.
+   * resource the save lacks keeps its value. Every checkpoint taken before
+   * it is released (`rewind` fails with `Released`).
    */
   readonly restore: Snapshot.Gate<S, (data: unknown) => Result.Result<void, Snapshot.RestoreError>>
   /**

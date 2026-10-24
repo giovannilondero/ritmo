@@ -126,7 +126,7 @@ type ServiceIssue<Need> =
   Need extends Descriptor<"service", infer Name, infer Value>
     ? Value extends Schedule.Source<any> ? never
       : Schedule.IsPlain<Value> extends true ? never
-      : `${Name} is neither a snapshot() source nor plain data, so a rewind would call it again for every tick ticked again: give the simulation its input through a source, and its effects on the host through events or resources`
+      : `${Name} is neither a snapshot() source nor plain data, so a rewind would call it again for every tick run again: give the simulation its input through a source, and its effects on the host through events or resources`
     : never
 
 type LocalIssue<Sys> =

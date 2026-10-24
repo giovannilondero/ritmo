@@ -2,7 +2,7 @@
 
 1. Give every new mutable value one home:
    - saved world state: a component or resource. It is saved by `runtime.snapshot()`, restored by `runtime.restore(...)`, and rolled back when a system fails.
-   - unsaved runtime state: a transient component or resource, or the system's `local`. It is rebuilt after restore.
+   - unsaved runtime state: a transient component or resource, or the system's `local`. It is rebuilt after restore. A transient value is rewound by `runtime.rewind(...)`; `local` is not, so a schedule that is rewound keeps none (see [`netcode.md`](netcode.md)).
    - host state: a service or host code.
 2. Decide what the value does on new game, restore, and dispose, and test it: take a snapshot, restore it, and assert the value.
 3. Give every saved value a schema (see the skill's "Validating and saving values"). Saved forms are plain data: a value that is not (a `Map`, an `Option`, a class) uses a schema with an `encode` back to plain data. Test the round trip: `runtime.snapshot()`, `JSON.stringify`, `JSON.parse`, `runtime.restore(...)`.
