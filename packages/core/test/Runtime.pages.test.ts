@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type * as Entity from "@typeonce/ritmo/Entity"
 
-const Health = Descriptor.Component<number>()("Pages/Health")
+const Health = Descriptor.Component<number>()("Pages/Health", { columns: "number" })
 const Position = Descriptor.Component<{ readonly x: number }>()("Pages/Position")
 const Game = Schema.bind(Schema.fragment({ components: { Health, Position } }))
 
@@ -43,6 +43,24 @@ describe("component storage in pages", () => {
     const failed = runtime.tick(Game.Schedule(Fail))
     expect(failed.ok).toBe(false)
     expect(runtime.inspect(AllHealth)).toEqual(Array.from({ length: 600 }, (_, index) => index))
+  })
+
+  it("rolls back a failed system's object writes across every page it touched", () => {
+    const runtime = makeRuntime()
+    const Spawn = Game.System("Pages/SpawnPositions", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {
+      for (let index = 0; index < 600; index++) commands.spawn(Game.Command.spawn([Position, { x: index }]))
+    })
+    const Positions = Game.Query({ selection: { position: Game.Query.write(Position) } })
+    const Fail = Game.System("Pages/FailPositions", { queries: { all: Positions } }, ({ queries }) => {
+      for (const { data } of queries.all.each()) data.position.set({ x: -1 })
+      return Result.failure("Rejected" as const)
+    })
+    const Xs = Game.Inspector("Pages/Xs", {
+      queries: { all: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
+    }, ({ queries }) => queries.all.each().map((match) => match.data.position.get().x))
+    runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
+    expect(runtime.tick(Game.Schedule(Fail)).ok).toBe(false)
+    expect(runtime.inspect(Xs)).toEqual(Array.from({ length: 600 }, (_, index) => index))
   })
 
   it("counts a write as a change only when the value differs", () => {

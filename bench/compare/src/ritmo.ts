@@ -3,12 +3,12 @@ import type { Library } from "./cases.ts"
 
 // Ritmo runs every case as a game would: declared systems in a schedule, one
 // `runtime.tick(...)` per operation, commands landing at `applyDeferred()`.
-const A = Descriptor.Component<number>()("Bench/A")
-const B = Descriptor.Component<number>()("Bench/B")
-const C = Descriptor.Component<number>()("Bench/C")
-const D = Descriptor.Component<number>()("Bench/D")
-const E = Descriptor.Component<number>()("Bench/E")
-const Data = Descriptor.Component<number>()("Bench/Data")
+const A = Descriptor.Component<number>()("Bench/A", { columns: "number" })
+const B = Descriptor.Component<number>()("Bench/B", { columns: "number" })
+const C = Descriptor.Component<number>()("Bench/C", { columns: "number" })
+const D = Descriptor.Component<number>()("Bench/D", { columns: "number" })
+const E = Descriptor.Component<number>()("Bench/E", { columns: "number" })
+const Data = Descriptor.Component<number>()("Bench/Data", { columns: "number" })
 
 // frag_iter's 26 shapes: one tag each, plus Data
 const Tags = {

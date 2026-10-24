@@ -22,7 +22,7 @@ const vec = Codecs.struct({ x: Codecs.number, y: Codecs.number })
 
 const Position = Descriptor.ConstructedComponent(vec)("Bench/Position")
 const Velocity = Descriptor.ConstructedComponent(vec)("Bench/Velocity")
-const Health = Descriptor.ConstructedComponent(Codecs.number)("Bench/Health")
+const Health = Descriptor.ConstructedComponent(Codecs.number)("Bench/Health", { columns: "number" })
 const Static = Descriptor.Tag("Bench/Static")
 const Player = Descriptor.Tag("Bench/Player")
 const Hot = Descriptor.Tag("Bench/Hot")
@@ -166,6 +166,22 @@ const iterateWrite: BenchCase = {
       }
     })
     const schedule = Game.Schedule(Move)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
+const numberWrite: BenchCase = {
+  name: "query/number-write-10k",
+  description: "Write a number column (Health) on 10k entities",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, 0)
+    const Decay = Game.System("Bench/Decay", {
+      queries: { healths: Game.Query({ selection: { health: Game.Query.write(Health) } }) }
+    }, ({ queries }) => {
+      for (const { data } of queries.healths.each()) data.health.set(data.health.get() - 0.5)
+    })
+    const schedule = Game.Schedule(Decay)
     return { run: () => runtime.tick(schedule) }
   }
 }
@@ -642,6 +658,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   despawn,
   iterateRead,
   iterateWrite,
+  numberWrite,
   setRaw,
   entityStates,
   machineUpdates,

@@ -4,7 +4,7 @@ import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("AnyOfTypes/Position")
 const Sprite = Descriptor.Component<string>()("AnyOfTypes/Sprite")
-const Foreign = Descriptor.Component<number>()("AnyOfTypes/Foreign")
+const Foreign = Descriptor.Component<number>()("AnyOfTypes/Foreign", { columns: "number" })
 
 const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
 

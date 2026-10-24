@@ -6,7 +6,7 @@ const Position = Descriptor.Component<{ readonly x: number }>()("Req/Position")
 const Velocity = Descriptor.Component<{ readonly x: number }>()("Req/Velocity")
 const Body = Descriptor.Component<{}>()("Req/Body")
 const Player = Descriptor.Component<{}>()("Req/Player")
-const Noise = Descriptor.Component<number>()("Req/Noise")
+const Noise = Descriptor.Component<number>()("Req/Noise", { columns: "number" })
 const A = Descriptor.Component<{}>()("Req/A")
 const B = Descriptor.Component<{}>()("Req/B")
 
@@ -49,7 +49,7 @@ describe("Schema.requires", () => {
   })
 
   it("rejects a saved component requiring a transient one", () => {
-    const Trail = Descriptor.TransientComponent<number>()("Req/Trail")
+    const Trail = Descriptor.TransientComponent<number>()("Req/Trail", { columns: "number" })
     const Ghost = Descriptor.Component<{}>()("Req/Ghost")
     const Shade = Descriptor.TransientComponent<{}>()("Req/Shade")
     // @ts-expect-error Req/Ghost requires Req/Trail, which is transient and not saved: make Req/Ghost transient too

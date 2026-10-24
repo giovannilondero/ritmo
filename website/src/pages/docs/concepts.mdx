@@ -19,7 +19,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 
 // Components: data on an entity. An empty one is a tag.
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+// A number is kept unboxed in a number column, and says so
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 
 // A resource: one value for the whole world
@@ -45,7 +46,7 @@ that.
 ```ts twoslash title="damage.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Score = Descriptor.Resource<number>()("Arena/Score")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
@@ -84,7 +85,7 @@ keeps only what changed since this system last ran.
 ```ts twoslash title="queries.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
 // ---cut---
@@ -109,7 +110,7 @@ Spawns and despawns are queued, and they land together at the next
 ```ts twoslash title="waves.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
 const Enemies = Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] })
@@ -140,7 +141,7 @@ returns a `Result`. If a system fails, its writes are rolled back.
 ```ts twoslash title="update.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, events: { Hit } }))
@@ -172,7 +173,7 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
   const json = S.toCodecJson(schema)
   return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
 }
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
 // A closed list of states, each with the data only it has
@@ -222,7 +223,7 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
 }
 
 const Root = Schema.defineRoot("Arena")
-const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health")
+const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health", { columns: "number" })
 
 // Saved as [["potion", 3]], loaded back as a Map
 const Stock = Descriptor.ConstructedResource(codec(S.ReadonlyMap(S.String, S.Int)))("Arena/Stock")

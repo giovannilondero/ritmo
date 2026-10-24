@@ -245,14 +245,46 @@ export interface ComponentOptions {
    * update every frame.
    */
   readonly immutable?: true
+  /**
+   * How the component is stored. `"number"` is required when the value is a
+   * number (a plain or branded number, a number literal union, an entity
+   * id): the runtime cannot see a value's type, so the component says it,
+   * and its values are kept unboxed in a number column. Reads return the
+   * number, writes copy it in: nothing is allocated. Every other value is
+   * stored as it is, and takes no `columns`.
+   */
+  readonly columns?: "number"
 }
 
-/** The descriptor a component constructor returns for `Options`: `D`, plus `Immutable` when `immutable: true`. */
+/**
+ * The descriptor a component constructor returns for `Options`: `D`, plus
+ * `Immutable` when `immutable: true`. `columns` changes storage only, so the
+ * type stays the same.
+ */
 export type WithComponentOptions<D, Options extends ComponentOptions> =
   Options extends { readonly immutable: true } ? D & Immutable : D
 
-const applyComponentOptions = <D extends object>(descriptor: D, options: ComponentOptions | undefined): D =>
-  options?.immutable === true ? { ...descriptor, immutable: true } : descriptor
+/**
+ * The fix when the `columns` option does not fit the value, or `unknown`.
+ * Intersected with the name, so the call fails on the name with the message.
+ */
+export type CheckedColumns<Name extends string, Value, Options> = [Value] extends [number]
+  ? Options extends { readonly columns: "number" }
+    ? unknown
+    : { readonly __fixColumns__: `${Name} holds a number: add { columns: "number" } to store it unboxed in a number column` }
+  : Options extends { readonly columns: unknown }
+    ? { readonly __fixColumns__: `${Name} does not hold a number: only components whose value is a number take { columns: "number" }` }
+    : unknown
+
+const applyComponentOptions = <D extends object>(descriptor: D, options: ComponentOptions | undefined): D => ({
+  ...descriptor,
+  ...(options?.immutable === true ? { immutable: true } : {}),
+  ...(options?.columns === "number" ? { columns: "number" } : {})
+})
+
+/** Whether a component descriptor is stored in a number column (`columns: "number"`). */
+export const isNumberColumn = (descriptor: Descriptor.Any): boolean =>
+  "columns" in descriptor && descriptor.columns === "number"
 
 /**
  * Whether a component descriptor was declared `immutable: true` (readable by
@@ -360,17 +392,20 @@ type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Valu
  *
  * The value is a real type: `any` and `never` do not compile (here and in
  * every other descriptor constructor). Use `unknown` for a value no system
- * reads, and `Descriptor.Tag` for a marker.
+ * reads, and `Descriptor.Tag` for a marker. A number value is stored in a
+ * number column and says so with `{ columns: "number" }` (see
+ * {@link ComponentOptions}).
  *
  * @example
  * ```ts
  * const Position = Descriptor.Component<{ x: number; y: number }>()("Game/Position")
+ * const Health = Descriptor.Component<number>()("Game/Health", { columns: "number" })
  * // What an entity is, replaced with commands.insert and never written by a query:
  * const EnemyKind = Descriptor.Component<"grunt" | "boss">()("Game/EnemyKind", { immutable: true })
  * ```
  */
 export const Component = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
-  name: Name,
+  name: Name & CheckedColumns<Name, Value, Options>,
   options?: Options
 ) => WithComponentOptions<Descriptor<"component", Name, Value>, Options>> =>
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeDescriptor("component", name), options)) as never
@@ -385,19 +420,23 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  * never exist in the world in an unvalidated shape (vectors, sizes, ids).
  * `Raw` (what the raw APIs take) is the schema's saved form.
  *
+ * A number value is stored in a number column and says so with
+ * `{ columns: "number" }` (see {@link ComponentOptions}).
+ *
  * @example
  * ```ts
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
  * const Velocity = Descriptor.ConstructedComponent(Vector2.schema)("Game/Velocity")
+ * const Speed = Descriptor.ConstructedComponent(z.number().positive())("Game/Speed", { columns: "number" })
  * ```
  */
 export const ConstructedComponent = <const S extends Codec<any, any>>(
   schema: S & CheckedCodec<S>
 ) => <const Name extends string, const Options extends ComponentOptions = {}>(
-  name: Name,
+  name: Name & CheckedColumns<Name, CodecType<S>, Options>,
   options?: Options
 ): WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options> =>
-  applyComponentOptions(makeConstructedDescriptor("component", name, schema), options) as WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options>
+  applyComponentOptions(makeConstructedDescriptor("component", name, schema), options) as never
 
 /**
  * Defines a component descriptor that snapshots skip.
@@ -411,7 +450,7 @@ export const ConstructedComponent = <const S extends Codec<any, any>>(
  * ```
  */
 export const TransientComponent = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
-  name: Name,
+  name: Name & CheckedColumns<Name, Value, Options>,
   options?: Options
 ) => WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>> =>
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeTransientDescriptor("component", name), options)) as never

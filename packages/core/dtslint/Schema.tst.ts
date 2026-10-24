@@ -701,7 +701,7 @@ describe("Schema", () => {
   })
 
   it("cannot write through a query the system did not declare", () => {
-    const Hp = Descriptor.Component<number>()("UndeclaredWrite/Hp")
+    const Hp = Descriptor.Component<number>()("UndeclaredWrite/Hp", { columns: "number" })
     const Game = Schema.bind(Schema.fragment({ components: { Hp } }))
     const entityId = Entity.makeEntityId<typeof Game.schema, typeof Game.schema>(1)
     Game.System("UndeclaredWrite/Probe", {
