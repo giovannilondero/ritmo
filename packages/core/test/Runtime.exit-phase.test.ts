@@ -78,6 +78,40 @@ describe("the exit phase of a transition", () => {
     expect(runtime.inspect(State)).toEqual({ flow: { _tag: "Menu" }, music: { _tag: "Quiet" }, saved: 1, names: 1 })
   })
 
+  it("restores the change marks of writes it rolls back", () => {
+    const seen: Array<ReadonlyArray<string>> = []
+    const Spawn = Game.System("ExitPhase/Spawn", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
+      commands.spawn(Game.Command.spawn([Name, "before"]))
+    })
+    const Rename = Game.System("ExitPhase/Rename", {
+      queries: { named: Game.Query({ selection: { name: Game.Query.write(Name) } }) }
+    }, ({ queries }) => {
+      for (const { data } of queries.named.each()) data.name.set("during")
+    })
+    const Fail = Game.System("ExitPhase/Fail", {}, () => Result.failure("busy"))
+    const Watch = Game.System("ExitPhase/Watch", {
+      queries: { renamed: Game.Query({ selection: { name: Game.Query.read(Name) }, filters: [Game.Query.changed(Name)] }) }
+    }, ({ queries }) => {
+      seen.push(queries.renamed.each().map((match) => match.data.name.get()))
+    })
+    const transitions = Game.Schedule.transitions(
+      Game.Schedule.onExit(Flow, "Playing", [Rename]),
+      Game.Schedule.onTransition(Flow, ["Playing", "Menu"], [Fail])
+    )
+    const ToMenu = Game.System("ExitPhase/ToMenu", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
+      nextMachines.flow.set({ _tag: "Menu" })
+    })
+    const runtime = makeRuntime()
+    runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Watch))
+
+    const failed = runtime.tick(Game.Schedule(ToMenu, Game.Schedule.applyStateTransitions(transitions)))
+    runtime.tick(Game.Schedule(Watch))
+
+    expect(failed.ok).toBe(false)
+    // The rename was undone with its change tick: the watcher sees no change.
+    expect(seen).toEqual([["before"], []])
+  })
+
   it("cannot contain applyDeferred()", () => {
     const Noop = Game.System("ExitPhase/Noop", {}, () => {})
     // A nested schedule hides the marker from the types; the build still rejects it.

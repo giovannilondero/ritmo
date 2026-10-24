@@ -40,8 +40,8 @@ export interface EntityRecord {
   readonly values: Array<unknown>
   /**
    * Per component ordinal, `MARK_STRIDE` numbers: the tick the component was
-   * added, the tick it last changed, and the transaction that last journaled
-   * it.
+   * added, the tick it last changed, the transaction that last journaled it,
+   * and its changed tick from before that transaction.
    */
   readonly marks: Array<number>
   /**
@@ -56,7 +56,8 @@ export interface EntityRecord {
 const ADDED = 0
 const CHANGED = 1
 const JOURNALED = 2
-const MARK_STRIDE = 3
+const PREVIOUS = 3
+const MARK_STRIDE = 4
 const NO_MARK = -1
 
 /**
@@ -222,10 +223,15 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /**
    * Journal of in-place component writes made by the running system. Each
    * record/ordinal pair is journaled once per transaction with its original
-   * value, so commit can record lifecycle changes and rollback can restore.
+   * value (its original changed tick stays in the slot's `PREVIOUS` mark), so
+   * rollback can restore both. Writes stamp their changed tick as they happen,
+   * and the running system reads its own slots through `PREVIOUS`, so commit
+   * has nothing to replay. The arrays are reused across transactions:
+   * `journalSize` is the live length.
    */
   let transaction = 0
   let inTransaction = false
+  let journalSize = 0
   const journalRecords: Array<EntityRecord> = []
   const journalOrdinals: Array<number> = []
   const journalValues: Array<unknown> = []
@@ -341,9 +347,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   ): void => {
     let record = records.get(entityId)
     if (!record) {
-      const values: Array<unknown> = new Array(descriptors.length)
+      // Slots past the highest ordinal the entity spawns with stay absent
+      // until a write grows them (`ensureSlots`), so a record costs what the
+      // entity holds, not what the schema declares.
+      let size = 0
+      for (let index = 0; index < components.length; index++) {
+        size = Math.max(size, ordinalOf(components[index]![0]) + 1)
+      }
+      const values: Array<unknown> = new Array(size)
       values.fill(ABSENT)
-      const marks: Array<number> = new Array(descriptors.length * MARK_STRIDE)
+      const marks: Array<number> = new Array(size * MARK_STRIDE)
       marks.fill(NO_MARK)
       record = {
         id: entityId,
@@ -389,21 +402,38 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       markChanged(record, ordinal)
       return true
     }
-    const slot = ordinal * MARK_STRIDE + JOURNALED
-    if (record.marks[slot] !== transaction) {
-      record.marks[slot] = transaction
-      journalRecords.push(record)
-      journalOrdinals.push(ordinal)
-      journalValues.push(record.values[ordinal])
+    const marks = record.marks
+    const base = ordinal * MARK_STRIDE
+    if (marks[base + JOURNALED] !== transaction) {
+      marks[base + JOURNALED] = transaction
+      marks[base + PREVIOUS] = marks[base + CHANGED]!
+      journalRecords[journalSize] = record
+      journalOrdinals[journalSize] = ordinal
+      journalValues[journalSize] = record.values[ordinal]
+      journalSize += 1
     }
     record.values[ordinal] = value
+    markChanged(record, ordinal)
     return true
   }
 
+  /** Empties the journal, dropping its references so old values can be collected. */
   const clearJournal = (): void => {
     journalRecords.length = 0
     journalOrdinals.length = 0
     journalValues.length = 0
+    journalSize = 0
+  }
+
+  /**
+   * The changed tick a reader sees: a slot journaled by the running
+   * transaction shows its tick from before, so a system does not see its own
+   * writes as changes until it commits.
+   */
+  const visibleChanged = (record: EntityRecord, ordinal: number): number => {
+    const base = ordinal * MARK_STRIDE
+    const marks = record.marks
+    return inTransaction && marks[base + JOURNALED] === transaction ? marks[base + PREVIOUS]! : marks[base + CHANGED]!
   }
 
   /**
@@ -419,20 +449,20 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    */
   const commitTransaction = (): void => {
     inTransaction = false
-    for (let index = 0; index < journalRecords.length; index++) {
-      const record = journalRecords[index]!
-      if (inPhase) {
+    if (inPhase) {
+      for (let index = 0; index < journalSize; index++) {
+        const record = journalRecords[index]!
         const ordinal = journalOrdinals[index]!
         phaseRecords.push(record)
         phaseOrdinals.push(ordinal)
         phaseValues.push(journalValues[index])
-        phaseChanged.push(record.marks[ordinal * MARK_STRIDE + CHANGED]!)
-      }
-      if (record.alive) {
-        markChanged(record, journalOrdinals[index]!)
+        phaseChanged.push(record.marks[ordinal * MARK_STRIDE + PREVIOUS]!)
       }
     }
-    clearJournal()
+    // Large journals are dropped so the values they hold can be collected;
+    // small ones are reused.
+    if (journalSize > 4096) clearJournal()
+    else journalSize = 0
   }
 
   /**
@@ -440,8 +470,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    */
   const rollbackTransaction = (): void => {
     inTransaction = false
-    for (let index = 0; index < journalRecords.length; index++) {
-      journalRecords[index]!.values[journalOrdinals[index]!] = journalValues[index]
+    for (let index = 0; index < journalSize; index++) {
+      const record = journalRecords[index]!
+      const ordinal = journalOrdinals[index]!
+      record.values[ordinal] = journalValues[index]
+      record.marks[ordinal * MARK_STRIDE + CHANGED] = record.marks[ordinal * MARK_STRIDE + PREVIOUS]!
     }
     clearJournal()
   }
@@ -813,7 +846,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    * with the value before the transaction and the current one.
    */
   const forEachJournaled = (visit: (id: number, ordinal: number, before: unknown, after: unknown) => void): void => {
-    for (let index = 0; index < journalRecords.length; index++) {
+    for (let index = 0; index < journalSize; index++) {
       const record = journalRecords[index]!
       const ordinal = journalOrdinals[index]!
       visit(record.id, ordinal, journalValues[index], record.values[ordinal])
@@ -896,7 +929,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
      * Whether the component was added or changed after `since`.
      */
     changedSince: (record: EntityRecord, ordinal: number, since: number): boolean =>
-      has(record, ordinal) && record.marks[ordinal * MARK_STRIDE + CHANGED]! > since,
+      has(record, ordinal) && visibleChanged(record, ordinal) > since,
     /**
      * Candidate ids for a `changed`/`added` filter on `ordinal` after `since`,
      * or `undefined` when the log no longer covers that range. Ids may repeat.
