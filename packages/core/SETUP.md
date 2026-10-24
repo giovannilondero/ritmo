@@ -18,5 +18,6 @@ Add-ons, installed only when the game needs them:
 - `@typeonce/ritmo-browser`: a browser host (animation-frame loop; keyboard, gamepad, pointer, and touch input, local multiplayer).
 - `@typeonce/ritmo-render`: mirrors entities into any renderer's nodes.
 - `@typeonce/ritmo-pixi`: the Pixi adapter for `@typeonce/ritmo-render`.
+- `@typeonce/ritmo-netcode`: online multiplayer (rollback or lockstep sessions over WebSocket, WebRTC, or any transport).
 
 Then use the skill for every change: it says where the docs are and how to structure the game.

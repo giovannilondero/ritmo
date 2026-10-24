@@ -108,6 +108,7 @@ All packages are released together with the same version.
 | `@typeonce/ritmo-browser` | Animation-frame ticks; keyboard, gamepad, pointer, and touch actions, merged into one input or split across local players |
 | `@typeonce/ritmo-render` | Entity-to-node sync for any renderer |
 | `@typeonce/ritmo-pixi` | Pixi adapter for the render node registry |
+| `@typeonce/ritmo-netcode` | Online multiplayer: rollback and lockstep sessions over WebSocket, WebRTC, or any transport, with resyncs and desync checks |
 | `@typeonce/ritmo-devtools` | Headless debug sessions, reports, and `ritmo-devtools lint` |
 | `@typeonce/oxlint-plugin-ritmo` | Lint rules for deterministic, headless simulation code |
 

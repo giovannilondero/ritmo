@@ -12,8 +12,10 @@
   "dependencies": {
     "@typeonce/ritmo": "workspace:*",
     "@typeonce/ritmo-browser": "workspace:*",
+    "@typeonce/ritmo-integration-netcode": "workspace:*",
     "@typeonce/ritmo-integration-top-down": "workspace:*",
     "@typeonce/ritmo-math": "workspace:*",
+    "@typeonce/ritmo-netcode": "workspace:*",
     "@typeonce/ritmo-pixi": "workspace:*",
     "@typeonce/ritmo-render": "workspace:*",
     "effect": "4.0.2",

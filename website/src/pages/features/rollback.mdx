@@ -4,12 +4,21 @@ title: Rollback without rewriting
 description: Take a checkpoint every tick, rewind when real input arrives, and tick again. The world comes back exactly, and the renderer sees one change.
 ---
 
+import Game from "../../components/Game.astro"
+
 Online games hide latency with rollback: run every tick at once with a
 guess for the other player's input, and when their real input arrives and
 differs, go back to the tick it was for and run again up to now. That takes
 a simulation that plays the same on every machine (Ritmo's
 [determinism](/features/determinism/)), and a way back that puts the world
 exactly where it was.
+
+<Game id="rollback" ratio="10 / 11" />
+
+Both views are peers of one match, each with its own runtime, over a fake
+network with the latency picked in the corner. Your moves reach the other
+peer late; it rolls back, runs the ticks again, and the two agree on every
+tick they compare.
 
 ## Checkpoints
 
@@ -101,5 +110,68 @@ const mine = runtime.checksum()
 if (mine.ok && mine.value !== theirs) reportDesync()
 ```
 
-Ritmo carries no transport: the game sends inputs and checksums over its
-own, and a late joiner loads a save every peer restores at the same tick.
+## Over the network
+
+`@typeonce/ritmo-netcode` puts it together: one session per peer exchanges
+inputs, takes the checkpoints, rolls back, slows the peer that runs ahead,
+and compares checksums. The game gives it the simulation, the seats, and a
+link; here the input schema is Effect's.
+
+```ts twoslash title="online.ts"
+import { Clock, Descriptor, FixedLoop, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
+import { BrowserHostClock, BrowserTickSource, InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
+const step = Clock.hz(60)
+declare const socket: WebSocket
+declare const readInput: () => PlayerInput
+declare const showDisconnected: (failure: unknown) => void
+// ---cut---
+const PlayerInput = S.Struct({ dx: S.Literals([-1, 0, 1]), fire: S.Boolean })
+type PlayerInput = typeof PlayerInput.Type
+
+// The simulation reads every seat's input from one source.
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+const simulate = Game.Schedule(Capture)
+
+const seats = Netcode.seats(codec(PlayerInput), { count: 2, idle: { dx: 0, fire: false } })
+if (!seats.ok) throw new Error(seats.error.reason)
+const runtime = Game.Runtime.make({
+  services: Game.Runtime.services(Game.Runtime.service(Seats, seats.value.source)),
+  resources: { Inputs: [] }
+}).value
+
+const session = Netcode.rollback(runtime, {
+  simulate,
+  seats: seats.value,
+  seat: 1, // seat 0 hosts: every peer starts from its world
+  links: [WebSocketNetworkLink.make(socket)],
+  hostClock: BrowserHostClock.make(window),
+  step
+})
+if (!session.ok) throw new Error(session.error.reason)
+
+FixedLoop.start({
+  source: BrowserTickSource.make(window), step, maxFrameSeconds: 0.25, maxStepsPerFrame: 5,
+  rate: session.value.rate,
+  update: session.value.update({ input: readInput, onHalted: (error) => console.error(error) }),
+  render: () => {},
+  onFailure: showDisconnected
+})
+```
+
+What cannot work does not compile: a simulation that cannot be rewound,
+one whose services the runtime does not provide, a runtime that cannot
+save. A checksum that differs stops the session and reports it; a resync
+starts every peer again from seat 0's world.
+
+Ritmo carries no server: a link wraps a connection the game opened, a
+WebSocket to a relay, a WebRTC data channel between peers, or any
+transport with `send`, `receive`, and `status`.
