@@ -18,7 +18,8 @@ export const sections = [
       { href: "/docs/concepts/", title: "Concepts" },
       { href: "/docs/type-safety/", title: "Type safety" },
       { href: "/docs/browser/", title: "Loop, input, rendering" },
-      { href: "/docs/devtools/", title: "Headless debugging" }
+      { href: "/docs/devtools/", title: "Headless debugging" },
+      { href: "/docs/comparison/", title: "Other ECS libraries" }
     ]
   },
   {
@@ -29,7 +30,8 @@ export const sections = [
       { href: "/features/multiplayer/", title: "Local multiplayer" },
       { href: "/features/replays/", title: "Replays that become tests" },
       { href: "/features/determinism/", title: "Same game everywhere" },
-      { href: "/features/states/", title: "States that can't go wrong" }
+      { href: "/features/states/", title: "States that can't go wrong" },
+      { href: "/features/composition/", title: "Entities that change shape" }
     ]
   },
   {
