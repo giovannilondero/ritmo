@@ -104,6 +104,12 @@ export interface EntityRecord {
    */
   readonly held: Array<number>
   /**
+   * The same set as bits (ordinal `n` is bit `n & 31` of word `n >>> 5`), so
+   * a query's structure check is one load per component. Missing words read
+   * as `undefined`, which `&` turns into 0.
+   */
+  readonly heldBits: Array<number>
+  /**
    * Cached query matches by query ordinal, reused while the entity matches.
    */
   readonly matches: Array<unknown>
@@ -374,9 +380,19 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     return page
   }
 
-  const has = (record: EntityRecord, ordinal: number): boolean => {
-    const page = pageAt(ordinal, record.id)
-    return page !== undefined && page.values[record.id & PAGE_MASK] !== ABSENT
+  const has = (record: EntityRecord, ordinal: number): boolean =>
+    (record.heldBits[ordinal >>> 5]! & (1 << (ordinal & 31))) !== 0
+
+  const holdBit = (record: EntityRecord, ordinal: number): void => {
+    const bits = record.heldBits
+    const word = ordinal >>> 5
+    while (bits.length <= word) bits.push(0)
+    bits[word] = bits[word]! | (1 << (ordinal & 31))
+  }
+
+  const dropBit = (record: EntityRecord, ordinal: number): void => {
+    const word = ordinal >>> 5
+    record.heldBits[word] = record.heldBits[word]! & ~(1 << (ordinal & 31))
   }
 
   /** The value of a component the entity holds (`ABSENT` when it does not). */
@@ -470,6 +486,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         id: entityId,
         entityId,
         held: [],
+        heldBits: [],
         matches: [],
         nameAt,
         alive: true
@@ -676,6 +693,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (page.values[slot] === ABSENT) {
       page.count += 1
       insertSorted(record.held, ordinal)
+      holdBit(record, ordinal)
       members[ordinal]!.add(record)
       bumpMembership(record, ordinal)
       page.added[slot] = tick
@@ -705,6 +723,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     }
     clearSlot(record, ordinal)
     record.held.splice(record.held.indexOf(ordinal), 1)
+    dropBit(record, ordinal)
     members[ordinal]!.delete(record)
     bumpMembership(record, ordinal)
     appendLog(logFor(removedLogs, ordinal), id, tick)
@@ -877,6 +896,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       appendLog(logFor(removedLogs, ordinal), id, tick)
     }
     held.length = 0
+    record.heldBits.length = 0
     clearEntityScope(id)
     appendLog(despawnedLog, id, tick)
     record.alive = false
