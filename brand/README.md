@@ -43,6 +43,7 @@ beats.
 | `ritmo-lockup.svg` / `-inverse` | Icon and name: READMEs, the docs header, slides |
 | `ritmo-lockup-padded.svg` / `-inverse` | The lockup with extra vertical space for the README header |
 | `ritmo-banner.svg` | Dark banner with the lockup and the full tagline |
+| `ritmo-social.svg`, `ritmo-social-1200x630.png` | Link preview card (Open Graph, X), set by the website on every page |
 | `ritmo-banner.gif`, `ritmo-motion-still.svg` | README animation and matching reduced-motion fallback |
 | `ritmo-lockup-stacked.svg` / `-inverse` | Square spaces: social cards, title slides |
 | `ritmo-wordmark.svg` / `-inverse` | The name with the tick ruler, 120px wide and up |
