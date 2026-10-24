@@ -111,6 +111,9 @@ const invalid = (record: EntityRecord, ordinal: number, value: unknown): never =
  * another run means it outlived its run: the first is the more specific cause.
  * A number goes unboxed into the page's `numbers`, so writing one allocates nothing.
  */
+// `typeof` first: an object or string value skips the comparison with the imported marker.
+const isPresent = (value: unknown): boolean => typeof value === "symbol" && value === PRESENT
+
 const write = (world: World, page: Page, slot: number, value: unknown, record: EntityRecord, ordinal: number, stamp: Stamp): void => {
   const values = page.values
   const current = values[slot]
@@ -124,7 +127,7 @@ const write = (world: World, page: Page, slot: number, value: unknown, record: E
   const bit = 1 << (slot & 31)
   if ((saved[word]! & bit) === 0) {
     saved[word] = saved[word]! | bit
-    if (current === PRESENT) {
+    if (isPresent(current)) {
       beforeNumbersOf(page)[slot] = page.numbers[slot]!
     } else {
       page.before![slot] = current
@@ -132,7 +135,7 @@ const write = (world: World, page: Page, slot: number, value: unknown, record: E
     }
   }
   if (typeof value === "number") {
-    if (current === PRESENT) {
+    if (isPresent(current)) {
       page.numbers[slot] = value
     } else {
       numbersOf(page)[slot] = value
@@ -140,7 +143,7 @@ const write = (world: World, page: Page, slot: number, value: unknown, record: E
     }
   } else {
     // A saved number replaced by another value moves to `before`: a slot saved as a number still holds one.
-    if (current === PRESENT && page.before![slot] === PRESENT) {
+    if (isPresent(current) && isPresent(page.before![slot])) {
       page.before![slot] = page.beforeNumbers![slot]
       page.savedObjects = true
     }

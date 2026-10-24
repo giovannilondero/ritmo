@@ -469,4 +469,62 @@ describe("Runtime checkpoints of mixed pages", () => {
     }
     expect(runtime.inspect(ReadCharges)).toEqual(reference.inspect(ReadCharges))
   })
+
+  it("puts back a number and an object swapped within one run", () => {
+    // Each slot stores a number unboxed and any other value as it is, so a rewind has both kinds to put back.
+    const MixedRoot = Schema.defineRoot("CheckpointSwap")
+    const Target = Descriptor.Component<number | { readonly x: number }>()("CheckpointSwap/Target")
+    const Turn = Descriptor.Resource<number>()("CheckpointSwap/Turn")
+    const Mixed = Schema.bind(Schema.fragment({ components: { Target }, resources: { Turn } }), MixedRoot)
+    const Swap = Mixed.System("CheckpointSwap/Swap", {
+      resources: { turn: Mixed.System.writeResource(Turn) },
+      queries: { targets: Mixed.Query({ selection: { target: Mixed.Query.write(Target) } }) },
+      commands: Mixed.System.commands(Mixed.System.spawns(Target))
+    }, ({ resources, queries, commands }) => {
+      const turn = resources.turn.get() + 1
+      resources.turn.set(turn)
+      if (turn === 1) {
+        commands.spawn(Mixed.Command.spawn([Target, 0]))
+        commands.spawn(Mixed.Command.spawn([Target, { x: 0 }]))
+        return
+      }
+      for (const { entity, data } of queries.targets.each()) {
+        const n = turn * 10 + entity.id
+        // Within one run: a number then an object, an object then a number, or a number alone.
+        if (turn % 3 === 0) {
+          data.target.set(n)
+          data.target.set({ x: n })
+        } else if (turn % 3 === 1) {
+          data.target.set({ x: n })
+          data.target.set(n)
+        } else data.target.set(n + 0.5)
+      }
+    })
+    const ReadTargets = Mixed.Inspector("CheckpointSwap/Read", {
+      queries: { targets: Mixed.Query({ selection: { target: Mixed.Query.read(Target) } }) }
+    }, ({ queries }) => queries.targets.each().map(({ entity, data }) => [entity.id, data.target.get()] as const))
+    const schedule = Mixed.Schedule(Swap, Mixed.Schedule.applyDeferred())
+    const runtime = Mixed.Runtime.make({ services: Mixed.Runtime.services(), resources: { Turn: 0 }, debug: { hostClock: HostClock.test() } }).value
+
+    expectOk(runtime.tick(schedule))
+    // A checkpoint before every tick, and what each tick left: turns 2 to 7 cover every kind of write over every kind.
+    const checkpoints: Array<Checkpoint.Checkpoint<typeof MixedRoot>> = []
+    const states: Array<unknown> = [runtime.inspect(ReadTargets)]
+    for (let tick = 0; tick < 6; tick++) {
+      checkpoints.push(runtime.checkpoint(schedule))
+      expectOk(runtime.tick(schedule))
+      states.push(runtime.inspect(ReadTargets))
+    }
+    expect(states[1]).toEqual([[1, 21.5], [2, 22.5]])
+    // Newest first, since a rewind releases the checkpoints after it.
+    for (const at of [4, 3, 0]) {
+      expectOk(runtime.rewind(checkpoints[at]!))
+      expect(runtime.inspect(ReadTargets)).toEqual(states[at])
+      for (let tick = at; tick < 6; tick++) {
+        if (tick > at) checkpoints[tick] = runtime.checkpoint(schedule)
+        expectOk(runtime.tick(schedule))
+        expect(runtime.inspect(ReadTargets)).toEqual(states[tick + 1])
+      }
+    }
+  })
 })

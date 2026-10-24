@@ -850,11 +850,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         const lowest = bits & -bits
         const slot = (word << 5) + 31 - Math.clz32(lowest)
         const old = before[slot]
-        if (old === PRESENT) {
+        if (typeof old === "symbol" && old === PRESENT) {
           if (differs(page.beforeNumbers![slot], page.numbers[slot])) stampChanged(page, slot)
         } else {
           const after = values[slot]
-          if (differs(old, after === PRESENT ? page.numbers[slot] : after)) stampChanged(page, slot)
+          if (differs(old, typeof after === "symbol" && after === PRESENT ? page.numbers[slot] : after)) stampChanged(page, slot)
           // Old values do not outlive the transaction.
           before[slot] = PRESENT
         }
@@ -994,7 +994,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         const slot = (word << 5) + 31 - Math.clz32(lowest)
         bits ^= lowest
         const value = before[slot]
-        if (value === PRESENT) {
+        if (typeof value === "symbol" && value === PRESENT) {
           // Saved as a number (`beforeNumbers`).
           values[slot] = PRESENT
           numbers[slot] = page.beforeNumbers![slot]!
