@@ -1619,8 +1619,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     }
   }
 
+  /** Sets the next id exactly, for `restore`: a restored world allocates the ids the saved one would have. */
   const setNextEntity = (value: number): void => {
-    nextEntity = Math.max(nextEntity, value)
+    nextEntity = value
   }
 
   return {

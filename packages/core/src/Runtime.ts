@@ -2785,6 +2785,7 @@ const makeValidatedRuntime = <
     relationFailures.clear()
     world.advanceTick()
     world.despawnAll()
+    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
     world.setNextEntity(Math.max(saved.nextEntity, ...entities.map((entity) => entity.id + 1)))
     for (const entity of entities) {
       world.spawnEntity(world.entityIdOf(entity.id), entity.components)

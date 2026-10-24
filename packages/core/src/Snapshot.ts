@@ -26,7 +26,9 @@
  *
  * Restoring despawns every current entity and spawns the saved ones with their
  * original ids, so change detection and renderer sync see a restore as normal
- * despawns and spawns. Pending commands and events emitted by systems are
+ * despawns and spawns. The next id is the save's too: the same save restored
+ * in two runtimes allocates the same ids from then on, whatever each held
+ * before (peers of a networked game rely on it). Pending commands and events emitted by systems are
  * dropped; events the host sent with `runtime.send` and no system has read
  * yet are kept, since they are input that has not been handled. Transient
  * components are absent from restored entities; transient resources keep their
