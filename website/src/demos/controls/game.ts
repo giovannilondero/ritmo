@@ -109,9 +109,10 @@ const touchLayout = ({ width, height }: Touch.Size): Touch.Layout<"dash", "move"
 
 const drawTouch = (context: CanvasRenderingContext2D, view: Touch.View<"dash", "move">) => {
   const stick = view.sticks.move
-  if (stick !== null) {
+  const zone = view.layout.sticks.move
+  if (stick !== null && zone !== null) {
     context.beginPath()
-    context.arc(stick.origin.x, stick.origin.y, view.layout.sticks.move.radius, 0, Math.PI * 2)
+    context.arc(stick.origin.x, stick.origin.y, zone.radius, 0, Math.PI * 2)
     context.fillStyle = "rgba(14, 16, 19, 0.45)"
     context.fill()
     context.strokeStyle = "rgba(243, 241, 236, 0.4)"
@@ -123,6 +124,7 @@ const drawTouch = (context: CanvasRenderingContext2D, view: Touch.View<"dash", "
     context.fill()
   }
   const dash = view.layout.buttons.dash
+  if (dash === null) return
   context.beginPath()
   context.arc(dash.center.x, dash.center.y, dash.radius, 0, Math.PI * 2)
   context.fillStyle = view.buttons.dash.held ? "rgba(255, 90, 54, 0.55)" : "rgba(14, 16, 19, 0.45)"

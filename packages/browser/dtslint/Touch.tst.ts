@@ -20,7 +20,10 @@ describe("Touch", () => {
     expect(touch.snapshot().vectors.aim).type.toBe<Touch.StickState>()
     expect(touch.snapshot().vectors.aim.active).type.toBe<boolean>()
     expect(touch.view().sticks).type.toBe<{ readonly move: Touch.StickView | null; readonly aim: Touch.StickView | null }>()
-    expect(touch.view().layout.sticks.move.radius).type.toBe<number>()
+    expect(touch.view().layout.sticks.move).type.toBe<Touch.StickZone | null>()
+    expect(touch.view().layout.buttons.dash).type.toBe<Touch.ButtonZone | null>()
+    // @ts-expect-error Object is possibly 'null'
+    touch.view().layout.sticks.move.radius
     // @ts-expect-error Property 'jump' does not exist on type
     touch.snapshot().actions.jump
     // @ts-expect-error Property 'look' does not exist on type
@@ -32,6 +35,22 @@ describe("Touch", () => {
     touch.snapshot().stick
     // @ts-expect-error Property 'stick' does not exist on type 'View<"dash", "move" | "aim">'
     touch.view().stick
+  })
+
+  it("hides a control with a null zone, keeping its name", () => {
+    let driving = false
+    const hidden = Touch.actions(target, blurHost, ({ width, height }) => ({
+      sticks: { move: driving ? null : { region: { left: 0, top: 0, width: width / 2, height }, radius: 56 } },
+      buttons: { steer: driving ? { center: { x: 60, y: height - 60 }, radius: 40 } : null }
+    }))
+    driving = true
+    expect(hidden).type.toBe<Touch.Actions<"steer", "move">>()
+    expect(hidden.snapshot().vectors.move).type.toBe<Touch.StickState>()
+    Touch.actions(target, blurHost, () => ({
+      // @ts-expect-error dash names both a stick and a button: give them different names
+      sticks: { dash: null },
+      buttons: { dash: null }
+    }))
   })
 
   it("takes a buttons-only layout as sticks: {}", () => {
