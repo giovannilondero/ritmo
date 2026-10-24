@@ -734,6 +734,9 @@ export interface Runtime<
    * request, a network message, a test's scripted input). It is published at
    * once, stamped with a fresh tick, so every reader sees it on its next run
    * whichever schedule it belongs to, once, like an event a system emitted.
+   * A reader that has not run yet sees it on its first run, however many
+   * ticks of other schedules come first (up to `Runtime.streamCapacity`
+   * entries), so a request sent before the first fixed step is not lost.
    * The event must belong to the schema. Calling it while a schedule is
    * running is a defect and throws: inside a tick, emit from a system.
    */
@@ -825,7 +828,8 @@ const makeValidatedRuntime = <
    * with the change tick at which they were published; each reader sees the
    * entries published after its previous completed run. Entries are kept for
    * the current and previous frame, and beyond that until every system that
-   * reads them has run, up to `streamCapacity` entries per stream.
+   * reads them has run, up to `streamCapacity` entries per stream. Events the
+   * host sent wait for the first reader of their stream to run.
    */
   const events = Streams.make<unknown>(streamCapacity)
   const transitionEvents = Streams.make<Machine.TransitionSnapshot>(streamCapacity)
