@@ -4,15 +4,16 @@ title: Ritmo and other ECS libraries
 description: The same mechanic in bitECS, Koota, Miniplex, and Ritmo, what happens when it is changed wrong, and what Ritmo trades for its guarantees.
 ---
 
-TypeScript has several entity component system libraries, each built for
-something different:
+TypeScript has several entity component system libraries. In their own
+words, from their READMEs:
 
-- **bitECS** is built for throughput: entities are numbers, and components
-  are arrays indexed by them.
-- **Koota** is built for real-time apps: components are traits with
-  defaults, with change tracking and React bindings.
-- **Miniplex** is built for simplicity: entities are plain objects, and
-  queries are live views over them.
+- [**bitECS**](https://github.com/NateTheGreatt/bitECS): "Flexible, minimal,
+  data-oriented ECS library for Typescript."
+- [**Koota**](https://github.com/pmndrs/koota): "Koota is an ECS-based state
+  management library optimized for real-time apps, games, and XR
+  experiences."
+- [**Miniplex**](https://github.com/hmans/miniplex): "Miniplex is an entity
+  management system for games and similarly demanding applications."
 
 **Ritmo** is built for a game that keeps growing while coding agents write
 it. Every system declares what it reads, writes, and queues, so the
@@ -26,7 +27,7 @@ ones around it.
 A hit stuns every guard for 30 frames. A stunned guard does not move, and
 the stun wears off.
 
-### bitECS
+### [bitECS](https://github.com/NateTheGreatt/bitECS)
 
 Components are arrays indexed by entity id, and systems are plain functions
 over the world.
@@ -64,7 +65,7 @@ const move = (world: World) => {
 }
 ```
 
-### Koota
+### [Koota](https://github.com/pmndrs/koota)
 
 Components are traits with default values, and a query updates them in
 place.
@@ -101,7 +102,7 @@ const move = (world: World) => {
 }
 ```
 
-### Miniplex
+### [Miniplex](https://github.com/hmans/miniplex)
 
 An entity is an object, and a component is one of its keys. Queries are
 declared once and stay up to date.
