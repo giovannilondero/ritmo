@@ -59,6 +59,6 @@ Ritmo has no validators of its own. Every value it checks or saves is described 
 - Does any UI or render code change saved world state?
 - Did adding this id produce a type error everywhere it is needed?
 - What happens to this value on restore?
-- Can a value I store describe something that cannot happen?
+- Can a value I store describe something that cannot happen? A nullable or kind-only field next to a `kind` or `phase` field, or a system that returns early on a mode field, says it can.
 - Did I extend an existing piece, or copy it?
 - What check fails if someone breaks this tomorrow?
