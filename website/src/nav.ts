@@ -30,6 +30,7 @@ export const sections = [
       { href: "/features/multiplayer/", title: "Local multiplayer" },
       { href: "/features/replays/", title: "Replays that become tests" },
       { href: "/features/determinism/", title: "Same game everywhere" },
+      { href: "/features/rollback/", title: "Rollback without rewriting" },
       { href: "/features/states/", title: "States that can't go wrong" },
       { href: "/features/composition/", title: "Entities that change shape" }
     ]

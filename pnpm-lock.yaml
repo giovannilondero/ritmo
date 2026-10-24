@@ -78,6 +78,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/math
 
+  integration/netcode:
+    dependencies:
+      '@typeonce/ritmo':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@typeonce/ritmo-browser':
+        specifier: workspace:*
+        version: link:../../packages/browser
+      '@typeonce/ritmo-math':
+        specifier: workspace:*
+        version: link:../../packages/math
+
   integration/top-down:
     dependencies:
       '@typeonce/ritmo':

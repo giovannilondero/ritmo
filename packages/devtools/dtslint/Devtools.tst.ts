@@ -1,5 +1,6 @@
 import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../../core/test/codecs.ts"
+import type * as Schedule from "@typeonce/ritmo/Schedule"
 import { Invariant, Lint, Replay, Session } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "tstyche"
 
@@ -120,10 +121,10 @@ describe("Lint.run", () => {
 
 describe("Replay.recorder", () => {
   const Place = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("DevtoolsTypes/Place")
-  const Keys = Descriptor.Service<Replay.Source<{ readonly left: boolean }>>()("DevtoolsTypes/Keys")
+  const Keys = Descriptor.Service<Schedule.Source<{ readonly left: boolean }>>()("DevtoolsTypes/Keys")
   const Rules = Descriptor.Service<{ readonly speed: number; readonly names: ReadonlyArray<string> }>()("DevtoolsTypes/Rules")
   const Page = Descriptor.Service<{ readonly toast: (message: string) => void }>()("DevtoolsTypes/Page")
-  const Mapped = Descriptor.Service<Replay.Source<Map<string, number>>>()("DevtoolsTypes/Mapped")
+  const Mapped = Descriptor.Service<Schedule.Source<Map<string, number>>>()("DevtoolsTypes/Mapped")
   const Saved = Schema.bind(Schema.fragment({ components: { Place } }))
   const runtime = Saved.Runtime.make({
     services: Saved.Runtime.services(
@@ -164,14 +165,14 @@ describe("Replay.recorder", () => {
   })
 
   it("tells plain data from the rest", () => {
-    expect<Replay.IsPlain<{ readonly a: ReadonlyArray<{ readonly b: string | null }> }>>().type.toBe<true>()
-    expect<Replay.IsPlain<{ readonly f: () => void }>>().type.toBe<false>()
-    expect<Replay.IsPlain<Map<string, number>>>().type.toBe<false>()
-    expect<Replay.IsPlain<Set<number>>>().type.toBe<false>()
+    expect<Schedule.IsPlain<{ readonly a: ReadonlyArray<{ readonly b: string | null }> }>>().type.toBe<true>()
+    expect<Schedule.IsPlain<{ readonly f: () => void }>>().type.toBe<false>()
+    expect<Schedule.IsPlain<Map<string, number>>>().type.toBe<false>()
+    expect<Schedule.IsPlain<Set<number>>>().type.toBe<false>()
     interface Upgrade { readonly cost: number; readonly next: Upgrade | null }
-    expect<Replay.IsPlain<{ readonly upgrade: Upgrade }>>().type.toBe<true>()
+    expect<Schedule.IsPlain<{ readonly upgrade: Upgrade }>>().type.toBe<true>()
     interface Broken { readonly next: Broken | null; readonly run: () => void }
-    expect<Replay.IsPlain<Broken>>().type.toBe<false>()
+    expect<Schedule.IsPlain<Broken>>().type.toBe<false>()
   })
 })
 
