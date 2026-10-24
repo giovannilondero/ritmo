@@ -5,7 +5,7 @@
    - unsaved runtime state: a transient component or resource, or the system's `local`. It is rebuilt after restore.
    - host state: a service or host code.
 2. Decide what the value does on new game, restore, and dispose, and test it: take a snapshot, restore it, and assert the value.
-3. Keep saved values plain data, decoded by their descriptor (the `Snapshot` and `Decode` module headers say how).
+3. Give every saved value a schema (see the skill's "Validating and saving values"). Saved forms are plain data: a value that is not (a `Map`, an `Option`, a class) uses a schema with an `encode` back to plain data. Test the round trip: `runtime.snapshot()`, `JSON.stringify`, `JSON.parse`, `runtime.restore(...)`.
 4. When the saved shape changes, add a step to `Snapshot.migrations(...)` so older saves still load.
 5. To upgrade Ritmo, read each package's `CHANGELOG.md` from the installed version up, apply each breaking entry's fix, and fix the remaining compile errors as their messages say.
 

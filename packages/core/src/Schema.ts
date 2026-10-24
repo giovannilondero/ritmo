@@ -742,7 +742,7 @@ export namespace Schema {
       ) => Command.DraftFor<S, Entries, P, Root, Relates>
       /** A typed `[Descriptor, value]` entry for an already valid value. */
       entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: QueryModule.ReadonlyValue<Descriptor.Value<D>>) => Command.Entry<D>
-      /** Validates raw input through a constructed descriptor's validator; check the result before spawning. See `Command.entryRaw`. */
+      /** Decodes raw input through a constructed descriptor's schema; check the result before spawning. See `Command.entryRaw`. */
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>

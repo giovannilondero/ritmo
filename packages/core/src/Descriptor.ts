@@ -96,9 +96,9 @@ export interface Descriptor<
 
 /**
  * The Standard Schema v1 interface (https://standardschema.dev), the one
- * validator contract Ritmo reads. Zod, Valibot, and ArkType schemas are
- * Standard Schemas as they are; an Effect schema becomes one with
- * `Schema.toStandardSchemaV1(...)`. `Input` is the saved form a schema
+ * schema contract Ritmo reads. Zod, Valibot, and ArkType schemas are
+ * Standard Schemas as they are; an Effect schema goes through the `codec`
+ * helper in the skill's `playbooks/effect.md`, which also encodes. `Input` is the saved form a schema
  * decodes, `Output` the value it produces.
  *
  * Ritmo ships no schemas of its own: the game brings them.

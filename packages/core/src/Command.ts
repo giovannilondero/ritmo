@@ -296,7 +296,7 @@ export const entry = <D extends Descriptor<"component", string, any>>(
 ): Entry<D> => [descriptor, value]
 
 /**
- * Validates raw input through a constructed descriptor's own validator and
+ * Decodes raw input (the schema's saved form) through a constructed descriptor's schema and
  * returns an entry result for `Game.Command.spawn(...)` / `extend(...)`.
  * `commands.insert` takes valid entries only: check the result first.
  *

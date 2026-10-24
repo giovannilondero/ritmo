@@ -42,7 +42,7 @@ import type * as Result from "@typeonce/ritmo/Result"
  * Finite number brand.
  *
  * Values of this type are guaranteed not to be `NaN`, `Infinity`, or
- * `-Infinity` when they come from a validator (`result`, `decode`). The
+ * `-Infinity` when they come from a constructor (`result`, `option`) or a `codec`. The
  * arithmetic helpers here and in `Vector2` keep the brand without
  * re-validating, so their results are finite only while they stay within
  * `±Number.MAX_VALUE`: game-sized values never come close, but validate

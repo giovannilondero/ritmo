@@ -579,7 +579,7 @@ export interface ReadCell<T> {
  *
  * This gives a narrow mutation surface instead of exposing raw storage objects.
  * Values written here are already valid. Data that still needs validation
- * goes through its descriptor's own validator: declare the descriptor with
+ * goes through its descriptor's schema: declare the descriptor with
  * `Descriptor.ConstructedComponent` / `ConstructedResource` and write with
  * `setRaw` / `updateRaw` on its {@link ConstructedWriteCell}.
  */

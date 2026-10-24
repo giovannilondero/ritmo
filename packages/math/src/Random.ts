@@ -3,7 +3,7 @@
  * integer.
  *
  * Keep the state in a resource, so a run replays exactly and saves with the
- * world: declare it with this module as its validator, start it with
+ * world: declare it with `Random.codec` as its schema, start it with
  * `seed`, and draw in systems through `draw` over its write cell, which writes
  * every draw back (rolled back with a failed system). Two generators made
  * from the same state draw the same sequence on every platform. `make` is for

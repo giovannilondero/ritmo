@@ -105,7 +105,7 @@ export type ClockResource<Name extends string, Hz extends number> =
   DescriptorModule.ConstructedDescriptor<"resource", Name, Time<Hz>, Time<Hz>, DescriptorModule.SchemaIssues> & { readonly [resourceBrand]: Hz }
 
 /**
- * A resource holding a clock that runs at `step`. Its validator rejects a
+ * A resource holding a clock that runs at `step`. Its schema rejects a
  * value of another rate, so restoring a save made at another step length
  * fails (`InvalidResource` naming it: "saved at 60 Hz, this game runs at
  * 120 Hz"). A game may hold several clocks under different names.
