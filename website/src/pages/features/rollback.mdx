@@ -1,32 +1,212 @@
 ---
 layout: ../../layouts/Docs.astro
-title: Rollback without rewriting
-description: Take a checkpoint every tick, rewind when real input arrives, and tick again. The world comes back exactly, and the renderer sees one change.
+title: Online multiplayer
+description: Rollback or lockstep sessions over WebSocket, WebRTC, or any transport. Every peer runs the same simulation, rolls back when real input arrives, and agrees on every tick.
 ---
 
 import Game from "../../components/Game.astro"
 
-Online games hide latency with rollback: run every tick at once with a
-guess for the other player's input, and when their real input arrives and
-differs, go back to the tick it was for and run again up to now. That takes
-a simulation that plays the same on every machine (Ritmo's
-[determinism](/features/determinism/)), and a way back that puts the world
-exactly where it was.
+Every peer runs the same simulation, on its own machine.
+
+They send each other only their input.
+
+When a player's input arrives late, the others roll back to the tick it was for, and run again up to now.
 
 <Game id="rollback" ratio="10 / 11" />
 
-Both views are peers of one match, each with its own runtime, over a fake
-network with the latency picked in the corner. Your moves reach the other
-peer late; it rolls back, runs the ticks again, and the two agree on every
-tick they compare.
+Both views are peers of one match, each with its own runtime.
 
-## Checkpoints
+They talk over a fake network, with the latency picked in the corner.
 
-`runtime.checkpoint(simulate)` marks the world between ticks;
-`runtime.rewind(checkpoint)` puts it back. Ticking `simulate` again then
-gives the same results, bit for bit, as a runtime that never went back:
-the same entity ids, values, relations, queued commands, unread events,
-machine states, and every system's read positions.
+Your moves reach the other peer late: it rolls back, runs the ticks again, and the HUD counts it.
+
+## Online multiplayer
+
+`@typeonce/ritmo-netcode` gives every peer a session.
+
+The session exchanges inputs, takes the checkpoints, rolls back, and keeps the peers in step.
+
+The game gives it three things: where input comes from, the simulation, and a connection.
+
+### 1. Input comes from one source
+
+The simulation never sees the network.
+
+It reads every seat's input for the tick from one source, like any other input.
+
+The input's schema is the game's own: Effect's here, any Standard Schema works.
+
+```ts twoslash title="input.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
+import { InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode } from "@typeonce/ritmo-netcode"
+// ---cut---
+const PlayerInput = S.Struct({ dx: S.Literals([-1, 0, 1]), fire: S.Boolean })
+type PlayerInput = typeof PlayerInput.Type
+
+// Every seat's input for the tick being run.
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats") // [!code highlight]
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+
+// The schedule every peer ticks the same way.
+const simulate = Game.Schedule(Capture /* , Move, Fire, ... */)
+
+// Two seats. Input from another peer is decoded with the schema.
+const seats = Netcode.seats(codec(PlayerInput), { count: 2, idle: { dx: 0, fire: false } }) // [!code highlight]
+if (!seats.ok) throw new Error(seats.error.reason)
+
+const runtime = Game.Runtime.make({
+  services: Game.Runtime.services(Game.Runtime.service(Seats, seats.value.source)), // [!code highlight]
+  resources: { Inputs: [] }
+}).value
+```
+
+Remote input never goes through `runtime.send`: a rollback would read it on the wrong tick.
+
+### 2. A session per peer
+
+Pick the model:
+
+- `Netcode.rollback` runs every tick at once, guessing input that has not arrived. For real-time games: input feels immediate.
+- `Netcode.lockstep` waits for every seat's input. For turn-based games: nothing ever runs twice.
+
+```ts twoslash title="session.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import { BrowserHostClock, InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly dx: number; readonly fire: boolean }
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+const simulate = Game.Schedule(Capture)
+declare const seats: Netcode.Seats<PlayerInput>
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), resources: { Inputs: [] } }).value
+const step = Clock.hz(60)
+// ---cut---
+// A WebSocket the game opened, to a relay that forwards to the other peers.
+const socket = new WebSocket("wss://relay.example.com/match/42")
+
+const session = Netcode.rollback(runtime, {
+  simulate,
+  seats,
+  seat: 1, // seat 0 hosts: every peer starts from its world
+  links: [WebSocketNetworkLink.make(socket)], // [!code highlight]
+  hostClock: BrowserHostClock.make(window),
+  step
+})
+if (!session.ok) throw new Error(session.error.reason)
+```
+
+Ritmo carries no server.
+
+A link wraps a connection the game opened:
+
+- `WebSocketNetworkLink`: a relay, from the browser, Node, Deno, or Bun.
+- `WebRtcNetworkLink`: a data channel, straight between peers.
+- Anything else: implement `send`, `receive`, and `status`.
+
+### 3. The loop drives it
+
+Each step, the session reads the network, rolls back if a guess was wrong, ticks, and sends.
+
+```ts twoslash title="loop.ts"
+import { Clock, FixedLoop } from "@typeonce/ritmo"
+import { BrowserTickSource } from "@typeonce/ritmo-browser"
+import type { Netcode } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly dx: number; readonly fire: boolean }
+declare const session: Netcode.Session<PlayerInput, never>
+declare const readInput: () => PlayerInput
+declare const draw: () => void
+declare const showDisconnected: (failure: unknown) => void
+const step = Clock.hz(60)
+// ---cut---
+FixedLoop.start({
+  source: BrowserTickSource.make(window),
+  step,
+  maxFrameSeconds: 0.25,
+  maxStepsPerFrame: 5,
+
+  // Slows this peer while it runs ahead of the others.
+  rate: session.rate, // [!code highlight]
+
+  // Advances the session with this seat's input, once per step.
+  update: session.update({ // [!code highlight]
+    input: readInput,
+    // A desync is a bug in the game: log it. The session resyncs on its own.
+    onHalted: (error) => console.error(error)
+  }),
+
+  // Drawing runs outside the simulation, so it never rolls back.
+  render: draw,
+
+  // The session ended: a peer left, or runs another version.
+  onFailure: showDisconnected
+})
+```
+
+## What cannot work does not compile
+
+A rollback runs ticks again, so whatever they call runs again.
+
+A sound would play once per rollback. State a system keeps in `local` would not come back.
+
+The session checks the simulation, its state transitions included:
+
+```ts twoslash
+import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode, type NetworkLink } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly dx: number; readonly fire: boolean }
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+declare const seats: Netcode.Seats<PlayerInput>
+declare const link: NetworkLink.NetworkLink
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), resources: { Inputs: [] } }).value
+const options = { seats, seat: 0, links: [link], hostClock: HostClock.standard, step: Clock.hz(60) }
+// ---cut---
+const Combo = Game.System("Game/Combo", { local: () => ({ hits: 0 }) }, ({ local }) => {
+  local.hits++
+})
+
+// @errors: 2375
+Netcode.rollback(runtime, { ...options, simulate: Game.Schedule(Capture, Combo) })
+```
+
+So does a runtime that cannot save, and a simulation whose services the runtime does not provide.
+
+## Peers agree, or say so
+
+Every 30 ticks, peers compare a checksum of a tick every seat's real input reached.
+
+A mismatch stops the session with `Desynced`, and a resync starts every peer again from seat 0's world.
+
+`status()` says how far they agree, for a HUD or a test:
+
+```ts twoslash
+import type { Netcode } from "@typeonce/ritmo-netcode"
+declare const session: Netcode.Session<unknown, never>
+// ---cut---
+const { tick, confirmed, verified, rollbacks } = session.status()
+```
+
+## Under the hood: checkpoints
+
+A session rolls back with the runtime's own checkpoints, which a game can also use directly (an undo, say).
+
+`runtime.checkpoint(simulate)` marks the world between ticks.
+
+`runtime.rewind(checkpoint)` puts it back: ticking again gives the same results, bit for bit, as a runtime that never went back.
 
 ```ts twoslash title="rollback.ts"
 import { Checkpoint, Descriptor, Schema } from "@typeonce/ritmo"
@@ -35,143 +215,27 @@ const Score = Descriptor.Resource<number>()("Game/Score")
 const Game = Schema.bind(Schema.fragment({ resources: { Score } }), Root)
 const simulate = Game.Schedule()
 const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } }).value!
-declare let tick: number
 declare const wrongTick: number
-declare const resync: (error: Checkpoint.RewindError) => void
 // ---cut---
 const history = new Map<number, Checkpoint.Checkpoint<typeof Root>>()
 
-// Every tick: keep where it starts, then run it with the input known so far.
-history.set(tick, runtime.checkpoint(simulate))
+// Before each tick: keep where it starts.
+history.set(0, runtime.checkpoint(simulate)) // [!code highlight]
 runtime.tick(simulate)
 
-// Real input for an earlier tick differs from the guess: go back, run again.
-const rewound = runtime.rewind(history.get(wrongTick)!)
-if (!rewound.ok) resync(rewound.error) // older than the window: load a save
-else for (let at = wrongTick; at <= tick; at++) {
-  history.set(at, runtime.checkpoint(simulate))
-  runtime.tick(simulate)
-}
+// Later: go back, and run again from there.
+const rewound = runtime.rewind(history.get(wrongTick)!) // [!code highlight]
+if (!rewound.ok) console.error(rewound.error) // older than the checkpoints kept
 ```
 
-A checkpoint copies almost nothing when it is taken. The first change to a
-page of values, an entity, or a relation after it keeps what it replaced,
-so a tick costs what it changes, not what the world holds.
+A checkpoint copies almost nothing when it is taken.
 
-## What cannot be rewound does not compile
-
-A rewind runs ticks again, so whatever they call runs again. A service
-that plays a sound would play it once for every tick run again, and state
-a system keeps in `local` would not come back. `checkpoint` checks the
-schedule, its state transitions included:
-
-```ts twoslash
-import { Descriptor, Schema } from "@typeonce/ritmo"
-const Game = Schema.bind(Schema.fragment({}))
-const Sound = Descriptor.Service<{ readonly play: (name: string) => void }>()("Game/Sound")
-const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Sound, { play: () => {} })) }).value
-// ---cut---
-const Hit = Game.System("Game/Hit", { services: { sound: Game.System.service(Sound) } }, ({ services }) => {
-  services.sound.play("hit")
-})
-
-// @errors: 2379
-runtime.checkpoint(Game.Schedule(Hit))
-```
-
-Input comes in through a source the host fills for each tick, and effects
-leave through events and resources that host code acts on.
+The first change to a page of values, an entity, or a relation keeps what it replaced, so a tick costs what it changes.
 
 ## The screen sees one change
 
-Rendering runs outside the rewound schedule, so it never goes back. It
-sees a rollback the way it sees any tick: a value that moved, an entity
-that is gone, one that appeared. A shot the rewind took away and the ticks
-after it brought back, under the same id, is a shot that moved: its sprite
-stays where it is, never destroyed and made again.
+Rendering runs outside the simulation, so it never goes back.
 
-## Checking that peers agree
+It sees a rollback like any tick: a value that moved, an entity that is gone, one that appeared.
 
-`runtime.checksum()` is a fingerprint of the world that does not depend on
-how it was built, the same on every device. Peers exchange the checksums
-of confirmed ticks, and a desync shows up the tick it happens:
-
-```ts twoslash
-import { Descriptor, Schema } from "@typeonce/ritmo"
-const Score = Descriptor.ConstructedResource({ "~standard": { version: 1, vendor: "example", validate: (value: unknown) => ({ value: value as number }) } })("Game/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
-const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } })
-if (!made.ok) throw new Error("invalid")
-const runtime = made.value
-declare const theirs: string
-declare const reportDesync: () => void
-// ---cut---
-const mine = runtime.checksum()
-if (mine.ok && mine.value !== theirs) reportDesync()
-```
-
-## Over the network
-
-`@typeonce/ritmo-netcode` puts it together: one session per peer exchanges
-inputs, takes the checkpoints, rolls back, slows the peer that runs ahead,
-and compares checksums. The game gives it the simulation, the seats, and a
-link; here the input schema is Effect's.
-
-```ts twoslash title="online.ts"
-import { Clock, Descriptor, FixedLoop, Schema } from "@typeonce/ritmo"
-import { Schema as S } from "effect"
-const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
-  const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
-}
-import { BrowserHostClock, BrowserTickSource, InputCapture } from "@typeonce/ritmo-browser"
-import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
-const step = Clock.hz(60)
-declare const socket: WebSocket
-declare const readInput: () => PlayerInput
-declare const showDisconnected: (failure: unknown) => void
-// ---cut---
-const PlayerInput = S.Struct({ dx: S.Literals([-1, 0, 1]), fire: S.Boolean })
-type PlayerInput = typeof PlayerInput.Type
-
-// The simulation reads every seat's input from one source.
-const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
-const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
-const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
-const simulate = Game.Schedule(Capture)
-
-const seats = Netcode.seats(codec(PlayerInput), { count: 2, idle: { dx: 0, fire: false } })
-if (!seats.ok) throw new Error(seats.error.reason)
-const runtime = Game.Runtime.make({
-  services: Game.Runtime.services(Game.Runtime.service(Seats, seats.value.source)),
-  resources: { Inputs: [] }
-}).value
-
-const session = Netcode.rollback(runtime, {
-  simulate,
-  seats: seats.value,
-  seat: 1, // seat 0 hosts: every peer starts from its world
-  links: [WebSocketNetworkLink.make(socket)],
-  hostClock: BrowserHostClock.make(window),
-  step
-})
-if (!session.ok) throw new Error(session.error.reason)
-
-FixedLoop.start({
-  source: BrowserTickSource.make(window), step, maxFrameSeconds: 0.25, maxStepsPerFrame: 5,
-  rate: session.value.rate,
-  update: session.value.update({ input: readInput, onHalted: (error) => console.error(error) }),
-  render: () => {},
-  onFailure: showDisconnected
-})
-```
-
-What cannot work does not compile: a simulation that cannot be rewound,
-one whose services the runtime does not provide, a runtime that cannot
-save. A checksum that differs stops the session and reports it; a resync
-starts every peer again from seat 0's world.
-
-Ritmo carries no server: a link wraps a connection the game opened, a
-WebSocket to a relay, a WebRTC data channel between peers, or any
-transport with `send`, `receive`, and `status`.
+A shot the rollback took away and brought back is a shot that moved: its sprite stays, never destroyed and made again.
