@@ -8,6 +8,7 @@
 ## Repo
 - `packages/*`: the published packages (see each `package.json` description). Each has `src`, `test`, `dtslint`, and core, math, and render have `bench`.
 - `integration/*`: headless game simulations with tests, using the packages by name.
+- `bench/compare`: Ritmo against bitECS, Koota, and Miniplex on the community ECS benchmark cases (`pnpm bench:compare`). Internal, not a gate; run it before and after a storage or hot-path change.
 - `website/`: the guide for humans (Astro), built from the workspace packages and deployed after each release.
 - `.changeset/README.md`: releases and adding a package.
 

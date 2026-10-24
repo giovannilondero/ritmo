@@ -11,7 +11,8 @@
       "files": [
         "packages/*/src/**",
         "integration/**",
-        "scripts/**"
+        "scripts/**",
+        "bench/**"
       ],
       "rules": {
         "ritmo/handle-tick-result": "error",
