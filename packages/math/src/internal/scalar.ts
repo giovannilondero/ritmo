@@ -1,18 +1,33 @@
-import * as Brand from "@typeonce/ritmo/Brand"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "../Scalar.ts"
+import { codecOf } from "./codec.ts"
 
-const finiteBrand = Brand.refine<Scalar.Finite, number, Scalar.Error>((value) =>
+// A branded number's constructors, guard, and codec, from its check.
+const refine = <Value extends number>(
+  validate: (raw: number) => Result.Result<Value, Scalar.Error>,
+  expected: string
+): Scalar.Constructor<Value> => ({
+  result: validate,
+  option: (raw) => {
+    const result = validate(raw)
+    return result.ok ? result.value : null
+  },
+  is: (raw): raw is Value => typeof raw === "number" && validate(raw).ok,
+  codec: codecOf<number, Value>((raw) => typeof raw === "number" ? validate(raw) : Result.failure(raw), expected)
+})
+
+export const Finite = refine<Scalar.Finite>((value) =>
   Number.isFinite(value)
     ? Result.success(value as Scalar.Finite)
     : Result.failure({
         tag: "Scalar/NotFinite",
         value
-      })
+      }),
+  "a finite number"
 )
 
-const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>((value) => {
-  const finite = finiteBrand.result(value)
+export const NonNegative = refine<Scalar.NonNegative>((value) => {
+  const finite = Finite.result(value)
   if (!finite.ok) {
     return finite
   }
@@ -23,10 +38,10 @@ const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>(
         tag: "Scalar/Negative",
         value
       })
-})
+}, "a finite number, 0 or more")
 
-const positiveBrand = Brand.refine<Scalar.Positive, number, Scalar.Error>((value) => {
-  const finite = finiteBrand.result(value)
+export const Positive = refine<Scalar.Positive>((value) => {
+  const finite = Finite.result(value)
   if (!finite.ok) {
     return finite
   }
@@ -37,11 +52,7 @@ const positiveBrand = Brand.refine<Scalar.Positive, number, Scalar.Error>((value
         tag: "Scalar/NonPositive",
         value
       })
-})
-
-export const Finite = finiteBrand
-export const NonNegative = nonNegativeBrand
-export const Positive = positiveBrand
+}, "a finite number above 0")
 
 export const clamp = (value: number, min: number, max: number): Scalar.Finite =>
   Math.min(Math.max(value, min), max) as Scalar.Finite

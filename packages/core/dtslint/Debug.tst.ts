@@ -1,5 +1,6 @@
 import { Debug, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { describe, expect, it } from "tstyche"
+import * as Codecs from "../test/codecs.ts"
 
 const Position = Descriptor.Component<{ readonly x: number }>()("DebugTypes/Position")
 const Other = Descriptor.Component<{ readonly y: number }>()("DebugTypes/Other")
@@ -18,7 +19,7 @@ describe("Runtime debug option", () => {
   })
 
   it("keeps the handle inside the Result of fallible runtimes", () => {
-    const Viewport = Descriptor.ConstructedResource({ result: (raw: number) => ({ ok: true as const, value: raw }) })("DebugTypes/Viewport")
+    const Viewport = Descriptor.ConstructedResource(Codecs.number)("DebugTypes/Viewport")
     const Fallible = Schema.bind(Schema.fragment({ resources: { Viewport } }))
     const made = Fallible.Runtime.make({ services: Fallible.Runtime.services(), resources: { Viewport: 1 }, debug: { hostClock: HostClock.standard } })
     if (made.ok) {

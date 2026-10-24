@@ -24,10 +24,15 @@ simulation's updates. It saves on demand, when a tick fails, or when a
 rule you wrote breaks.
 
 ```ts twoslash title="dev.ts"
-import { Clock, Decode, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
 import { Invariant, Replay } from "@typeonce/ritmo-devtools"
 import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
-const Score = Descriptor.ConstructedResource(Decode.number)("Game/Score")
+const Score = Descriptor.ConstructedResource(codec(S.Finite))("Game/Score")
 const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
 const update = Game.Schedule()
 const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.standard } })
@@ -62,12 +67,17 @@ with the recorded input in place of the devices, and a debug session runs
 over the replayed ticks:
 
 ```ts twoslash title="debug.ts"
-import { Decode, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
 import { Replay } from "@typeonce/ritmo-devtools"
 declare const readFileSync: (path: string, encoding: "utf8") => string
 type Input = { readonly dash: boolean }
 const Controls = Descriptor.Service<Replay.Source<Input>>()("Game/Controls")
-const Dashes = Descriptor.ConstructedResource(Decode.number)("Game/Dashes")
+const Dashes = Descriptor.ConstructedResource(codec(S.Finite))("Game/Dashes")
 const Game = Schema.bind(Schema.fragment({ resources: { Dashes } }))
 const update = Game.Schedule()
 const makeGame = (controls: Replay.Source<Input>, hostClock: HostClock.HostClock) => {

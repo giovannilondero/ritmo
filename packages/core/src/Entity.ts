@@ -296,45 +296,33 @@ export const handle = <
   makeHandle<Root, Intent>(typeof target === "number" ? target : target.id)
 
 /**
- * Why a stored handle could not be decoded.
- */
-export interface InvalidHandle {
-  readonly _tag: "InvalidHandle"
-  readonly value: unknown
-}
-
-/**
- * Decodes a handle from untrusted data, such as a component value inside a
- * snapshot. Use it in the constructor of a component or resource that stores
- * handles, so restoring validates them like any other value.
+ * Checks that untrusted data is a stored handle for schema root `Root`
+ * (optionally with an intent component): a guard to build a handle schema
+ * with the game's schema library, so components and resources that store
+ * handles validate them like any other value on restore.
  *
  * A handle only names an entity; it never proves the entity exists. Resolving
- * it with `queries.x.getHandle(...)` (through a declared query) stays the checked step, so any positive
- * integer id decodes. Object-shaped handles and other non-numeric values
- * are rejected.
+ * it with `queries.x.getHandle(...)` (through a declared query) stays the
+ * checked step, so any positive integer id passes. Object-shaped handles and
+ * other non-numeric values are rejected. A handle is a number, so it needs no
+ * `encode`.
  *
  * @example
  * ```ts
- * const Target = Descriptor.ConstructedComponent({
- *   result: (raw: unknown) => {
- *     const enemy = Entity.decodeHandle(Root, isRecord(raw) ? raw["enemy"] : undefined, Health)
- *     return enemy.ok ? Result.success({ enemy: enemy.value }) : enemy
- *   }
- * })("Game/Target")
+ * // Effect
+ * const Target = Descriptor.ConstructedComponent(codec(Schema.Struct({ enemy: Schema.declare(Entity.isHandle(Root, Health)) })))("Game/Target")
+ * // Zod
+ * const Target = Descriptor.ConstructedComponent(z.object({ enemy: z.custom(Entity.isHandle(Root, Health)) }))("Game/Target")
  * ```
  */
-export const decodeHandle = <
+export const isHandle = <
   Root,
   const Intent extends Descriptor<"component", string, any> | undefined = undefined
 >(
   _root: Root,
-  raw: unknown,
   _intent?: Intent
-): Result.Result<Handle<Root, Intent>, InvalidHandle> => {
-  return typeof raw === "number" && Number.isInteger(raw) && raw > 0
-    ? Result.success(makeHandle<Root, Intent>(raw))
-    : Result.failure({ _tag: "InvalidHandle", value: raw })
-}
+): (raw: unknown) => raw is Handle<Root, Intent> =>
+  (raw: unknown): raw is Handle<Root, Intent> => typeof raw === "number" && Number.isInteger(raw) && raw > 0
 
 /**
  * Creates a typed entity draft from an id and a proof.

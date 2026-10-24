@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { Decode, Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
+import { worldOf } from "./saved.ts"
 
 const Contact = Descriptor.EntityState("State/Contact", {
-  ground: { platform: Decode.nullable(Decode.integer) },
+  ground: Codecs.struct({ platform: Codecs.nullable(Codecs.integer) }),
   crouch: {},
-  air: { vy: Decode.number, coyote: Decode.integer }
+  air: Codecs.struct({ vy: Codecs.number, coyote: Codecs.integer })
 }, { transitions: { ground: ["air", "crouch"], crouch: ["ground"], air: ["ground"] } })
-const Mode = Descriptor.EntityState("State/Mode", { a: {}, b: { n: Decode.number }, c: {} })
+const Mode = Descriptor.EntityState("State/Mode", { a: {}, b: Codecs.struct({ n: Codecs.number }), c: {} })
 
 const Game = Schema.bind(Schema.fragment({ components: { Contact, Mode } }))
 
@@ -145,11 +147,11 @@ describe("Descriptor.EntityState", () => {
     runtime.tick(Game.Schedule(Raw))
     expect(results).toEqual([
       true,
-      { ok: false, error: { _tag: "DecodeError", path: "$._tag", expected: "\"ground\" | \"crouch\" | \"air\"", actual: "swim" } },
-      { ok: false, error: { _tag: "DecodeError", path: "$.vy", expected: "finite number", actual: "fast" } }
+      { ok: false, error: { _tag: "SchemaIssues", issues: [{ message: "Expected \"ground\" | \"crouch\" | \"air\"", path: ["_tag"] }] } },
+      { ok: false, error: { _tag: "SchemaIssues", issues: [{ message: "Expected a finite number", path: ["vy"] }] } }
     ])
 
-    const snapshot = runtime.snapshot()
+    const snapshot = worldOf(runtime.snapshot())
     const entity = snapshot.entities[0]!
     const restoreWith = (contact: unknown) =>
       runtime.restore({ ...snapshot, entities: [{ ...entity, components: { ...entity.components, "State/Contact": contact } }] })

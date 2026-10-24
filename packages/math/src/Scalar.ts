@@ -36,13 +36,14 @@
  */
 import type * as Brand from "@typeonce/ritmo/Brand"
 import * as internal from "./internal/scalar.ts"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
 import type * as Result from "@typeonce/ritmo/Result"
 
 /**
  * Finite number brand.
  *
  * Values of this type are guaranteed not to be `NaN`, `Infinity`, or
- * `-Infinity` when they come from a validator (`result`, `decode`). The
+ * `-Infinity` when they come from a constructor (`result`, `option`) or a `codec`. The
  * arithmetic helpers here and in `Vector2` keep the brand without
  * re-validating, so their results are finite only while they stay within
  * `±Number.MAX_VALUE`: game-sized values never come close, but validate
@@ -86,26 +87,45 @@ export type InterpolationError = {
 }
 
 /**
- * Constructor for {@link Finite}: `result` (explicit failure), `option`
- * (`null` on failure), and `is` (a type guard).
+ * The constructors, guard, and schema of one scalar brand.
  *
  * @category Constructors
  */
-export const Finite = internal.Finite
+export interface Constructor<Value> {
+  /** Validates one number and returns an explicit success/failure result. */
+  readonly result: (raw: number) => Result.Result<Value, Error>
+  /** Validates one number and returns `null` on failure. */
+  readonly option: (raw: number) => Value | null
+  /** Whether any value is a number of this brand. */
+  readonly is: (raw: unknown) => raw is Value
+  /** The Standard Schema for `Descriptor.ConstructedComponent(...)`: the saved form is the number itself. */
+  readonly codec: StandardSchema<number, Value>
+}
+
+/**
+ * Constructor for {@link Finite}: `result` (explicit failure), `option`
+ * (`null` on failure), `is` (a type guard), and `codec`, for
+ * `Descriptor.ConstructedComponent(Scalar.Finite.codec)`.
+ *
+ * @category Constructors
+ */
+export const Finite: Constructor<Finite> = internal.Finite
 /**
  * Constructor for {@link NonNegative}: `result` (explicit failure), `option`
- * (`null` on failure), and `is` (a type guard).
+ * (`null` on failure), `is` (a type guard), and `codec`, for
+ * `Descriptor.ConstructedComponent(Scalar.NonNegative.codec)`.
  *
  * @category Constructors
  */
-export const NonNegative = internal.NonNegative
+export const NonNegative: Constructor<NonNegative> = internal.NonNegative
 /**
  * Constructor for {@link Positive}: `result` (explicit failure), `option`
- * (`null` on failure), and `is` (a type guard).
+ * (`null` on failure), `is` (a type guard), and `codec`, for
+ * `Descriptor.ConstructedComponent(Scalar.Positive.codec)`.
  *
  * @category Constructors
  */
-export const Positive = internal.Positive
+export const Positive: Constructor<Positive> = internal.Positive
 
 /**
  * Clamps one finite value between two finite bounds.

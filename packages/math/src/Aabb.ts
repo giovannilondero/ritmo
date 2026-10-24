@@ -35,6 +35,7 @@
  * Immutable geometry helpers for translation and overlap checks.
  */
 import type * as Brand from "@typeonce/ritmo/Brand"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
 import * as internal from "./internal/aabb.ts"
 import type * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "./Scalar.ts"
@@ -71,16 +72,6 @@ export type Error =
   | { readonly tag: "Aabb/InvalidSize"; readonly error: Size2.Error; readonly input: Raw }
 
 /**
- * Failure produced by `decode` when the input does not have the raw shape.
- *
- * @category AABB Types
- */
-export type DecodeError = {
-  readonly tag: "Aabb/Malformed"
-  readonly input: unknown
-}
-
-/**
  * Validates one raw AABB and returns an explicit result.
  *
  * @example
@@ -95,13 +86,20 @@ export type DecodeError = {
  */
 export const result: (raw: Raw) => Result.Result<Aabb, Error> = internal.result
 /**
- * Validates untrusted input of any shape, for example a value read from a
- * save file. Descriptors built from this module use it when restoring
- * snapshots.
+ * The codec of `Aabb` (a Standard Schema, see `Descriptor.Codec`): give it to
+ * `Descriptor.ConstructedComponent(...)` so raw input and saves are validated.
+ * Its saved form is the raw shape, so it needs no `encode`. To put a `Aabb`
+ * inside your own object schema, use {@link is} with your library's guard
+ * schema (`Schema.declare`, `z.custom`).
+ *
+ * @example
+ * ```ts
+ * const Position = Descriptor.ConstructedComponent(Aabb.codec)("Game/Position")
+ * ```
  *
  * @category Construction
  */
-export const decode: (raw: unknown) => Result.Result<Aabb, Error | DecodeError> = internal.decode
+export const codec: StandardSchema<Raw, Aabb> = internal.codec
 /**
  * Validates one raw AABB and returns `null` on failure.
  *
@@ -109,11 +107,12 @@ export const decode: (raw: unknown) => Result.Result<Aabb, Error | DecodeError> 
  */
 export const option: (raw: Raw) => Aabb | null = internal.option
 /**
- * Checks whether one raw value already satisfies the AABB invariants.
+ * Whether any value is a valid `Aabb`: a guard, also for building a
+ * `Aabb` field in your own schema (`Schema.declare(Aabb.is)`).
  *
  * @category Construction
  */
-export const is: (raw: Raw) => raw is Raw & Aabb = internal.is
+export const is: (raw: unknown) => raw is Aabb = internal.is
 /**
  * Reads the center position of one AABB.
  *

@@ -7,9 +7,9 @@ import type { ControlsValue, FrameContextValue } from "./types.ts"
 
 export const Root = Schema.defineRoot("TopDown")
 
-export const Position = Descriptor.ConstructedComponent(Vector2)("TopDown/Position")
-export const Velocity = Descriptor.ConstructedComponent(Vector2)("TopDown/Velocity")
-export const Collider = Descriptor.ConstructedComponent(Size2)("TopDown/Collider")
+export const Position = Descriptor.ConstructedComponent(Vector2.codec)("TopDown/Position")
+export const Velocity = Descriptor.ConstructedComponent(Vector2.codec)("TopDown/Velocity")
+export const Collider = Descriptor.ConstructedComponent(Size2.codec)("TopDown/Collider")
 export const Player = Descriptor.Component<{}>()("TopDown/Player")
 export const Wall = Descriptor.Component<{}>()("TopDown/Wall")
 export const Collectable = Descriptor.Component<{

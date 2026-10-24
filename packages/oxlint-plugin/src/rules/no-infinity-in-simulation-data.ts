@@ -27,7 +27,7 @@ export default defineRule({
     },
     messages: {
       nonFinite:
-        "`{{key}}: {{value}}` cannot be saved: JSON turns it into null and `Decode.number` rejects it, so the save no longer loads (and devtools warns `non-finite-value`). Use `null` for \"never\" or \"no limit\": type the field `number | null` and decode it with `Decode.nullable(Decode.number)`. For a value that only some entities have (a timer on a non-permanent pool), make that part optional: `timer: { remaining: number; duration: number } | null`."
+        "`{{key}}: {{value}}` cannot be saved: JSON turns it into null and a number schema rejects it, so the save no longer loads (and devtools warns `non-finite-value`). Use `null` for \"never\" or \"no limit\": type the field `number | null` and give it a nullable number schema. For a value that only some entities have (a timer on a non-permanent pool), make that part optional: `timer: { remaining: number; duration: number } | null`."
     },
     schema: []
   },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { Result } from "@typeonce/ritmo"
-import { Aabb, InputAxis, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
+import { Aabb, InputAxis, Random, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
 
 describe("helpers", () => {
   it("matches explicit success and failure branches", () => {
@@ -172,18 +172,18 @@ describe("helpers", () => {
     expect(Aabb.intersects(first, Aabb.translate(second, Vector2.option({ x: 20, y: 0 })!))).toBe(false)
   })
 
-  it("decodes untrusted input of any shape", () => {
-    expect(Vector2.decode({ x: 1, y: 2 }).ok).toBe(true)
-    expect(Size2.decode({ width: 1, height: 2 }).ok).toBe(true)
-    expect(Aabb.decode({ position: { x: 0, y: 0 }, size: { width: 1, height: 1 } }).ok).toBe(true)
-    for (const raw of [null, 3, "x", [], { x: "1", y: 2 }]) {
-      const decoded = Vector2.decode(raw)
-      expect(decoded.ok ? undefined : decoded.error.tag).toBe("Vector2/Malformed")
+  it("validates untrusted input of any shape through each type's codec and guard", () => {
+    const validate = (codec: { readonly "~standard": { readonly validate: (raw: unknown) => unknown } }, raw: unknown) => codec["~standard"].validate(raw)
+    expect(validate(Vector2.codec, { x: 1, y: 2 })).toEqual({ value: { x: 1, y: 2 } })
+    expect(validate(Size2.codec, { width: 1, height: 2 })).toEqual({ value: { width: 1, height: 2 } })
+    expect(Aabb.is({ position: { x: 0, y: 0 }, size: { width: 1, height: 1 } })).toBe(true)
+    for (const raw of [null, 3, "x", [], { x: "1", y: 2 }, { x: Number.NaN, y: 0 }]) {
+      expect(Vector2.is(raw)).toBe(false)
+      expect(validate(Vector2.codec, raw)).toEqual({ issues: [{ message: "Expected a vector { x, y } of finite numbers" }] })
     }
-    const invalid = Vector2.decode({ x: Number.NaN, y: 0 })
-    expect(invalid.ok ? undefined : invalid.error.tag).toBe("Vector2/Invalid")
-    const box = Aabb.decode({ position: null, size: { width: 1, height: 1 } })
-    expect(box.ok ? undefined : box.error.tag).toBe("Aabb/Malformed")
-    expect(Size2.decode({ width: 1 }).ok).toBe(false)
+    expect(Aabb.is({ position: null, size: { width: 1, height: 1 } })).toBe(false)
+    expect(Size2.is({ width: 1 })).toBe(false)
+    expect(validate(Scalar.Positive.codec, 0)).toEqual({ issues: [{ message: "Expected a finite number above 0" }] })
+    expect(validate(Random.codec, 2 ** 32)).toEqual({ issues: [{ message: "Expected a generator state: an unsigned 32-bit integer" }] })
   })
 })

@@ -4,23 +4,25 @@
  * `runtime.snapshot()` captures entities (with their ids), component values,
  * relation edges, resources, and committed state-machine values, keyed by
  * descriptor, relation, and machine names. A bound schema guarantees those
- * names are unique, so they are stable save keys. The snapshot is plain data:
- * store it with `JSON.stringify` or `structuredClone`.
+ * names are unique, so they are stable save keys. Each value is saved in its
+ * schema's saved form: a schema with an `encode` (an `Option`, a `Map`)
+ * encodes it, and any other value is saved as it is. The result is plain
+ * data, ready for any store; turning it into text (`JSON.stringify`, or your
+ * schema library's JSON string schema) is the game's choice. It is a
+ * `Result`, because an `encode` can fail.
  *
  * `runtime.restore(data)` accepts `unknown`, because saved data comes from
  * outside the program, and validates it before touching the world: shape,
- * unknown names, every component and resource value (through its descriptor's
- * constructor), relation edges, and machine states. On failure the world is
- * unchanged.
+ * unknown names, every component and resource value (decoded by its
+ * descriptor's schema), relation edges, and machine states (decoded by their
+ * state schemas). On failure the world is unchanged, and the error carries
+ * the schema library's issues.
  *
  * Both methods exist only when every component and resource in the schema is
- * either constructed with a constructor that accepts untrusted input
- * (`Descriptor.ConstructedComponent(...)` given a `decode(raw: unknown)`, as
- * `@typeonce/ritmo-math` modules export, or a `result(raw: unknown)`) or transient
- * (`Descriptor.TransientComponent<T>()`, which is not saved). Otherwise calling them is a compile error naming the descriptors
- * without a validator, so no unvalidated value can enter the world through a
- * save file. `Descriptor.fromStandardSchema(...)` turns any Standard Schema
- * validator into a constructor.
+ * either constructed with a schema (`Descriptor.ConstructedComponent(schema)`)
+ * or transient (`Descriptor.TransientComponent<T>()`, which is not saved).
+ * Otherwise calling them is a compile error naming the descriptors without a
+ * schema, so no unvalidated value can enter the world through a save file.
  *
  * Restoring despawns every current entity and spawns the saved ones with their
  * original ids, so change detection and renderer sync see a restore as normal
@@ -40,7 +42,8 @@
  *
  * @example
  * ```ts
- * localStorage.setItem("save", JSON.stringify(runtime.snapshot()))
+ * const saved = runtime.snapshot()
+ * if (saved.ok) localStorage.setItem("save", JSON.stringify(saved.value))
  *
  * const restored = runtime.restore(JSON.parse(localStorage.getItem("save") ?? "null"))
  * if (!restored.ok) {
@@ -48,16 +51,13 @@
  * }
  * ```
  */
-import type { DecodeError } from "./Decode.ts"
-import type { DecodableDescriptor, Descriptor, TransientDescriptor } from "./Descriptor.ts"
+import type { Descriptor, SchemaIssues, TransientDescriptor } from "./Descriptor.ts"
 import * as Result from "./Result.ts"
 import type { Schema } from "./Schema.ts"
 
-// Loadable: transient, constructed with `decode`, or constructed with a
-// `result` that accepts `unknown` input.
+// Loadable: transient, or constructed with a schema.
 type UnvalidatedName<D> = D extends TransientDescriptor<any, any, any> ? never
-  : D extends DecodableDescriptor<any, any, any, any, any> ? never
-  : D extends Descriptor.AnyConstructed ? unknown extends Descriptor.Raw<D> ? never : D["name"]
+  : D extends Descriptor.AnyConstructed ? never
   : D extends Descriptor.Any ? D["name"]
   : never
 
@@ -65,8 +65,7 @@ type UnvalidatedIn<R> = { readonly [K in keyof R]: UnvalidatedName<R[K]> }[keyof
 
 /**
  * Names of the schema's components and resources that a snapshot could not
- * validate on load: neither transient nor constructed with a constructor that
- * accepts untrusted input (`decode`, or `result` taking `unknown`).
+ * validate on load: neither transient nor constructed with a schema.
  */
 export type Unvalidated<S extends Schema.Any> = UnvalidatedIn<S["components"]> | UnvalidatedIn<S["resources"]>
 
@@ -76,11 +75,11 @@ export type Unvalidated<S extends Schema.Any> = UnvalidatedIn<S["components"]> |
  * When some component or resource is neither constructed nor transient, the
  * member is an object with no call signature, so calling it fails to compile
  * and the error lists each descriptor to fix, for example
- * `{ "Game/Position needs a validator": "..." }`.
+ * `{ "Game/Position needs a schema": "..." }`.
  */
 export type Gate<S extends Schema.Any, Method> = Unvalidated<S> extends infer Names extends string
   ? [Names] extends [never] ? Method
-  : { readonly [Name in Names as `${Name} needs a validator`]: "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)" }
+  : { readonly [Name in Names as `${Name} needs a schema`]: "Use a Constructed* descriptor given a Standard Schema (validated on load) or a Transient* one (not saved)" }
   : never
 
 /** One entity in a {@link WorldSnapshot}. Transient components are left out. */
@@ -119,7 +118,7 @@ export interface WorldSnapshot {
   /**
    * Committed machine values by machine name: the state's name in `_tag`,
    * next to its fields. `restore` decodes each with the machine's state
-   * codecs.
+   * schemas.
    */
   readonly machines: Readonly<Record<string, unknown>>
   /**
@@ -131,6 +130,15 @@ export interface WorldSnapshot {
 }
 
 /**
+ * Why `runtime.snapshot()` could not save the world: a value its schema's
+ * `encode` rejected.
+ */
+export type SnapshotError =
+  | { readonly _tag: "UnencodableComponent"; readonly entityId: number; readonly name: string; readonly error: SchemaIssues }
+  | { readonly _tag: "UnencodableResource"; readonly name: string; readonly error: SchemaIssues }
+  | { readonly _tag: "UnencodableMachineState"; readonly name: string; readonly error: SchemaIssues }
+
+/**
  * Why a snapshot could not be restored.
  */
 export type RestoreError =
@@ -139,16 +147,16 @@ export type RestoreError =
   /** A save written by a newer game than this runtime's migrations reach. */
   | { readonly _tag: "NewerGameVersion"; readonly gameVersion: number; readonly latest: number }
   | { readonly _tag: "UnknownComponent"; readonly entityId: number; readonly name: string }
-  | { readonly _tag: "InvalidComponent"; readonly entityId: number; readonly name: string; readonly error: unknown }
+  | { readonly _tag: "InvalidComponent"; readonly entityId: number; readonly name: string; readonly error: SchemaIssues }
   /** A saved entity holds `requiredBy` but lacks `name`, which `Schema.requires` says it needs. */
   | { readonly _tag: "MissingRequiredComponent"; readonly entityId: number; readonly name: string; readonly requiredBy: string }
   | { readonly _tag: "UnknownResource"; readonly name: string }
-  | { readonly _tag: "InvalidResource"; readonly name: string; readonly error: unknown }
+  | { readonly _tag: "InvalidResource"; readonly name: string; readonly error: SchemaIssues }
   | { readonly _tag: "UnknownRelation"; readonly name: string }
   | { readonly _tag: "InvalidRelation"; readonly name: string; readonly sourceId: number; readonly targetId: number }
   | { readonly _tag: "UnknownMachine"; readonly name: string }
-  /** A saved machine value that is not one of its states with that state's fields; `error.path` says where. */
-  | { readonly _tag: "InvalidMachineState"; readonly name: string; readonly error: DecodeError }
+  /** A saved machine value that is not one of its states with that state's data; each issue's `path` says where. */
+  | { readonly _tag: "InvalidMachineState"; readonly name: string; readonly error: SchemaIssues }
   /** A saved sub-state value while its parent machine is not in the state the sub-state exists in. */
   | { readonly _tag: "InactiveSubState"; readonly name: string; readonly parent: string; readonly requires: string }
   | { readonly _tag: "DuplicateEntity"; readonly entityId: number }

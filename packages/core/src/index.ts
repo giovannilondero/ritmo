@@ -10,10 +10,6 @@
  */
 export * as Brand from "./Brand.ts"
 /**
- * Ready-made validators for descriptor values.
- */
-export * as Decode from "./Decode.ts"
-/**
  * Opt-in runtime introspection for tools and agents.
  */
 export * as Debug from "./Debug.ts"

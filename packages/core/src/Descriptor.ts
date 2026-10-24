@@ -60,15 +60,12 @@
  */
 export type DescriptorTypeId = "~ritmo/Descriptor"
 export type DescriptorConstructionTypeId = "~ritmo/DescriptorConstruction"
-export type DescriptorDecodeTypeId = "~ritmo/DescriptorDecode"
 
 /**
  * Runtime value for the descriptor type id.
  */
 const descriptorTypeId: DescriptorTypeId = "~ritmo/Descriptor"
 const descriptorConstructionTypeId: DescriptorConstructionTypeId = "~ritmo/DescriptorConstruction"
-const descriptorDecodeTypeId: DescriptorDecodeTypeId = "~ritmo/DescriptorDecode"
-const descriptorConstruction = Symbol("ritmo/DescriptorConstruction")
 
 /**
  * The public categories of nominal descriptors used by the engine.
@@ -98,29 +95,103 @@ export interface Descriptor<
 }
 
 /**
- * Minimal constructor contract carried by constructed descriptors.
+ * The Standard Schema v1 interface (https://standardschema.dev), the one
+ * schema contract Ritmo reads. Zod, Valibot, and ArkType schemas are
+ * Standard Schemas as they are; an Effect schema goes through the `codec`
+ * helper in the skill's `playbooks/effect.md`, which also encodes. `Input` is the saved form a schema
+ * decodes, `Output` the value it produces.
+ *
+ * Ritmo ships no schemas of its own: the game brings them.
  */
-export interface ResultConstructor<Value, Raw, Error> {
-  readonly result: (raw: Raw) => import("./Result.ts").Result<Value, Error>
+export interface StandardSchema<Input, Output> {
+  readonly "~standard": {
+    readonly version: 1
+    readonly vendor: string
+    readonly validate: (value: unknown) => StandardSchema.Result<Output> | Promise<StandardSchema.Result<Output>>
+    readonly types?: { readonly input: Input; readonly output: Output } | undefined
+  }
+}
+
+export namespace StandardSchema {
+  export type Result<Output> =
+    | { readonly value: Output; readonly issues?: undefined }
+    | { readonly issues: ReadonlyArray<Issue> }
+  export interface Issue {
+    readonly message: string
+    readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
+  }
 }
 
 /**
- * Validates input of any shape, such as values read back from a save file.
+ * A codec (like Effect's `Schema.Codec` and Zod's `z.codec`): what a
+ * constructed component or resource, or a state with data, is validated and
+ * saved with. It is a Standard Schema that decodes the saved form
+ * (`Encoded`) into the value (`Type`), carrying an `encode` schema back to
+ * the saved form when the two differ (an `Option`, a `Map`, a class).
  *
- * Constructors whose `result` takes a specific raw shape (for example
- * `Vector2.result({ x, y })`) also export `decode` so snapshots can load
- * them safely. `@typeonce/ritmo-math` modules do.
+ * A schema whose value is already its saved form (plain numbers, strings,
+ * arrays, and objects) needs no `encode`; a schema that transforms its value
+ * does not compile without one. `runtime.snapshot()` runs `encode`, and
+ * `runtime.restore(...)` and the raw APIs (`setRaw`, `entryRaw`) run the
+ * schema.
+ *
+ * @example
+ * ```ts
+ * // A plain value: the schema as it is (Zod here)
+ * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
+ * // A value that transforms: the schema and its encode (Effect, through the playbook's `codec`)
+ * const Inventory = Descriptor.ConstructedComponent(codec(Schema.ReadonlyMap(Schema.String, Schema.Int)))("Game/Inventory")
+ * ```
  */
-export interface Decoder<Value> {
-  readonly decode: (raw: unknown) => import("./Result.ts").Result<Value, unknown>
+export type Codec<Type, Encoded = Type> = StandardSchema<Encoded, Type> & {
+  readonly encode?: StandardSchema<Type, Encoded> | undefined
 }
 
+/** Why a value did not validate: the schema library's own issues, each with its path. */
+export interface SchemaIssues {
+  readonly _tag: "SchemaIssues"
+  readonly issues: ReadonlyArray<StandardSchema.Issue>
+}
+
+/** The value a codec decodes to. */
+export type CodecType<S> = S extends StandardSchema<infer _Encoded, infer Type> ? Type : never
+
+/** The saved form a codec decodes from (and its `encode` returns). */
+export type CodecEncoded<S> = S extends StandardSchema<infer Encoded, infer _Type> ? Encoded : never
+
+// `true` when every value of `T` survives `JSON.stringify` unchanged:
+// primitives, arrays, and objects of them. Symbol keys are phantom brands.
+type PlainData<T, Depth extends ReadonlyArray<0> = []> = unknown extends T ? true
+  : Depth["length"] extends 10 ? true
+  : T extends string | number | boolean | null | undefined ? true
+  : T extends (...args: ReadonlyArray<any>) => unknown ? false
+  : T extends ReadonlyArray<infer Item> ? PlainData<Item, [...Depth, 0]>
+  : T extends object ? { readonly [K in keyof T]-?: K extends symbol ? true : PlainData<T[K], [...Depth, 0]> }[keyof T] | true
+  : false
+
+type PlainEncoded<Encoded> = false extends PlainData<Encoded>
+  ? "the saved form of this schema is not plain data: decode it from numbers, strings, booleans, null, arrays, and objects"
+  : never
+
+/** The message naming what is wrong with schema `S`, or `never` when Ritmo can validate and save with it. */
+export type CodecRejection<S> = S extends StandardSchema<infer Encoded, infer Type>
+  ? S extends { readonly encode: StandardSchema<infer EncodeInput, infer EncodeOutput> }
+    ? [Type] extends [EncodeInput]
+      ? [EncodeOutput] extends [Encoded] ? PlainEncoded<Encoded>
+      : "its encode does not return the saved form the schema decodes: make encode the schema's inverse"
+    : "its encode does not take the value the schema decodes: make encode the schema's inverse"
+  : [Type] extends [Encoded] ? PlainEncoded<Encoded>
+  : "this schema changes its value when it decodes (an Option, a Map, a class): give it an `encode` schema back to the saved form (with Effect, the playbook's `codec`)"
+  : never
+
+/** The schema argument of a constructed descriptor, or the message naming what is wrong with it. */
+export type CheckedCodec<S> = [CodecRejection<S>] extends [never] ? unknown : { readonly __fixCodec__: CodecRejection<S> }
+
 /**
- * Descriptor that also carries explicit raw-construction metadata.
- *
- * Outside raw-aware APIs this behaves like a normal descriptor. The extra
- * constructor information is only used when a public entrypoint explicitly
- * opts into raw validation.
+ * Descriptor whose values are validated by a schema: raw input
+ * (`setRaw`, `entryRaw`, raw values given to `Game.Runtime.make`) and saved
+ * values are decoded by it, and `runtime.snapshot()` encodes with it. `Raw`
+ * is the saved form.
  */
 export interface ConstructedDescriptor<
   out Kind extends DescriptorKind,
@@ -129,31 +200,12 @@ export interface ConstructedDescriptor<
   Raw,
   Error
 > extends Descriptor<Kind, Name, Value> {
-  readonly [descriptorConstruction]: ResultConstructor<Value, Raw, Error>
+  readonly [constructionKey]: Construction
   readonly [descriptorConstructionTypeId]: {
     readonly _Raw: (_: never) => Raw
     readonly _Error: (_: never) => Error
   }
 }
-
-/**
- * Constructed descriptor whose constructor also exports `decode`, so snapshots
- * can validate untrusted values for it.
- */
-export interface DecodableDescriptor<
-  out Kind extends DescriptorKind,
-  out Name extends string,
-  in out Value,
-  Raw,
-  Error
-> extends ConstructedDescriptor<Kind, Name, Value, Raw, Error> {
-  readonly [descriptorDecodeTypeId]: true
-}
-
-type ConstructedFor<Kind extends DescriptorKind, Name extends string, Value, Raw, Error, Constructor> =
-  Constructor extends Decoder<any>
-    ? DecodableDescriptor<Kind, Name, Value, Raw, Error>
-    : ConstructedDescriptor<Kind, Name, Value, Raw, Error>
 
 /**
  * Descriptor whose values are runtime-only: snapshots skip it.
@@ -234,10 +286,6 @@ export namespace Descriptor {
     T extends ConstructedDescriptor<infer _Kind, infer _Name, infer _Value, infer _Raw, infer Error>
       ? Error
       : never
-  export type Constructor<T extends Any> =
-    T extends ConstructedDescriptor<infer _Kind, infer _Name, infer Value, infer Raw, infer Error>
-      ? ResultConstructor<Value, Raw, Error>
-      : never
 }
 
 /**
@@ -276,14 +324,14 @@ const makeConstructedDescriptor = <
 >(
   kind: Kind,
   name: Name,
-  constructor: ResultConstructor<Value, Raw, Error>
+  schema: Codec<unknown, unknown>
 ): ConstructedDescriptor<Kind, Name, Value, Raw, Error> =>
   ({
     kind,
     name,
     key: Symbol.for(`ritmo/${kind}/${name}`),
-    [descriptorConstruction]: constructor
-  }) as ConstructedDescriptor<Kind, Name, Value, Raw, Error>
+    [constructionKey]: construction(schema)
+  }) as unknown as ConstructedDescriptor<Kind, Name, Value, Raw, Error>
 
 /**
  * The message naming why `Value` cannot be the value of a descriptor of
@@ -328,25 +376,28 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeDescriptor("component", name), options)) as never
 
 /**
- * Defines a component descriptor that also knows how to validate raw values.
+ * Defines a component descriptor whose values are validated by a schema the
+ * game brings (any Standard Schema, see {@link Codec}): raw input
+ * (`setRaw`, `Game.Command.entryRaw`) and saved values are decoded by it,
+ * and snapshots save its values through its `encode`.
  *
- * Use this when the component should never exist in the world in an unvalidated
- * shape, for example vectors, sizes, collider bounds, or other branded domain
- * values.
+ * Use this for every component a snapshot saves, and for values that should
+ * never exist in the world in an unvalidated shape (vectors, sizes, ids).
+ * `Raw` (what the raw APIs take) is the schema's saved form.
  *
  * @example
  * ```ts
- * // Route raw component input through a constructor once at the boundary.
- * const Position = Descriptor.ConstructedComponent(Vector2)("Game/Position")
+ * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
+ * const Velocity = Descriptor.ConstructedComponent(Vector2.schema)("Game/Velocity")
  * ```
  */
-export const ConstructedComponent = <Value, Raw, Error, Constructor extends {} = {}>(
-  constructor: ResultConstructor<Value, Raw, Error> & Constructor
+export const ConstructedComponent = <const S extends Codec<any, any>>(
+  schema: S & CheckedCodec<S>
 ) => <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options
-): WithComponentOptions<ConstructedFor<"component", Name, Value, Raw, Error, Constructor>, Options> =>
-  applyComponentOptions(makeConstructedDescriptor("component", name, constructor), options) as WithComponentOptions<ConstructedFor<"component", Name, Value, Raw, Error, Constructor>, Options>
+): WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options> =>
+  applyComponentOptions(makeConstructedDescriptor("component", name, schema), options) as WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options>
 
 /**
  * Defines a component descriptor that snapshots skip.
@@ -379,32 +430,50 @@ export const TransientComponent = <Value>(): CheckedValue<"component", Value, <c
  */
 export const Tag = <const Name extends string>(
   name: Name
-): DecodableDescriptor<"component", Name, {}, {}, DecodeModule.DecodeError> =>
-  ConstructedComponent(DecodeModule.struct({}))(name)
+): ConstructedDescriptor<"component", Name, {}, {}, SchemaIssues> =>
+  makeConstructedDescriptor("component", name, tagSchema)
+
+const tagSchema = standard<{}>((raw) =>
+  typeof raw === "object" && raw !== null && !Array.isArray(raw) ? ResultModule.success({}) : ResultModule.failure("Expected an object")
+)
 
 /**
- * The fields of one state of a {@link EntityState} component or a
- * `Game.StateMachine(...)`: each field's codec, by name. A state without data
- * has no fields (`{}`).
+ * One state of an {@link EntityState} component or a `Game.StateMachine(...)`:
+ * `{}` for a state without data, or the {@link Codec} of the state's data
+ * (an object of fields, without `_tag`, which holds the state's name).
  */
-export type StateFields = Readonly<Record<string, DecodeModule.Codec<any>>>
+export type StateDefinition = Readonly<Record<string, never>> | Codec<object, unknown>
 
-/** Every state of an entity state or a state machine: each state's fields, by state name. */
-export type StateDefinitions = Readonly<Record<string, StateFields>>
+/**
+ * Every state of an entity state or a state machine, by state name: each a
+ * {@link StateDefinition} (`CheckedStates` names what is wrong with one that
+ * is not).
+ */
+export type StateDefinitions = Readonly<Record<string, object>>
 
 /** The name of a state in `States`. */
 export type StateName<States extends StateDefinitions> = keyof States & string
 
+/** The data of one state: its schema's value, or nothing for `{}`. */
+type StateData<Definition> = Definition extends StandardSchema<infer _Encoded, infer Data> ? Data : {}
+
 /**
  * The value of state `State` (of every state, for a union): its name in
- * `_tag`, and its fields. Use {@link EntityStateOf} or `Machine.StateOf` in
+ * `_tag`, and its data. Use {@link EntityStateOf} or `Machine.StateOf` in
  * game code.
  */
 export type StateValueOf<States extends StateDefinitions, State extends StateName<States>> = State extends unknown
-  ? { readonly _tag: State } & { readonly [Field in keyof States[State]]: DecodeModule.Type<States[State][Field]> } extends infer Value
+  ? { readonly _tag: State } & StateData<States[State]> extends infer Value
     ? { readonly [Key in keyof Value]: Value[Key] }
     : never
   : never
+
+/** The saved form of every state's value: its name in `_tag`, next to its data's saved form. */
+export type StateEncodedOf<States extends StateDefinitions> = {
+  readonly [State in StateName<States>]: { readonly _tag: State } & (States[State] extends StandardSchema<infer Encoded, infer _Data> ? Encoded : {}) extends infer Value
+    ? { readonly [Key in keyof Value]: Value[Key] }
+    : never
+}[StateName<States>]
 
 /**
  * The allowed moves of a {@link EntityState} component: for every state, the
@@ -422,12 +491,12 @@ export interface EntityStateDescriptor<
   out Name extends string,
   in out States extends StateDefinitions,
   in out Transitions extends EntityStateTransitions<States> | undefined
-> extends DecodableDescriptor<
+> extends ConstructedDescriptor<
   "component",
   Name,
   StateValueOf<States, StateName<States>>,
-  StateValueOf<States, StateName<States>>,
-  DecodeModule.DecodeError
+  StateEncodedOf<States>,
+  SchemaIssues
 > {
   readonly states: States
   readonly transitions: Transitions
@@ -454,12 +523,17 @@ export type EntityStateOf<
  * states.
  */
 export type CheckedStates<States extends StateDefinitions, Empty extends string> = [StateName<States>] extends [never]
-  ? { readonly [Message in Empty]: StateFields }
-  : {
-    readonly [State in keyof States]: "_tag" extends keyof States[State]
-      ? { readonly _tag: "`_tag` holds the state's name: give this field another name" }
-      : unknown
-  }
+  ? { readonly [Message in Empty]: StateDefinition }
+  : { readonly [State in keyof States]: StateRejection<States[State]> }
+
+type StateRejection<Definition> = Definition extends StandardSchema<infer _Encoded, infer Data>
+  ? [CodecRejection<Definition>] extends [never]
+    ? Data extends ReadonlyArray<unknown> ? { readonly __fixState__: "a state's data is an object of fields: decode it with an object schema" }
+    : "_tag" extends keyof Data ? { readonly __fixState__: "`_tag` holds the state's name: give this field another name" }
+    : unknown
+  : CheckedCodec<Definition>
+  : keyof Definition extends never ? unknown
+  : { readonly __fixState__: "a state is `{}` or one schema for all of its data: wrap the fields in your library's object schema" }
 
 /**
  * Defines a per-entity state: a component whose value is one of `states`,
@@ -476,7 +550,8 @@ export type CheckedStates<States extends StateDefinitions, Empty extends string>
  * at `applyStateTransitions(...)`, run `onEnter`/`onExit` schedules, and gate
  * systems with `Game.Condition.inState(...)`. An entity state does none of
  * that; it is data on an entity. A closed set of values with no moves (a
- * team, a direction) is `Descriptor.ConstructedComponent(Decode.literal(...))`.
+ * team, a direction) is a `Descriptor.ConstructedComponent(...)` with your
+ * library's literal schema.
  *
  * The value is a tagged union: `_tag` is the state's name, next to that
  * state's fields. Its write cell moves with `transition({ from, to, data })`,
@@ -494,8 +569,8 @@ export type CheckedStates<States extends StateDefinitions, Empty extends string>
  * @example
  * ```ts
  * const Contact = Descriptor.EntityState("Game/Contact", {
- *   ground: { platform: Decode.nullable(Decode.integer) },
- *   air: { vy: Decode.number, coyote: Decode.integer }
+ *   ground: z.object({ platform: z.int().nullable() }),
+ *   air: z.object({ vy: z.number(), coyote: z.int() })
  * }, { transitions: { ground: ["air"], air: ["ground"] } })
  *
  * commands.spawn(Game.Command.spawn([Contact, { _tag: "ground", platform: null }]))
@@ -547,14 +622,22 @@ export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name e
 ) => Descriptor<"resource", Name, Value>> => ((name: string) => makeDescriptor("resource", name)) as never
 
 /**
- * Defines a resource descriptor that also knows how to validate raw values.
+ * Defines a resource descriptor whose value is validated by a schema the
+ * game brings (see {@link ConstructedComponent}): raw values given to
+ * `Game.Runtime.make`, `setRaw`, and saved values are decoded by it, and
+ * snapshots save it through its `encode`.
+ *
+ * @example
+ * ```ts
+ * const Gold = Descriptor.ConstructedResource(z.number().int().nonnegative())("Game/Gold")
+ * ```
  */
-export const ConstructedResource = <Value, Raw, Error, Constructor extends {} = {}>(
-  constructor: ResultConstructor<Value, Raw, Error> & Constructor
+export const ConstructedResource = <const S extends Codec<any, any>>(
+  schema: S & CheckedCodec<S>
 ) => <const Name extends string>(
   name: Name
-): ConstructedFor<"resource", Name, Value, Raw, Error, Constructor> =>
-  makeConstructedDescriptor("resource", name, constructor) as ConstructedFor<"resource", Name, Value, Raw, Error, Constructor>
+): ConstructedDescriptor<"resource", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues> =>
+  makeConstructedDescriptor("resource", name, schema)
 
 /**
  * Defines a resource descriptor that snapshots skip. Restoring keeps its
@@ -623,96 +706,10 @@ export const isTransient = (descriptor: Descriptor.Any): descriptor is Descripto
   "transient" in descriptor && descriptor.transient === true
 
 /**
- * The parts of the Standard Schema v1 interface (https://standardschema.dev)
- * that `fromStandardSchema` reads. ArkType, Effect Schema, Zod, and Valibot
- * schemas all satisfy it.
- */
-export interface StandardSchema<Input, Output> {
-  readonly "~standard": {
-    readonly version: 1
-    readonly vendor: string
-    readonly validate: (value: unknown) => StandardSchema.Result<Output> | Promise<StandardSchema.Result<Output>>
-    readonly types?: { readonly input: Input; readonly output: Output } | undefined
-  }
-}
-
-export namespace StandardSchema {
-  export type Result<Output> =
-    | { readonly value: Output; readonly issues?: undefined }
-    | { readonly issues: ReadonlyArray<Issue> }
-  export interface Issue {
-    readonly message: string
-    readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
-  }
-}
-
-const asyncValidationIssue: ReadonlyArray<StandardSchema.Issue> = [
-  { message: "Asynchronous validation is not supported: descriptor constructors run synchronously" }
-]
-
-/**
- * Adapts a Standard Schema validator into a descriptor constructor, so any
- * compliant validation library can guard constructed components and
- * resources. Validation must be synchronous; a schema that returns a promise
- * fails with an issue instead.
- *
- * @example
- * ```ts
- * const Position = Descriptor.ConstructedComponent(
- *   Descriptor.fromStandardSchema(type({ x: "number", y: "number" }))
- * )("Game/Position")
- * ```
- */
-export const fromStandardSchema = <Input, Output>(
-  schema: StandardSchema<Input, Output>
-): ResultConstructor<Output, Input, ReadonlyArray<StandardSchema.Issue>> & Decoder<Output> => {
-  const validate = (raw: unknown) => {
-    const outcome = schema["~standard"].validate(raw)
-    if (outcome instanceof Promise) {
-      // Avoid an unhandled rejection from the discarded promise.
-      outcome.catch(() => {})
-      return ResultModule.failure(asyncValidationIssue)
-    }
-    return outcome.issues === undefined
-      ? ResultModule.success(outcome.value)
-      : ResultModule.failure(outcome.issues)
-  }
-  return { result: validate, decode: validate }
-}
-
-/**
- * Returns the function that validates untrusted values for a constructed
- * descriptor: its constructor's `decode` when present, otherwise `result`.
- * The snapshot types only allow the `result` fallback when it accepts
- * `unknown`.
- */
-export const decoderOf = (descriptor: Descriptor.AnyConstructed): (raw: unknown) => import("./Result.ts").Result<unknown, unknown> => {
-  const constructor = descriptor[descriptorConstruction] as ResultConstructor<unknown, unknown, unknown> & Partial<Decoder<unknown>>
-  return typeof constructor.decode === "function" ? constructor.decode : constructor.result
-}
-
-/**
- * Checks whether one descriptor carries raw-construction metadata.
+ * Checks whether one descriptor is validated by a schema.
  */
 export const hasConstructor = (descriptor: Descriptor.Any): descriptor is Descriptor.AnyConstructed =>
-  descriptorConstruction in descriptor
-
-/**
- * Returns the raw constructor carried by one descriptor when present.
- *
- * Plain descriptors return `undefined`.
- */
-export function constructorOf<D extends Descriptor.AnyConstructed>(
-  descriptor: D
-): Descriptor.Constructor<D>
-export function constructorOf<D extends Descriptor.Any>(
-  descriptor: D
-): Descriptor.Constructor<D> | undefined
-export function constructorOf<D extends Descriptor.Any>(
-  descriptor: D
-): Descriptor.Constructor<D> | undefined {
-  return (hasConstructor(descriptor) ? descriptor[descriptorConstruction] : undefined) as Descriptor.Constructor<D> | undefined
-}
+  constructionKey in descriptor
 
 /**
  * Defines the canonical parent/children relationship pair.
@@ -741,7 +738,8 @@ export const Relation = <const Name extends string, const RelatedName extends st
   name: Name,
   relatedName: RelatedName
 ) => makePair("relation", name, relatedName)
-import * as DecodeModule from "./Decode.ts"
+import type { Construction } from "./internal/schema.ts"
+import { construction, constructionKey, standard } from "./internal/schema.ts"
 import { makePair } from "./internal/relations.ts"
 import { stateCodec } from "./internal/states.ts"
 import * as ResultModule from "./Result.ts"

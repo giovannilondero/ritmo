@@ -1,17 +1,18 @@
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import * as Codecs from "../test/codecs.ts"
 import type { EntityStateMismatchError } from "@typeonce/ritmo/Query"
 import type * as Result from "@typeonce/ritmo/Result"
 import { describe, expect, it } from "tstyche"
 
 const Contact = Descriptor.EntityState("StateTypes/Contact", {
-  ground: { platform: Decode.nullable(Decode.integer) },
+  ground: Codecs.struct({ platform: Codecs.nullable(Codecs.integer) }),
   crouch: {},
-  air: { vy: Decode.number, coyote: Decode.integer }
+  air: Codecs.struct({ vy: Codecs.number, coyote: Codecs.integer })
 }, { transitions: { ground: ["air", "crouch"], crouch: ["ground", "air"], air: ["ground"] } })
 const Phase = Descriptor.EntityState("StateTypes/Phase", { ready: {}, windup: {}, active: {} }, {
   transitions: { ready: ["windup"], windup: ["active", "ready"], active: ["ready"] }
 })
-const Mode = Descriptor.EntityState("StateTypes/Mode", { a: {}, b: { n: Decode.number } })
+const Mode = Descriptor.EntityState("StateTypes/Mode", { a: {}, b: Codecs.struct({ n: Codecs.number }) })
 
 type ContactValue =
   | { readonly _tag: "ground"; readonly platform: number | null }
@@ -141,11 +142,11 @@ describe("Descriptor.EntityState", () => {
     // At least one state.
     // @ts-expect-error an entity state needs at least one state
     Descriptor.EntityState("StateTypes/Empty", {})
-    // Fields are codecs.
-    // @ts-expect-error Type 'string' is not assignable to type 'Codec<any>'.
+    // Data is one schema, not a record of fields.
+    // @ts-expect-error a state is `{}` or one schema for all of its data: wrap the fields in your library's object schema
     Descriptor.EntityState("StateTypes/NotCodec", { a: { n: "number" } })
     // `_tag` is the state's name.
     // @ts-expect-error `_tag` holds the state's name: give this field another name
-    Descriptor.EntityState("StateTypes/Tag", { a: { _tag: Decode.string } })
+    Descriptor.EntityState("StateTypes/Tag", { a: Codecs.struct({ _tag: Codecs.string }) })
   })
 })

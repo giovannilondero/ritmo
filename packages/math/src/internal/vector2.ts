@@ -1,3 +1,4 @@
+import { codecOf } from "./codec.ts"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Scalar from "../Scalar.ts"
 import type * as Vector2 from "../Vector2.ts"
@@ -28,7 +29,7 @@ export const option = (raw: Vector2.Raw): Vector2.Vector2 | null => {
   return next.ok ? next.value : null
 }
 
-export const is = (raw: Vector2.Raw): raw is Vector2.Raw & Vector2.Vector2 => result(raw).ok
+export const is = (raw: unknown): raw is Vector2.Vector2 => decode(raw).ok
 
 export const toRaw = (vector: Vector2.Vector2): Vector2.Raw => ({
   x: vector.x,
@@ -111,5 +112,10 @@ export const normalizeXYOrZero = (x: number, y: number): {
 export const isRawShape = (raw: unknown): raw is Vector2.Raw =>
   typeof raw === "object" && raw !== null && typeof (raw as Record<string, unknown>)["x"] === "number" && typeof (raw as Record<string, unknown>)["y"] === "number"
 
-export const decode = (raw: unknown): Result.Result<Vector2.Vector2, Vector2.Error | Vector2.DecodeError> =>
+/** Untrusted input without the raw shape. */
+type Malformed = { readonly tag: "Vector2/Malformed"; readonly input: unknown }
+
+export const decode = (raw: unknown): Result.Result<Vector2.Vector2, Vector2.Error | Malformed> =>
   isRawShape(raw) ? result(raw) : Result.failure({ tag: "Vector2/Malformed", input: raw })
+
+export const codec = codecOf<Vector2.Raw, Vector2.Vector2>(decode, "a vector { x, y } of finite numbers")

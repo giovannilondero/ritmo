@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { Decode, Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
 
-const Name = Descriptor.ConstructedComponent(Decode.string)("ExitPhase/Name")
+const Name = Descriptor.ConstructedComponent(Codecs.string)("ExitPhase/Name")
 const Saved = Descriptor.Resource<number>()("ExitPhase/Saved")
 const Left = Descriptor.Event<string>()("ExitPhase/Left")
 const Game = Schema.bind(Schema.fragment({ components: { Name }, resources: { Saved }, events: { Left } }))

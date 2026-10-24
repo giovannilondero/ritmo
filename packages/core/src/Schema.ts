@@ -742,7 +742,7 @@ export namespace Schema {
       ) => Command.DraftFor<S, Entries, P, Root, Relates>
       /** A typed `[Descriptor, value]` entry for an already valid value. */
       entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: QueryModule.ReadonlyValue<Descriptor.Value<D>>) => Command.Entry<D>
-      /** Validates raw input through a constructed descriptor's validator; check the result before spawning. See `Command.entryRaw`. */
+      /** Decodes raw input through a constructed descriptor's schema; check the result before spawning. See `Command.entryRaw`. */
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,
         raw: Descriptor.Raw<D>
@@ -765,8 +765,9 @@ export namespace Schema {
      * `Descriptor.EntityState(...)` instead for a state each entity has on
      * its own.
      *
-     * Each state has its own fields, as codecs (`{}` for a state without
-     * data), so a mode and the data only it has are one value: a dialogue
+     * Each state is `{}` (no data) or one schema for its data (any Standard
+     * Schema, see `Descriptor.Schema`), so a mode and the data only it has
+     * are one value: a dialogue
      * with its speaker, a game over with its winner. Never keep a machine
      * next to a resource that must agree with it. The value is a tagged
      * union: `_tag` is the state's name, next to that state's fields
@@ -784,7 +785,7 @@ export namespace Schema {
      * ```ts
      * const Mode = Game.StateMachine("Town/Mode", {
      *   Exploring: {},
-     *   Talking: { speaker: Decode.string, page: Decode.integer }
+     *   Talking: z.object({ speaker: z.string(), page: z.int() })
      * })
      * nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
      * machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
@@ -816,7 +817,7 @@ export namespace Schema {
        *
        * @example
        * ```ts
-       * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: { round: Decode.integer } }, { within: [Session, "Playing"] })
+       * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: z.object({ round: z.int() }) }, { within: [Session, "Playing"] })
        * ```
        */
       <

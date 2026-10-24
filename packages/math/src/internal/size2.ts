@@ -1,3 +1,4 @@
+import { codecOf } from "./codec.ts"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Scalar from "../Scalar.ts"
 import type * as Size2 from "../Size2.ts"
@@ -28,7 +29,7 @@ export const option = (raw: Size2.Raw): Size2.Size2 | null => {
   return next.ok ? next.value : null
 }
 
-export const is = (raw: Size2.Raw): raw is Size2.Raw & Size2.Size2 => result(raw).ok
+export const is = (raw: unknown): raw is Size2.Size2 => decode(raw).ok
 
 export const toRaw = (size: Size2.Size2): Size2.Raw => ({
   width: size.width,
@@ -44,5 +45,10 @@ export const height = (size: Size2.Size2): Scalar.NonNegative => size.height
 export const isRawShape = (raw: unknown): raw is Size2.Raw =>
   typeof raw === "object" && raw !== null && typeof (raw as Record<string, unknown>)["width"] === "number" && typeof (raw as Record<string, unknown>)["height"] === "number"
 
-export const decode = (raw: unknown): Result.Result<Size2.Size2, Size2.Error | Size2.DecodeError> =>
+/** Untrusted input without the raw shape. */
+type Malformed = { readonly tag: "Size2/Malformed"; readonly input: unknown }
+
+export const decode = (raw: unknown): Result.Result<Size2.Size2, Size2.Error | Malformed> =>
   isRawShape(raw) ? result(raw) : Result.failure({ tag: "Size2/Malformed", input: raw })
+
+export const codec = codecOf<Size2.Raw, Size2.Size2>(decode, "a size { width, height } of non-negative finite numbers")

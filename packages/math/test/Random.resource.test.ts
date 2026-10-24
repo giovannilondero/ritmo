@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest"
 
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import { Random } from "@typeonce/ritmo-math"
+import { worldOf } from "../../core/test/saved.ts"
 
-const Rng = Descriptor.ConstructedResource(Random)("RandomResource/Rng")
+const Rng = Descriptor.ConstructedResource(Random.codec)("RandomResource/Rng")
 const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
 const State = Game.Inspector("RandomResource/State", { resources: { rng: Game.System.readResource(Rng) } }, ({ resources }) => resources.rng.get())
 
@@ -36,7 +37,7 @@ describe("Random as a resource", () => {
     })
     runtime.tick(Game.Schedule(Fail))
     expect(runtime.inspect(State)).toBe(42)
-    const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
+    const saved = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
     expect(runtime.restore(saved).ok).toBe(true)
     expect(runtime.restore({ ...saved, resources: { "RandomResource/Rng": -1 } }).ok).toBe(false)
     expect(Random.seed(-1)).toBe(0xffffffff)

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
+import { worldOf } from "./saved.ts"
 
-const Count = Descriptor.ConstructedComponent(Decode.number)("Documented/Count")
+const Count = Descriptor.ConstructedComponent(Codecs.number)("Documented/Count")
 const Ping = Descriptor.Event<number>()("Documented/Ping")
-const Gold = Descriptor.ConstructedResource(Decode.number)("Documented/Gold")
-const Gems = Descriptor.ConstructedResource(Decode.number)("Documented/Gems")
+const Gold = Descriptor.ConstructedResource(Codecs.number)("Documented/Gold")
+const Gems = Descriptor.ConstructedResource(Codecs.number)("Documented/Gems")
 const Game = Schema.bind(Schema.fragment({ components: { Count }, events: { Ping }, resources: { Gold, Gems } }))
 const Flow = Game.StateMachine("Documented/Flow", { A: {}, B: {} })
 
@@ -60,7 +62,7 @@ describe("documented semantics", () => {
     const Gems2 = Game.System("Documented/Gems", { resources: { gems: Game.System.writeResource(Gems) } }, ({ resources }) => {
       resources.gems.set(7)
     })
-    const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
+    const saved = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
     delete saved.resources["Documented/Gems"]
     runtime.tick(Game.Schedule(Gems2))
     expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })

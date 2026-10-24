@@ -16,6 +16,7 @@
     "@typeonce/ritmo-math": "workspace:*",
     "@typeonce/ritmo-pixi": "workspace:*",
     "@typeonce/ritmo-render": "workspace:*",
+    "effect": "4.0.2",
     "pixi.js": "8.22.0"
   },
   "devDependencies": {

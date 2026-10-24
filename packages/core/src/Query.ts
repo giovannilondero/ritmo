@@ -68,9 +68,8 @@
  * @groupDescription Functions
  * Query authoring helpers for selecting components and declaring explicit filters.
  */
-import type { DecodeError, Type } from "./Decode.ts"
 import * as DescriptorModule from "./Descriptor.ts"
-import type { Descriptor, StateDefinitions, EntityStateDescriptor, StateName, StateValueOf } from "./Descriptor.ts"
+import type { Descriptor, StateDefinitions, EntityStateDescriptor, SchemaIssues, StateEncodedOf, StateName, StateValueOf } from "./Descriptor.ts"
 import type { EntityId, EntityMut, EntityRef } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
@@ -580,7 +579,7 @@ export interface ReadCell<T> {
  *
  * This gives a narrow mutation surface instead of exposing raw storage objects.
  * Values written here are already valid. Data that still needs validation
- * goes through its descriptor's own validator: declare the descriptor with
+ * goes through its descriptor's schema: declare the descriptor with
  * `Descriptor.ConstructedComponent` / `ConstructedResource` and write with
  * `setRaw` / `updateRaw` on its {@link ConstructedWriteCell}.
  */
@@ -646,14 +645,17 @@ type EntityStateTargets<Transitions, From extends keyof Transitions> =
   (From extends unknown ? (to: Transitions[From] extends ReadonlyArray<infer To> ? To : never) => void : never) extends
     (to: infer To) => void ? To : never
 
+/** The names of a state's fields: its value's keys besides `_tag`. */
+type StateFieldName<States extends StateDefinitions, State extends StateName<States>> = Exclude<keyof StateValueOf<States, State>, "_tag">
+
 /** A state's fields as a write takes them: the value without `_tag`. */
 export type StateData<States extends StateDefinitions, State extends StateName<States>> = ReadonlyValue<
-  { readonly [Field in keyof States[State]]: Type<States[State][Field]> }
+  { readonly [Field in StateFieldName<States, State>]: StateValueOf<States, State>[Field] }
 >
 
 /** `data` of a move into `To`: required with all of `To`'s fields, and absent for a state without fields. */
 type EntityStateMoveData<States extends StateDefinitions, To extends StateName<States>> =
-  [keyof States[To]] extends [never] ? { readonly data?: never } : { readonly data: StateData<States, To> }
+  [StateFieldName<States, To>] extends [never] ? { readonly data?: never } : { readonly data: StateData<States, To> }
 
 /**
  * What the callback of an `update` (of an entity state or a state machine)
@@ -671,8 +673,8 @@ export type StateUpdateResult<States extends StateDefinitions, State extends Sta
  * the way to change state instead.
  */
 export type StateExactFields<States extends StateDefinitions, State extends StateName<States>, Next, Move extends string> =
-  [Exclude<keyof Next, keyof States[State] | "_tag">] extends [never] ? unknown
-    : { readonly data: `${State} has no field ${Exclude<keyof Next, keyof States[State] | "_tag"> & string}: write only this state's fields, or move with ${Move}` }
+  [Exclude<keyof Next, keyof StateValueOf<States, State>>] extends [never] ? unknown
+    : { readonly data: `${State} has no field ${Exclude<keyof Next, keyof StateValueOf<States, State>> & string}: write only this state's fields, or move with ${Move}` }
 
 /**
  * Writable cell for an entity state component (`Descriptor.EntityState`).
@@ -727,8 +729,8 @@ export interface EntityStateWriteCell<States extends StateDefinitions, Transitio
    * so the graph and the current state are checked.
    */
   set(value: ReadonlyValue<StateValueOf<States, StateName<States>>>): void
-  /** Validates an untrusted value and writes it only on success, like `set`. */
-  setRaw(raw: StateValueOf<States, StateName<States>>): Result.Result<void, DecodeError>
+  /** Decodes an untrusted value (in its saved form) and writes it only on success, like `set`. */
+  setRaw(raw: StateEncodedOf<States>): Result.Result<void, SchemaIssues>
 }
 
 /**

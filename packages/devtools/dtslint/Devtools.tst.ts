@@ -1,4 +1,5 @@
-import { Clock, Decode, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import * as Codecs from "../../core/test/codecs.ts"
 import { Invariant, Lint, Replay, Session } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "tstyche"
 
@@ -118,7 +119,7 @@ describe("Lint.run", () => {
 })
 
 describe("Replay.recorder", () => {
-  const Place = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number }))("DevtoolsTypes/Place")
+  const Place = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("DevtoolsTypes/Place")
   const Keys = Descriptor.Service<Replay.Source<{ readonly left: boolean }>>()("DevtoolsTypes/Keys")
   const Rules = Descriptor.Service<{ readonly speed: number; readonly names: ReadonlyArray<string> }>()("DevtoolsTypes/Rules")
   const Page = Descriptor.Service<{ readonly toast: (message: string) => void }>()("DevtoolsTypes/Page")

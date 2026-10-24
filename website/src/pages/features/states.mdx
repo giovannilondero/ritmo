@@ -25,14 +25,21 @@ ground and moving up.
 `Descriptor.EntityState` gives each state only the fields it has:
 
 ```ts twoslash title="schema.ts"
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
+// ---cut---
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
 
+// `codec` is the game's Effect helper (see Concepts, "Validating and saving values")
 const Contact = Descriptor.EntityState("Brawl/Contact", {
   // On the ground: the platform underfoot (null for the floor)
-  ground: { platform: Decode.nullable(Decode.integer) },
+  ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
 
   // In the air: the only place a vertical speed exists
-  air: { vy: Decode.number, coyote: Decode.integer } // [!code highlight]
+  air: codec(S.Struct({ vy: S.Finite, coyote: S.Int })) // [!code highlight]
 }, {
   // The moves allowed between states
   transitions: { ground: ["air"], air: ["ground"] }
@@ -43,8 +50,9 @@ type ContactValue = Descriptor.EntityStateOf<typeof Contact>
 //   ^?
 ```
 
-A grounded body with a `vy` no longer has a type to be. The fields are
-validators too, so a saved game is checked state by state when it loads.
+A grounded body with a `vy` no longer has a type to be. Each state's data
+is one schema from the game's schema library, so a saved game is checked
+state by state when it loads.
 
 ## Moving takes the new state's fields
 
@@ -53,10 +61,15 @@ scratch: every field the target needs, and nothing from the state it
 leaves.
 
 ```ts twoslash
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
 const Contact = Descriptor.EntityState("Brawl/Contact", {
-  ground: { platform: Decode.nullable(Decode.integer) },
-  air: { vy: Decode.number, coyote: Decode.integer }
+  ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
+  air: codec(S.Struct({ vy: S.Finite, coyote: S.Int }))
 }, { transitions: { ground: ["air"], air: ["ground"] } })
 const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
 const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
@@ -77,10 +90,15 @@ Staying in a state is `update`: it changes that state's fields, and only
 those.
 
 ```ts twoslash
-import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+}
 const Contact = Descriptor.EntityState("Brawl/Contact", {
-  ground: { platform: Decode.nullable(Decode.integer) },
-  air: { vy: Decode.number, coyote: Decode.integer }
+  ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
+  air: codec(S.Struct({ vy: S.Finite, coyote: S.Int }))
 }, { transitions: { ground: ["air"], air: ["ground"] } })
 const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
 const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })

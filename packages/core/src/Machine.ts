@@ -16,7 +16,7 @@
  * @example
  * ```ts
  * // Model a gameplay phase whose transition timing matters.
- * const GameFlow = Game.StateMachine("Game/GameFlow", { Menu: {}, Playing: { level: Decode.integer } })
+ * const GameFlow = Game.StateMachine("Game/GameFlow", { Menu: {}, Playing: z.object({ level: z.int() }) })
  *
  * // Gate one system so it only runs in the committed playing phase.
  * const isPlaying = Machine.inState(GameFlow, "Playing")
@@ -80,7 +80,7 @@ export interface SubStateParent {
  * ```ts
  * const Mode = Game.StateMachine("Town/Mode", {
  *   Exploring: {},
- *   Talking: { speaker: Decode.string, page: Decode.integer }
+ *   Talking: z.object({ speaker: z.string(), page: z.int() })
  * })
  * const nextPage = (talking: Machine.StateOf<typeof Mode, "Talking">) => talking.page + 1
  * const describe = (mode: Machine.StateOf<typeof Mode>) => mode._tag

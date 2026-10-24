@@ -3,16 +3,15 @@ import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type { EntityId } from "@typeonce/ritmo/Entity"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { readResourceValue } from "./utils/fixtures.ts"
+import * as Codecs from "./codecs.ts"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
 const Count = Descriptor.Resource<number>()("Count")
 const LastX = Descriptor.Resource<number>()("LastX")
-const SafePosition = Descriptor.ConstructedComponent(Vector2)("SafePosition")
-const SafeVelocity = Descriptor.ConstructedComponent({
-  result: (raw: { x: number; y: number }) =>
-    Number.isFinite(raw.x) && Number.isFinite(raw.y) ? Result.success(raw) : Result.failure("bad-velocity" as const)
-})("SafeVelocity")
+const SafePosition = Descriptor.ConstructedComponent(Vector2.codec)("SafePosition")
+const SafeVelocity = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number, y: Codecs.number }))("SafeVelocity")
+const badVelocity = { _tag: "SchemaIssues", issues: [{ message: "Expected a finite number", path: ["x"] }] }
 
 const Game = Schema.bind(Schema.fragment({
   components: {
@@ -323,7 +322,7 @@ describe("Runtime commands", () => {
             Game.Command.entryRaw(SafeVelocity, { x: Number.NaN, y: 0 })
           )
 
-          expect(invalidDraft).toEqual(Result.failure([null, "bad-velocity"]))
+          expect(invalidDraft).toEqual(Result.failure([null, badVelocity]))
 
           const validDraft = Game.Command.spawn(
             Game.Command.entry(Position, { x: 4, y: 5 }),
@@ -392,7 +391,7 @@ describe("Runtime commands", () => {
             Game.Command.entryRaw(SafeVelocity, { x: Number.NaN, y: 0 })
           )
 
-          expect(invalidDraft).toEqual(Result.failure([null, "bad-velocity"]))
+          expect(invalidDraft).toEqual(Result.failure([null, badVelocity]))
 
           const validDraft = Game.Command.spawn(
             Game.Command.entry(Position, { x: 4, y: 5 }),

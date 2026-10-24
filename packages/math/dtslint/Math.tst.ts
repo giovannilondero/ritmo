@@ -1,5 +1,6 @@
-import { Result } from "@typeonce/ritmo"
-import { Aabb, InputAxis, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
+import { Descriptor, Result } from "@typeonce/ritmo"
+import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
+import { Aabb, InputAxis, Random, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
 import { describe, expect, it } from "tstyche"
 
 describe("helpers", () => {
@@ -81,5 +82,18 @@ describe("helpers", () => {
   it("axis helpers preserve the narrow axis union", () => {
     const horizontal = InputAxis.axis(true, false)
     expect(horizontal).type.toBe<InputAxis.Axis>()
+  })
+})
+
+describe("codecs and guards", () => {
+  it("gives each validated type one schema and a guard over unknown", () => {
+    expect(Vector2.codec).type.toBe<StandardSchema<Vector2.Raw, Vector2.Vector2>>()
+    expect(Scalar.Finite.codec).type.toBe<StandardSchema<number, Scalar.Finite>>()
+    expect(Random.codec).type.toBe<StandardSchema<number, Random.State>>()
+    expect(Vector2.is).type.toBe<(raw: unknown) => raw is Vector2.Vector2>()
+    expect(Scalar.Positive.is).type.toBe<(raw: unknown) => raw is Scalar.Positive>()
+    expect(Descriptor.ConstructedComponent(Aabb.codec)("Math/Bounds")).type.toBe<
+      Descriptor.ConstructedDescriptor<"component", "Math/Bounds", Aabb.Aabb, Aabb.Raw, Descriptor.SchemaIssues>
+    >()
   })
 })

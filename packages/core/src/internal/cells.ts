@@ -6,8 +6,8 @@
  * long as the entity keeps matching. Every read goes to live storage, so a
  * reused cell never observes a stale value.
  */
-import type { ResultConstructor } from "../Descriptor.ts"
 import * as Result from "../Result.ts"
+import type { Construction } from "./schema.ts"
 import { emptyStates } from "./states.ts"
 import type { EntityRecord, World } from "./world.ts"
 import { ABSENT } from "./world.ts"
@@ -37,15 +37,15 @@ abstract class WriteCellBase<T> {
 /**
  * Adds raw-validation helpers for values owned by constructed descriptors.
  */
-const withConstructor = <T, Raw, Error>(
+const withConstructor = <T>(
   cell: WriteCellBase<T>,
-  constructor: ResultConstructor<T, Raw, Error>
+  constructor: Construction
 ) => Object.assign(cell, {
-  setRaw(raw: Raw): Result.Result<void, Error> {
-    return cell.writeResult(constructor.result(raw))
+  setRaw(raw: unknown): Result.Result<void, unknown> {
+    return cell.writeResult(constructor.decode(raw) as Result.Result<T, unknown>)
   },
-  updateRaw(f: (current: T) => Raw): Result.Result<void, Error> {
-    return cell.writeResult(constructor.result(f(cell.get())))
+  updateRaw(f: (current: T) => unknown): Result.Result<void, unknown> {
+    return cell.writeResult(constructor.decode(f(cell.get())) as Result.Result<T, unknown>)
   }
 })
 
@@ -138,10 +138,10 @@ class EntityStateWriteCell {
   readonly ordinal: number
   readonly record: EntityRecord
   readonly world: World
-  readonly decoder: ResultConstructor<unknown, unknown, unknown>
+  readonly decoder: Construction
   readonly plan: EntityStatePlan
 
-  constructor(record: EntityRecord, ordinal: number, world: World, decoder: ResultConstructor<unknown, unknown, unknown>, plan: EntityStatePlan) {
+  constructor(record: EntityRecord, ordinal: number, world: World, decoder: Construction, plan: EntityStatePlan) {
     this.values = record.values
     this.ordinal = ordinal
     this.record = record
@@ -160,7 +160,7 @@ class EntityStateWriteCell {
   }
 
   setRaw(raw: unknown): Result.Result<void, unknown> {
-    const value = this.decoder.result(raw)
+    const value = this.decoder.decode(raw)
     if (!value.ok) return value
     this.set(value.value)
     return moved
@@ -251,7 +251,7 @@ export const componentWrite = (
   record: EntityRecord,
   ordinal: number,
   world: World,
-  constructor: ResultConstructor<unknown, unknown, unknown> | undefined,
+  constructor: Construction | undefined,
   entityState: EntityStatePlan | undefined
 ): object => {
   if (entityState !== undefined && constructor !== undefined) return new EntityStateWriteCell(record, ordinal, world, constructor, entityState)
@@ -273,7 +273,7 @@ export const storeWrite = (
   store: Map<symbol, unknown>,
   key: symbol,
   write: (key: symbol, value: unknown) => void,
-  constructor: ResultConstructor<unknown, unknown, unknown> | undefined
+  constructor: Construction | undefined
 ): WriteCellBase<unknown> => {
   const cell = new StoreWriteCell(store, key, write)
   return constructor === undefined ? cell : withConstructor(cell, constructor)

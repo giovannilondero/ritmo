@@ -26,6 +26,17 @@ Read the playbook for the change before writing code. A change that spans severa
 | Something behaves wrong | [`playbooks/bug-fix.md`](playbooks/bug-fix.md) |
 | Moving or splitting code without changing behaviour | [`playbooks/refactor.md`](playbooks/refactor.md) |
 | New state, saves, or a Ritmo upgrade | [`playbooks/state-and-upgrades.md`](playbooks/state-and-upgrades.md) |
+| Schemas in a game that uses Effect | [`playbooks/effect.md`](playbooks/effect.md) |
+
+## Validating and saving values
+
+Ritmo has no validators of its own. Every value it checks or saves is described by a [Standard Schema](https://standardschema.dev) from the game's schema library (Zod, Valibot, ArkType, Effect), and the game uses that one library for all of them:
+
+- A saved component or resource is `Descriptor.ConstructedComponent(schema)` or `ConstructedResource(schema)`. Raw input (`setRaw`, `updateRaw`, `Game.Command.entryRaw`, raw values given to `Game.Runtime.make`) is in the schema's saved form and is decoded by it. A value that is never saved is a `Transient*` descriptor.
+- A state of `Descriptor.EntityState` or `Game.StateMachine` is `{}` (no data) or one object schema for all of its data. Ritmo adds only `_tag`.
+- A value whose saved form differs from it (a `Map`, an `Option`, a class) needs a schema with an `encode` back to plain data: Zod's `z.codec`, or the Effect helper in [`playbooks/effect.md`](playbooks/effect.md). Without one, the descriptor does not compile and the error says so.
+- `runtime.snapshot()` encodes every value and returns a `Result`; `runtime.restore(...)` decodes. Validation is synchronous: no async checks.
+- Ritmo's own types come with a guard to build a schema from: `Entity.isHandle(Root, Intent)` for stored handles, and `is` on each ritmo-math type (which also has a ready `codec`). Wrap the guard with the library (`Schema.declare(guard)`, `z.custom(guard)`); never cast a raw number to a handle.
 
 ## Principles
 

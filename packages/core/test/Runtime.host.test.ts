@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { Decode, Descriptor, Entity, HostClock, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, Entity, HostClock, Result, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
 import * as Runtime from "@typeonce/ritmo/Runtime"
+import { worldOf } from "./saved.ts"
 
 const hostClock = HostClock.test()
 
 const Ping = Descriptor.Event<number>()("Host/Ping")
 const Ready = Descriptor.TransientResource<boolean>()("Host/Ready")
-const Count = Descriptor.ConstructedResource(Decode.number)("Host/Count")
+const Count = Descriptor.ConstructedResource(Codecs.number)("Host/Count")
 const Game = Schema.bind(Schema.fragment({ events: { Ping }, resources: { Ready, Count } }))
 const Flow = Game.StateMachine("Host/Flow", { Playing: {}, Menu: {} })
 const ready = Game.Condition.check("Host/Ready", { resources: { ready: Game.System.readResource(Ready) } }, ({ resources }) => resources.ready.get())
@@ -113,7 +115,7 @@ describe("host events and pause gates", () => {
 
   it("rejects snapshot and restore from inside a tick, including trace callbacks", () => {
     const runtime = make()
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     const snapshotInside = Game.System("Host/SnapshotInside", {}, () => { runtime.snapshot() })
     const restoreInside = Game.System("Host/RestoreInside", {}, () => { runtime.restore(saved) })
     expect(() => runtime.tick(Game.Schedule(snapshotInside))).toThrow("runtime.snapshot was called while a schedule is running")
@@ -138,7 +140,7 @@ describe("host events and pause gates", () => {
     runtime.send(Ping, 6)
     runtime.tick(fast)
     runtime.tick(Game.Schedule(emitter))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     expect(runtime.restore(saved).ok).toBe(true)
     runtime.tick(fast, slow)
     runtime.tick(fast, slow)
@@ -220,12 +222,12 @@ describe("system local state", () => {
     second.tick(Game.Schedule(system))
     expect(seen).toEqual([1, 2, 1])
     expect(factories).toBe(2)
-    expect(first.snapshot().resources).toEqual({ "Host/Count": 0 })
+    expect(worldOf(first.snapshot()).resources).toEqual({ "Host/Count": 0 })
     first.debug.nameSchedules({ update: Game.Schedule(system) })
     expect(first.debug.describe().systems[0]?.local).toBe(true)
     expect(first.restore(null).ok).toBe(false)
     expect(factories).toBe(2)
-    expect(first.restore(first.snapshot()).ok).toBe(true)
+    expect(first.restore(worldOf(first.snapshot())).ok).toBe(true)
     first.tick(Game.Schedule(system))
     expect(seen).toEqual([1, 2, 1, 1])
     expect(factories).toBe(3)
@@ -236,10 +238,10 @@ describe("system local state", () => {
     let fail = false
     const system = Game.System("Host/ThrowingFactory", { local: () => { if (fail) throw new Error("factory failed"); return {} } }, () => {})
     runtime.tick(Game.Schedule(system))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     fail = true
     expect(() => runtime.restore({ ...saved, resources: { "Host/Count": 100 } })).toThrow("factory failed")
-    expect(runtime.snapshot()).toEqual(saved)
+    expect(worldOf(runtime.snapshot())).toEqual(saved)
   })
 
   it("keeps every existing local if a later factory throws during restore", () => {
@@ -253,10 +255,10 @@ describe("system local state", () => {
     const runtime = make()
     const schedule = Game.Schedule(first, second)
     runtime.tick(schedule)
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     fail = true
     expect(() => runtime.restore(saved)).toThrow("second factory failed")
-    expect(runtime.snapshot()).toEqual(saved)
+    expect(worldOf(runtime.snapshot())).toEqual(saved)
     runtime.tick(schedule)
     expect(seen[2]).toBe(seen[0])
     expect(seen[3]).toBe(seen[1])

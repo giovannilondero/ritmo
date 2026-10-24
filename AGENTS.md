@@ -24,6 +24,7 @@
 - Expected failure is a typed `Result`, not an exception. No broad overloads or ambiguous semantics.
 - Small composable pieces, each type-safe on its own.
 - Validate exact structure at the constructor boundary, derive a normalized carried type once, and reuse it. Optimize internal types only when the public API and its guarantees stay the same.
+- Ritmo exports no codec builders. Values are Standard Schemas the game brings. A Ritmo-owned type comes with its guard, and in ritmo-math with one codec constant for itself. `packages/core/dtslint/NoCodecBuilders.tst.ts` fails on an export that returns a schema.
 - A new system access category gets a runtime provision only if the runtime must validate it (one nominal requirement token); otherwise it stays local to the system spec.
 - Runtime semantics stay explicit: handles are storage-safe, not proof of liveness; lookups that depend on runtime state are fallible; commands and state transitions apply only at `applyDeferred()` / `applyStateTransitions(...)`; reads (changes, events, transitions, relation failures) are per-reader streams that show each system what was published since its own previous run, once.
 

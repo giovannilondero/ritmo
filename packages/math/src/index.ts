@@ -2,9 +2,9 @@
  * Math for game code.
  *
  * Validated values (`Scalar`, `Vector2`, `Size2`, `Aabb`) expose
- * Result-returning constructors, so they plug into
- * `Descriptor.ConstructedComponent(...)` / `ConstructedResource(...)` and are
- * validated once at the boundary. `InputAxis` normalizes directional input.
+ * Result-returning constructors, a guard (`is`), and one `codec` each, so
+ * they plug into `Descriptor.ConstructedComponent(Vector2.codec)` /
+ * `ConstructedResource(Random.codec)` and are validated once at the boundary. `InputAxis` normalizes directional input.
  *
  * Hot-path helpers work on plain numbers every frame: `Vec2` arithmetic,
  * `Box2` edges, `Collide2` swept circle collision, a `SpatialGrid` broad

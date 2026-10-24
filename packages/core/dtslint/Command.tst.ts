@@ -6,7 +6,7 @@ import { describe, expect, it } from "tstyche"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
 const Time = Descriptor.Resource<number>()("Time")
-const SafePosition = Descriptor.ConstructedComponent(Vector2)("SafePosition")
+const SafePosition = Descriptor.ConstructedComponent(Vector2.codec)("SafePosition")
 
 const Game = Schema.bind(Schema.fragment({
   components: {
@@ -73,7 +73,7 @@ describe("Command", () => {
     expect(draft).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly SafePosition: Vector2.Vector2
-    }, typeof schema>, readonly [null, Vector2.Error | null]>>()
+    }, typeof schema>, readonly [null, Descriptor.SchemaIssues | null]>>()
   })
 
   it("has no entryResult: validation goes through the descriptor", () => {
@@ -85,7 +85,7 @@ describe("Command", () => {
     const Game = Schema.bind(schema)
 
     const entry = Game.Command.entryRaw(SafePosition, { x: 0, y: 0 })
-    expect(entry).type.toBe<Result.Result<Command.Entry<typeof SafePosition>, Vector2.Error>>()
+    expect(entry).type.toBe<Result.Result<Command.Entry<typeof SafePosition>, Descriptor.SchemaIssues>>()
 
     const inserted = Game.Command.extend(
       Game.Command.spawn([Position, { x: 1, y: 1 }]), Game.Command.entryRaw(SafePosition, { x: 2, y: 3 }))
@@ -93,7 +93,7 @@ describe("Command", () => {
     expect(inserted).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly SafePosition: Vector2.Vector2
-    }, typeof schema>, readonly [Vector2.Error | null]>>()
+    }, typeof schema>, readonly [Descriptor.SchemaIssues | null]>>()
   })
 
   it("entryRaw rejects plain component descriptors", () => {

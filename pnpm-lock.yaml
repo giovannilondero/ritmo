@@ -147,6 +147,9 @@ importers:
       '@typeonce/ritmo-render':
         specifier: workspace:*
         version: link:../packages/render
+      effect:
+        specifier: 4.0.2
+        version: 4.0.2
       pixi.js:
         specifier: 8.22.0
         version: 8.22.0
@@ -1967,6 +1970,9 @@ packages:
 
   earcut@3.0.2:
     resolution: {integrity: sha512-X7hshQbLyMJ/3RPhyObLARM2sNxxmRALLKx1+NVFFnQ9gKzmCrxm9+uLIAdBcvc8FNLpctqlQ2V6AE92Ol9UDQ==}
+
+  effect@4.0.2:
+    resolution: {integrity: sha512-YeYnLqSFrL4+tCOXRrfNP03w8FILoF/wDl+ukraJAGzXrjcS383W7LAAvGBbLatEyktmLxRq+9xJinx7QzXW5A==}
 
   enquirer@2.4.1:
     resolution: {integrity: sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==}
@@ -4691,6 +4697,8 @@ snapshots:
   dset@3.1.4: {}
 
   earcut@3.0.2: {}
+
+  effect@4.0.2: {}
 
   enquirer@2.4.1:
     dependencies:

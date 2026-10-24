@@ -4,9 +4,12 @@
 // never keys. The browser host (game.ts) and the determinism fingerprint
 // (fingerprint.ts) build this same world.
 import type { HostClock } from "@typeonce/ritmo"
-import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
 import * as Ops from "@typeonce/ritmo-math/Ops"
+import { Schema as S } from "effect"
+
+import { codec } from "../codec.ts"
 
 /** One fixed update: 60 per second, shared by the clock and the host loop. */
 export const step = Clock.hz(60)
@@ -73,19 +76,19 @@ export const ControlsInput = Descriptor.Service<ControlsSource>()("Controls/Inpu
 
 // ── World ───────────────────────────────────────────────────────────────
 
-// Constructed from a decoder, so a saved world (a snapshot, a replay's start) is checked as it loads.
-const point = Decode.struct({ x: Decode.number, y: Decode.number })
+// Constructed from a schema, so a saved world (a snapshot, a replay's start) is checked as it loads.
+const point = codec(S.Struct({ x: S.Finite, y: S.Finite }))
 
 export const Position = Descriptor.ConstructedComponent(point)("Controls/Position")
 export const Velocity = Descriptor.ConstructedComponent(point)("Controls/Velocity")
 /** Where the ball points, in radians, and the steps until it can dash again. */
-export const Ball = Descriptor.ConstructedComponent(Decode.struct({ heading: Decode.number, cooldown: Decode.number }))("Controls/Ball")
+export const Ball = Descriptor.ConstructedComponent(codec(S.Struct({ heading: S.Finite, cooldown: S.Finite })))("Controls/Ball")
 
 export const Time = Clock.resource("Controls/Time", step)
 /** Captured from the devices at the start of each update. */
 export const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Controls/InputState")
 /** How many dashes so far: the one number the page shows from the rules. */
-export const Dashes = Descriptor.ConstructedResource(Decode.number)("Controls/Dashes")
+export const Dashes = Descriptor.ConstructedResource(codec(S.Finite))("Controls/Dashes")
 
 export const Game = Schema.bind(
   Schema.fragment({
