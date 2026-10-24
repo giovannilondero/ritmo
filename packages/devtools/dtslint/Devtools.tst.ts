@@ -1,7 +1,8 @@
 import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../../core/test/codecs.ts"
 import type * as Schedule from "@typeonce/ritmo/Schedule"
-import { Invariant, Lint, Replay, Session } from "@typeonce/ritmo-devtools"
+import type * as Snapshot from "@typeonce/ritmo/Snapshot"
+import { Desync, Invariant, Lint, Replay, Rendered, Session } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "tstyche"
 
 const hostClock = HostClock.test()
@@ -179,5 +180,12 @@ describe("Replay.recorder", () => {
 describe("Session stops", () => {
   it("include a failed tick result nobody read", () => {
     expect<Extract<Session.Stop, { readonly reason: "ignored-failure" }>["skipped"]>().type.toBe<ReadonlyArray<string>>()
+  })
+})
+
+describe("Desync.compare", () => {
+  it("compares two saves into rendered differences", () => {
+    expect(Desync.compare).type.toBe<(mine: Snapshot.WorldSnapshot, theirs: Snapshot.WorldSnapshot) => Rendered.Rendered<ReadonlyArray<Desync.Difference>>>()
+    expect(Desync.compare).type.not.toBeCallableWith({ entities: [] }, { entities: [] })
   })
 })

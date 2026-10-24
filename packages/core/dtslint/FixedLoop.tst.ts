@@ -31,4 +31,9 @@ describe("FixedLoop.start", () => {
       onFailure: () => {}
     })
   })
+
+  it("reads an optional rate per frame", () => {
+    expect<FixedLoop.StartOptions<FixedLoop.Tick, never>["rate"]>().type.toBe<(() => number) | undefined>()
+    expect<Extract<FixedLoop.Failure<never>, { readonly kind: "InvalidRate" }>>().type.toBe<{ readonly kind: "InvalidRate"; readonly rate: number }>()
+  })
 })

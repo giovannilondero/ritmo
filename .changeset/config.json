@@ -9,6 +9,7 @@
       "@typeonce/ritmo-render",
       "@typeonce/ritmo-pixi",
       "@typeonce/ritmo-math",
+      "@typeonce/ritmo-netcode",
       "@typeonce/ritmo-devtools",
       "@typeonce/oxlint-plugin-ritmo"
     ]

@@ -133,6 +133,28 @@ describe("Runtime snapshots", () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
+  it("allocates the same ids after a restore, whatever the world held before", () => {
+    const source = makeRuntime(0)
+    populate(source)
+    const save = JSON.parse(JSON.stringify(worldOf(source.snapshot())))
+    const Spawn = Game.System("Snapshot/SpawnNext", {
+      commands: Game.System.commands(Game.System.spawns(Name))
+    }, ({ commands }) => {
+      commands.spawn(Game.Command.spawn([Name, "next"]))
+    })
+    const spawnNext = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
+    // One runtime is fresh; the other allocated many more ids than the save before restoring it.
+    const fresh = makeRuntime(0)
+    const busy = makeRuntime(0)
+    for (let index = 0; index < 10; index++) busy.tick(spawnNext)
+    for (const runtime of [fresh, busy]) {
+      expect(runtime.restore(save).ok).toBe(true)
+      runtime.tick(spawnNext)
+    }
+    expect(readWorld(busy)).toEqual(readWorld(fresh))
+    expect(worldOf(busy.snapshot()).nextEntity).toBe(save.nextEntity + 1)
+  })
+
   it("rejects invalid data and leaves the world unchanged", () => {
     const runtime = makeRuntime(5)
     populate(runtime)

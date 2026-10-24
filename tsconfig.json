@@ -28,6 +28,8 @@
       "@typeonce/ritmo-pixi/*": ["./packages/pixi/src/*"],
       "@typeonce/ritmo-math": ["./packages/math/src/index.ts"],
       "@typeonce/ritmo-math/*": ["./packages/math/src/*"],
+      "@typeonce/ritmo-netcode": ["./packages/netcode/src/index.ts"],
+      "@typeonce/ritmo-netcode/*": ["./packages/netcode/src/*"],
       "@typeonce/ritmo-devtools": ["./packages/devtools/src/index.ts"],
       "@typeonce/ritmo-devtools/*": ["./packages/devtools/src/*"],
       "@typeonce/oxlint-plugin-ritmo": ["./packages/oxlint-plugin/src/index.ts"]

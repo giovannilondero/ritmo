@@ -7,13 +7,14 @@
  * random state kept in a resource, keeps shots in a scope the round wipes,
  * and has a state machine with per-state data.
  *
- * Input comes from one source service per runtime, a pair of per-seat
- * inputs for the tick being run. The host decides what is in it: confirmed
- * input, or a guess.
+ * Input comes from one source service per runtime: each seat's input for
+ * the tick being run, filled by a `Netcode` session (confirmed input, or a
+ * guess) or, for the reference runtime, by the test.
  */
 import { Clock, Descriptor, Entity, Schema } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
 import { Random } from "@typeonce/ritmo-math"
+import { Netcode } from "@typeonce/ritmo-netcode"
 
 import { guard, integer, struct, tuple } from "./codecs.ts"
 
@@ -27,8 +28,14 @@ export interface PlayerInput {
   readonly fire: boolean
 }
 
-/** Both seats' input for one tick. */
-export type Seats = readonly [PlayerInput, PlayerInput]
+const isStep = (raw: unknown): raw is -1 | 0 | 1 => raw === -1 || raw === 0 || raw === 1
+
+/** How a remote seat's input is checked when it arrives. */
+export const playerInput = guard("a player input", (raw: unknown): raw is PlayerInput => {
+  if (typeof raw !== "object" || raw === null) return false
+  const { dx, dy, fire } = raw as Record<string, unknown>
+  return isStep(dx) && isStep(dy) && typeof fire === "boolean"
+})
 
 export const idle: PlayerInput = { dx: 0, dy: 0, fire: false }
 
@@ -46,7 +53,7 @@ export const Shot = Descriptor.ConstructedComponent(struct({
 export const Time = Clock.resource("Netcode/Time", step)
 export const Rng = Descriptor.ConstructedResource(Random.codec)("Netcode/Rng")
 export const Score = Descriptor.ConstructedResource(tuple(integer, integer))("Netcode/Score")
-export const InputSource = Descriptor.Service<InputCapture.Source<Seats>>()("Netcode/InputSource")
+export const InputSource = Descriptor.Service<Netcode.Source<PlayerInput>>()("Netcode/InputSource")
 export const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof InputSource>>()("Netcode/Inputs")
 export const Hit = Descriptor.Event<{ readonly seat: number; readonly shot: number }>()("Netcode/Hit")
 
@@ -241,19 +248,20 @@ const Draw = Game.System("Netcode/Draw", {
  */
 export const draw = Game.Schedule(Draw)
 
-/** A runtime of the game, with the source its host fills before each tick and the screen it draws on. */
-export const makeRuntime = (options: { readonly checkpoints?: number } = {}) => {
-  const source = { current: [idle, idle] as Seats, snapshot: (): Seats => source.current }
+/**
+ * A runtime of the game, with the screen it draws on, reading input from
+ * `source`: a session's `seats.source`, or one the test fills.
+ */
+export const makeRuntime = (source: Netcode.Source<PlayerInput>) => {
   const screen: Screen = { sprites: new Map(), draws: [] }
   const made = Game.Runtime.make({
-    ...options,
     services: Game.Runtime.services(Game.Runtime.service(InputSource, source), Game.Runtime.service(ScreenService, screen)),
     resources: { Time: Clock.start(step), Rng: Random.seed(7), Score: [0, 0], Inputs: [idle, idle] },
     machines: Game.Runtime.machines(Game.Runtime.machine(Round, { _tag: "Playing" }))
   })
   // The values above are valid by construction; the Result covers validated resources in general.
   if (!made.ok) throw new Error("the starting resources did not validate")
-  return { runtime: made.value, source, screen }
+  return { runtime: made.value, screen }
 }
 
 export type GameRuntime = ReturnType<typeof makeRuntime>["runtime"]

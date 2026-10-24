@@ -133,4 +133,38 @@ describe("ignored tick failures through FixedLoop", () => {
     expect(failures).toHaveLength(1)
     expect(seen).toEqual([])
   })
+
+  it("runs host time into the accumulator at the rate it reads each frame", () => {
+    let tick: ((value: FixedLoop.Tick) => void) | undefined
+    let rate = 0.9
+    let updates = 0
+    const failures: Array<FixedLoop.Failure<unknown>> = []
+    FixedLoop.start({
+      source: FixedLoop.source((onTick) => {
+        tick = onTick
+        return { stop: () => {} }
+      }),
+      step: Clock.hz(100),
+      maxFrameSeconds: 0.1,
+      maxStepsPerFrame: 5,
+      rate: () => rate,
+      update: () => {
+        updates += 1
+        return Result.success(undefined)
+      },
+      render: () => {},
+      onFailure: (failure) => failures.push(failure)
+    })
+    // 50 ms at 0.9 admits 45 ms: four 10 ms steps, not five.
+    tick?.({ deltaMS: 50 })
+    expect(updates).toBe(4)
+    rate = 1.1
+    // 5 ms left over, then 50 ms at 1.1: 60 ms, six steps (capped at five).
+    tick?.({ deltaMS: 50 })
+    expect(updates).toBe(9)
+    rate = 0.5
+    tick?.({ deltaMS: 10 })
+    expect(failures).toEqual([{ kind: "InvalidRate", rate: 0.5 }])
+    expect(updates).toBe(9)
+  })
 })

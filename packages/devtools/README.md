@@ -235,6 +235,24 @@ The trace shows what systems wrote, not what they read. When a system writes
 a wrong value from correct inputs, the journal narrows the bug to that
 system (it runs, in order, and writes this value) and the rest is its code.
 
+## Desyncs
+
+Peers of a networked game (`@typeonce/ritmo-netcode`) compare checksums of
+confirmed ticks. When they differ, a session made with `keepSnapshots: true`
+fails with `Desynced` carrying its save of that tick, and the other peer's
+carries its own. `Desync.compare` lists what differs, entities by id and
+values by path, in a stable order:
+
+```ts
+console.log(Desync.compare(mine.snapshot, theirs.snapshot))
+// 2 differences (mine -> theirs):
+//   entity 12 Game/Position.x: 40 -> 41
+//   resource Game/Rng: 1730 -> 2210
+```
+
+The first difference is where to look: rerun the match headless and ask a
+`Session` `why` that value changed.
+
 ## Replays
 
 A replay is the last seconds of a play session as a file: a debug artifact

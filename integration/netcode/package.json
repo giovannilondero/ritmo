@@ -5,6 +5,11 @@
   "dependencies": {
     "@typeonce/ritmo": "workspace:*",
     "@typeonce/ritmo-browser": "workspace:*",
-    "@typeonce/ritmo-math": "workspace:*"
+    "@typeonce/ritmo-math": "workspace:*",
+    "@typeonce/ritmo-netcode": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2",
+    "ws": "^8.21.0"
   }
 }
