@@ -84,6 +84,8 @@ export interface Page {
   phaseValues: Array<unknown> | undefined
   phaseNumbers: Float64Array | undefined
   phaseChanged: Float64Array | undefined
+  /** The newest checkpoint mark that keeps the page as it was when the mark was taken (0: none). */
+  keptIn: number
 }
 
 /** Whether a system transaction is running, and which one. */
@@ -173,9 +175,16 @@ interface TickLog {
   readonly ticks: Array<number>
   /** Newest tick of any dropped entry. */
   droppedThrough: number
+  /** How many entries were ever dropped from the front: the position of `ids[0]` among all entries. */
+  base: number
+  /**
+   * While a checkpoint is held: the entries dropped since the oldest one was
+   * taken, from position `grave.base`, so a rewind can put them back.
+   */
+  grave: { readonly ids: Array<number>; readonly ticks: Array<number>; base: number } | undefined
 }
 
-const makeLog = (): TickLog => ({ ids: [], ticks: [], droppedThrough: 0 })
+const makeLog = (): TickLog => ({ ids: [], ticks: [], droppedThrough: 0, base: 0, grave: undefined })
 
 const appendLog = (log: TickLog, id: number, tick: number): void => {
   log.ids.push(id)
@@ -199,8 +208,16 @@ const firstAfter = (log: TickLog, since: number): number => {
 const dropFront = (log: TickLog, count: number): void => {
   if (count > 0) {
     log.droppedThrough = Math.max(log.droppedThrough, log.ticks[count - 1]!)
+    const grave = log.grave
+    if (grave !== undefined) {
+      for (let index = 0; index < count; index++) {
+        grave.ids.push(log.ids[index]!)
+        grave.ticks.push(log.ticks[index]!)
+      }
+    }
     log.ids.splice(0, count)
     log.ticks.splice(0, count)
+    log.base += count
   }
 }
 
@@ -235,6 +252,155 @@ const trimHeldLog = (
   }
   trimLog(log, boundary)
   if (log.ids.length > capacity) dropFront(log, log.ids.length - capacity)
+}
+
+/** A page as it was when a checkpoint mark was taken. Empty pages keep the shared empty arrays. */
+interface KeptPage {
+  readonly values: Array<unknown>
+  readonly numbers: Float64Array
+  readonly added: Float64Array
+  readonly changed: Float64Array
+  readonly count: number
+}
+
+/** An entity as it was when a mark was taken: its record, or `undefined` when the id was not alive then. */
+interface KeptRecord {
+  readonly record: EntityRecord | undefined
+  readonly held: ReadonlyArray<number>
+  readonly heldBits: ReadonlyArray<number>
+}
+
+/** Where a removed or despawned log stood when a mark was taken: entries at positions `base` to `end`. */
+interface KeptLog {
+  readonly base: number
+  readonly end: number
+  readonly droppedThrough: number
+}
+
+/**
+ * A checkpoint's hold on the world. From the moment it is taken until the
+ * next mark, the first change to a page, an entity's components, a
+ * relation, or a scope keeps what it replaced here; rewinding to a mark
+ * puts back what it and every newer mark kept, oldest last.
+ */
+export interface WorldMark {
+  readonly id: number
+  /** The change tick it was taken at: everything stamped after it happened after the mark. */
+  readonly tick: number
+  readonly nextEntity: number
+  readonly pages: Map<Page, KeptPage>
+  readonly records: Map<number, KeptRecord>
+  /** Per relation key, each source's target then (`undefined`: none). */
+  readonly targets: Map<symbol, Map<number, number | undefined>>
+  /** Per relation key, each target's sources then (`undefined`: none). */
+  readonly sources: Map<symbol, Map<number, ReadonlyArray<number> | undefined>>
+  /** Per scope key, its members then (`undefined`: no members). */
+  readonly scopes: Map<symbol, ReadonlySet<number> | undefined>
+  /** Per entity, its scope then (`undefined`: none). */
+  readonly entityScopes: Map<number, symbol | undefined>
+  readonly removedLogs: ReadonlyArray<KeptLog | undefined>
+  readonly despawnedLog: KeptLog
+}
+
+/**
+ * What a rewind changed, for readers that did not rewind: per component
+ * ordinal, the entities whose value was written after the mark, gained the
+ * component back, or lost it; entities that stopped existing; and the
+ * removed and despawned records made after the mark, which the rewind took
+ * back, with their ticks.
+ */
+export interface WorldRewind {
+  readonly tick: number
+  readonly written: ReadonlyMap<number, ReadonlySet<number>>
+  readonly back: ReadonlyMap<number, ReadonlySet<number>>
+  readonly gone: ReadonlyMap<number, ReadonlySet<number>>
+  readonly despawned: ReadonlySet<number>
+  readonly removedAfter: ReadonlyArray<readonly [ordinal: number, id: number, tick: number]>
+  readonly despawnedAfter: ReadonlyArray<readonly [id: number, tick: number]>
+}
+
+const absentRecord: KeptRecord = { record: undefined, held: [], heldBits: [] }
+
+const keptLog = (log: TickLog): KeptLog => {
+  log.grave ??= { ids: [], ticks: [], base: log.base }
+  return { base: log.base, end: log.base + log.ids.length, droppedThrough: log.droppedThrough }
+}
+
+/**
+ * Puts a removed or despawned log back to what it held at `kept` (empty when
+ * the log did not exist then), and returns the entries made after it.
+ */
+const rewindLog = (log: TickLog, kept: KeptLog | undefined): Array<readonly [id: number, tick: number]> => {
+  const after: Array<readonly [number, number]> = []
+  // Without a kept position every entry was made after the mark.
+  const end = kept === undefined ? -1 : kept.end
+  const grave = log.grave
+  const ids: Array<number> = []
+  const ticks: Array<number> = []
+  if (grave !== undefined) {
+    for (let index = 0; index < grave.ids.length; index++) {
+      const position = grave.base + index
+      if (kept !== undefined && position >= kept.base && position < end) {
+        ids.push(grave.ids[index]!)
+        ticks.push(grave.ticks[index]!)
+      } else if (position >= end) after.push([grave.ids[index]!, grave.ticks[index]!])
+    }
+  }
+  for (let index = 0; index < log.ids.length; index++) {
+    const position = log.base + index
+    if (position < end) {
+      ids.push(log.ids[index]!)
+      ticks.push(log.ticks[index]!)
+    } else after.push([log.ids[index]!, log.ticks[index]!])
+  }
+  if (kept === undefined) {
+    log.base += log.ids.length
+    if (grave !== undefined) {
+      grave.ids.length = 0
+      grave.ticks.length = 0
+      grave.base = log.base
+    }
+  } else {
+    if (grave !== undefined) {
+      const keep = Math.max(0, kept.base - grave.base)
+      grave.ids.length = Math.min(keep, grave.ids.length)
+      grave.ticks.length = grave.ids.length
+    }
+    log.base = kept.base
+    log.droppedThrough = kept.droppedThrough
+  }
+  log.ids.length = 0
+  log.ticks.length = 0
+  for (let index = 0; index < ids.length; index++) {
+    log.ids.push(ids[index]!)
+    log.ticks.push(ticks[index]!)
+  }
+  return after
+}
+
+/** Forgets the dropped entries of `log` that no mark in `held` can bring back. */
+const releaseLog = (log: TickLog, kept: ReadonlyArray<KeptLog | undefined>, held: boolean): void => {
+  const grave = log.grave
+  if (grave === undefined) return
+  if (!held) {
+    log.grave = undefined
+    return
+  }
+  let from = log.base
+  for (const entry of kept) if (entry !== undefined) from = Math.min(from, entry.base)
+  const drop = Math.min(grave.ids.length, Math.max(0, from - grave.base))
+  grave.ids.splice(0, drop)
+  grave.ticks.splice(0, drop)
+  grave.base += drop
+}
+
+const addTo = (map: Map<number, Set<number>>, ordinal: number, id: number): void => {
+  let set = map.get(ordinal)
+  if (set === undefined) {
+    set = new Set()
+    map.set(ordinal, set)
+  }
+  set.add(id)
 }
 
 type ComponentDescriptor = Descriptor<"component", string, any>
@@ -411,7 +577,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         phaseIn: 0,
         phaseValues: undefined,
         phaseNumbers: undefined,
-        phaseChanged: undefined
+        phaseChanged: undefined,
+        keptIn: 0
       }
       while (pages.length < index) pages.push(undefined)
       pages[index] = page
@@ -446,6 +613,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /** The page holding `id`'s slot, with storage to write into. */
   const ensurePage = (ordinal: number, id: number): Page => {
     const page = pageFor(ordinal, id)
+    if (newestMark !== undefined) keepPage(page)
     if (page.values === emptyValues) {
       page.values = filled(ABSENT)
       page.added = new Float64Array(PAGE_SIZE)
@@ -461,6 +629,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    */
   const clearSlot = (record: EntityRecord, ordinal: number): void => {
     const page = pageAt(ordinal, record.id)!
+    if (newestMark !== undefined) keepPage(page)
     page.values[record.id & PAGE_MASK] = ABSENT
     page.count -= 1
     if (page.count === 0 && !inTransaction && !inPhase) {
@@ -524,6 +693,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     entityId: Entity.EntityId<any, any>,
     components: ReadonlyArray<Entity.StagedComponent>
   ): void => {
+    if (newestMark !== undefined) keepRecord(entityId)
     let record = records.get(entityId)
     if (!record) {
       record = {
@@ -562,6 +732,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    * path themselves (`transactionState`, `touchPage`).
    */
   const writeOutsideTransaction = (page: Page, slot: number, value: unknown): void => {
+    if (newestMark !== undefined) keepPage(page)
     const before = slotValue(page, slot)
     writeSlot(page, slot, value)
     if (differs(before, value)) stampChanged(page, slot)
@@ -643,6 +814,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     transactionState.active = false
     for (let index = 0; index < savedCount; index++) {
       const page = savedPages[index]!
+      if (newestMark !== undefined && page.keptIn !== newestMark.id) keepCommittedPage(page)
       if (inPhase && page.phaseIn !== phase) savePhasePage(page)
       if (page.savedObjects) commitMixed(page)
       else commitNumbers(page)
@@ -678,11 +850,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         const lowest = bits & -bits
         const slot = (word << 5) + 31 - Math.clz32(lowest)
         const old = before[slot]
-        if (old === PRESENT) {
+        if (typeof old === "symbol" && old === PRESENT) {
           if (differs(page.beforeNumbers![slot], page.numbers[slot])) stampChanged(page, slot)
         } else {
           const after = values[slot]
-          if (differs(old, after === PRESENT ? page.numbers[slot] : after)) stampChanged(page, slot)
+          if (differs(old, typeof after === "symbol" && after === PRESENT ? page.numbers[slot] : after)) stampChanged(page, slot)
           // Old values do not outlive the transaction.
           before[slot] = PRESENT
         }
@@ -777,11 +949,309 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     clearPhase()
   }
 
+  /**
+   * Checkpoint marks, oldest first. While one is held, the first change to
+   * a page, an entity's held components, a relation, or a scope after the
+   * newest mark keeps what it replaced in that mark (`keep*`), so a rewind
+   * restores exactly what changed and nothing else.
+   */
+  const marks: Array<WorldMark> = []
+  let newestMark: WorldMark | undefined
+  let markCount = 0
+
+  const keptPage = (page: Page): KeptPage => ({
+    values: page.values === emptyValues ? emptyValues : page.values.slice(),
+    numbers: page.numbers === emptyNumbers ? emptyNumbers : page.numbers.slice(),
+    added: page.added === emptyTicks ? emptyTicks : page.added.slice(),
+    changed: page.changed === emptyTicks ? emptyTicks : page.changed.slice(),
+    count: page.count
+  })
+
+  /** Keeps a page before its first change after the newest mark. */
+  const keepPage = (page: Page): void => {
+    const mark = newestMark
+    if (mark === undefined || page.keptIn === mark.id) return
+    page.keptIn = mark.id
+    mark.pages.set(page, keptPage(page))
+  }
+
+  /**
+   * Keeps a page a committing transaction wrote, as it was before the
+   * transaction: its saved slots get their old values back in the copy.
+   */
+  const keepCommittedPage = (page: Page): void => {
+    const mark = newestMark!
+    page.keptIn = mark.id
+    const kept = keptPage(page)
+    const values = kept.values
+    let numbers = kept.numbers
+    const before = page.before!
+    const saved = page.saved
+    for (let word = 0; word < saved.length; word++) {
+      let bits = saved[word]!
+      while (bits !== 0) {
+        const lowest = bits & -bits
+        const slot = (word << 5) + 31 - Math.clz32(lowest)
+        bits ^= lowest
+        const value = before[slot]
+        if (typeof value === "symbol" && value === PRESENT) {
+          // Saved as a number (`beforeNumbers`).
+          values[slot] = PRESENT
+          numbers[slot] = page.beforeNumbers![slot]!
+        } else if (typeof value === "number") {
+          if (numbers === emptyNumbers) numbers = new Float64Array(PAGE_SIZE)
+          values[slot] = PRESENT
+          numbers[slot] = value
+        } else {
+          values[slot] = value
+        }
+      }
+    }
+    mark.pages.set(page, numbers === kept.numbers ? kept : { ...kept, numbers })
+  }
+
+  /** Keeps an entity's record and held components before their first change after the newest mark. */
+  const keepRecord = (id: number): void => {
+    const mark = newestMark
+    if (mark === undefined || mark.records.has(id)) return
+    const record = records.get(id)
+    mark.records.set(id, record === undefined ? absentRecord : { record, held: record.held.slice(), heldBits: record.heldBits.slice() })
+  }
+
+  const keepTarget = (key: symbol, sourceId: number): void => {
+    const mark = newestMark
+    if (mark === undefined) return
+    let kept = mark.targets.get(key)
+    if (kept === undefined) {
+      kept = new Map()
+      mark.targets.set(key, kept)
+    }
+    if (!kept.has(sourceId)) kept.set(sourceId, relationTargets.get(key)?.get(sourceId))
+  }
+
+  const keepSources = (key: symbol, targetId: number): void => {
+    const mark = newestMark
+    if (mark === undefined) return
+    let kept = mark.sources.get(key)
+    if (kept === undefined) {
+      kept = new Map()
+      mark.sources.set(key, kept)
+    }
+    if (!kept.has(targetId)) kept.set(targetId, relatedSources.get(key)?.get(targetId)?.slice())
+  }
+
+  /** Keeps an entity's scope, and the members of `scopeKey`, before their first change after the newest mark. */
+  const keepScope = (id: number, scopeKey: symbol): void => {
+    const mark = newestMark
+    if (mark === undefined) return
+    if (!mark.entityScopes.has(id)) mark.entityScopes.set(id, scopeByEntity.get(id))
+    if (!mark.scopes.has(scopeKey)) {
+      const members = scopeMembers.get(scopeKey)
+      mark.scopes.set(scopeKey, members === undefined ? undefined : new Set(members))
+    }
+  }
+
+  /**
+   * Takes a mark at a fresh change tick. Call it between system runs (no
+   * transaction or phase open).
+   */
+  const takeMark = (): WorldMark => {
+    tick += 1
+    markCount += 1
+    const mark: WorldMark = {
+      id: markCount,
+      tick,
+      nextEntity,
+      pages: new Map(),
+      records: new Map(),
+      targets: new Map(),
+      sources: new Map(),
+      scopes: new Map(),
+      entityScopes: new Map(),
+      removedLogs: removedLogs.map((log) => log === undefined ? undefined : keptLog(log)),
+      despawnedLog: keptLog(despawnedLog)
+    }
+    marks.push(mark)
+    newestMark = mark
+    return mark
+  }
+
+  /** Whether `mark` is still held: a rewind to an older one, a release, or `dropMarks` lets go of it. */
+  const holdsMark = (mark: WorldMark): boolean => marks.includes(mark)
+
+  const releaseLogs = (): void => {
+    const held = marks.length > 0
+    removedLogs.forEach((log, ordinal) => {
+      if (log !== undefined) releaseLog(log, marks.map((mark) => mark.removedLogs[ordinal]), held)
+    })
+    releaseLog(despawnedLog, marks.map((mark) => mark.despawnedLog), held)
+  }
+
+  /** Lets go of the oldest mark: nothing can rewind to it any more. */
+  const releaseOldestMark = (): void => {
+    marks.shift()
+    if (marks.length === 0) newestMark = undefined
+    releaseLogs()
+  }
+
+  /** Lets go of every mark (the world was replaced). */
+  const dropMarks = (): void => {
+    marks.length = 0
+    newestMark = undefined
+    releaseLogs()
+  }
+
+  /**
+   * Puts the world back to `mark` (a held mark): pages, entities, relations,
+   * scopes, the next entity id, and the removed and despawned logs. Newer
+   * marks are let go of; `mark` stays held, now with nothing kept. Query
+   * caches see the membership changes like any other. The change tick does
+   * not move back: restored values keep the ticks they had at the mark.
+   */
+  const rewindToMark = (mark: WorldMark): WorldRewind => {
+    const index = marks.indexOf(mark)
+    const pages = new Map<Page, KeptPage>()
+    const kept = new Map<number, KeptRecord>()
+    const targets = new Map<symbol, Map<number, number | undefined>>()
+    const sources = new Map<symbol, Map<number, ReadonlyArray<number> | undefined>>()
+    const scopes = new Map<symbol, ReadonlySet<number> | undefined>()
+    const entityScopes = new Map<number, symbol | undefined>()
+    // Newest first, so the oldest copy of each thing is the one that stays.
+    for (let at = marks.length - 1; at >= index; at--) {
+      const held = marks[at]!
+      for (const [page, copy] of held.pages) pages.set(page, copy)
+      for (const [id, record] of held.records) kept.set(id, record)
+      for (const [key, entries] of held.targets) {
+        let into = targets.get(key)
+        if (into === undefined) targets.set(key, into = new Map())
+        for (const [id, target] of entries) into.set(id, target)
+      }
+      for (const [key, entries] of held.sources) {
+        let into = sources.get(key)
+        if (into === undefined) sources.set(key, into = new Map())
+        for (const [id, list] of entries) into.set(id, list)
+      }
+      for (const [key, members] of held.scopes) scopes.set(key, members)
+      for (const [id, key] of held.entityScopes) entityScopes.set(id, key)
+    }
+
+    const written = new Map<number, Set<number>>()
+    const back = new Map<number, Set<number>>()
+    const gone = new Map<number, Set<number>>()
+    const despawned = new Set<number>()
+    for (const [page, copy] of pages) {
+      const ordinal = page.ordinal
+      for (let slot = 0; slot < PAGE_SIZE; slot++) {
+        const before = page.values[slot] !== ABSENT
+        const after = copy.values[slot] !== ABSENT
+        const id = page.base + slot
+        if (before && page.changed[slot]! > mark.tick) addTo(written, ordinal, id)
+        if (before && !after) addTo(gone, ordinal, id)
+        else if (!before && after) addTo(back, ordinal, id)
+      }
+      page.values = copy.values
+      page.numbers = copy.numbers
+      page.added = copy.added
+      page.changed = copy.changed
+      page.count = copy.count
+      page.keptIn = 0
+    }
+
+    for (const [id, then] of kept) {
+      const current = records.get(id)
+      const record = then.record
+      if (record === undefined) {
+        if (current === undefined) continue
+        for (const ordinal of current.held) {
+          members[ordinal]!.delete(current)
+          bumpMembership(current, ordinal)
+        }
+        current.alive = false
+        records.delete(id)
+        entitiesVersion += 1
+        despawned.add(id)
+        continue
+      }
+      const before = current === undefined ? [] : record.held
+      if (current === undefined) {
+        record.alive = true
+        records.set(id, record)
+        entitiesVersion += 1
+      }
+      for (const ordinal of before) {
+        if (!then.held.includes(ordinal)) {
+          members[ordinal]!.delete(record)
+          bumpMembership(record, ordinal)
+        }
+      }
+      for (const ordinal of then.held) {
+        if (!before.includes(ordinal)) {
+          members[ordinal]!.add(record)
+          bumpMembership(record, ordinal)
+        }
+      }
+      record.held.length = 0
+      for (const ordinal of then.held) record.held.push(ordinal)
+      record.heldBits.length = 0
+      for (const word of then.heldBits) record.heldBits.push(word)
+    }
+
+    for (const [key, entries] of targets) {
+      let live = relationTargets.get(key)
+      for (const [id, target] of entries) {
+        if (target === undefined) live?.delete(id)
+        else {
+          if (live === undefined) relationTargets.set(key, live = new Map())
+          live.set(id, target)
+        }
+      }
+      bumpRelation(key)
+    }
+    for (const [key, entries] of sources) {
+      let live = relatedSources.get(key)
+      for (const [id, list] of entries) {
+        if (list === undefined) live?.delete(id)
+        else {
+          if (live === undefined) relatedSources.set(key, live = new Map())
+          live.set(id, list as Array<number>)
+        }
+      }
+      bumpRelation(key)
+    }
+    for (const [key, list] of scopes) {
+      if (list === undefined) scopeMembers.delete(key)
+      else scopeMembers.set(key, list as Set<number>)
+    }
+    for (const [id, key] of entityScopes) {
+      if (key === undefined) scopeByEntity.delete(id)
+      else scopeByEntity.set(id, key)
+    }
+
+    nextEntity = mark.nextEntity
+    const removedAfter: Array<readonly [number, number, number]> = []
+    removedLogs.forEach((log, ordinal) => {
+      if (log === undefined) return
+      for (const [id, at] of rewindLog(log, mark.removedLogs[ordinal])) removedAfter.push([ordinal, id, at])
+    })
+    const despawnedAfter = rewindLog(despawnedLog, mark.despawnedLog)
+
+    marks.length = index + 1
+    mark.pages.clear()
+    mark.records.clear()
+    mark.targets.clear()
+    mark.sources.clear()
+    mark.scopes.clear()
+    mark.entityScopes.clear()
+    newestMark = mark
+    return { tick: mark.tick, written, back, gone, despawned, removedAfter, despawnedAfter }
+  }
+
   const clearEntityScope = (id: number): void => {
     const scopeKey = scopeByEntity.get(id)
     if (scopeKey === undefined) {
       return
     }
+    if (newestMark !== undefined) keepScope(id, scopeKey)
     scopeByEntity.delete(id)
     const members = scopeMembers.get(scopeKey)
     members?.delete(id)
@@ -795,6 +1265,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       return
     }
     clearEntityScope(id)
+    if (newestMark !== undefined) keepScope(id, scopeKey)
     let members = scopeMembers.get(scopeKey)
     if (!members) {
       members = new Set()
@@ -814,6 +1285,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     const page = ensurePage(ordinal, record.id)
     const slot = record.id & PAGE_MASK
     if (page.values[slot] === ABSENT) {
+      if (newestMark !== undefined) keepRecord(record.id)
       page.count += 1
       insertSorted(record.held, ordinal)
       holdBit(record, ordinal)
@@ -844,6 +1316,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (!has(record, ordinal)) {
       return
     }
+    if (newestMark !== undefined) keepRecord(id)
     clearSlot(record, ordinal)
     record.held.splice(record.held.indexOf(ordinal), 1)
     dropBit(record, ordinal)
@@ -860,6 +1333,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     relationTargets.get(relation.key)?.get(sourceId)
 
   const addRelatedSource = (relation: Relation.Relation.Any, targetId: number, sourceId: number): void => {
+    if (newestMark !== undefined) keepSources(relation.key, targetId)
     let store = relatedSources.get(relation.key)
     if (!store) {
       store = new Map()
@@ -876,6 +1350,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   const removeRelatedSource = (relation: Relation.Relation.Any, targetId: number, sourceId: number): void => {
+    if (newestMark !== undefined) keepSources(relation.key, targetId)
     const store = relatedSources.get(relation.key)
     const entries = store?.get(targetId)
     if (!store || !entries) {
@@ -895,6 +1370,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (previousTarget === undefined) {
       return
     }
+    if (newestMark !== undefined) keepTarget(relation.key, sourceId)
     targets!.delete(sourceId)
     removeRelatedSource(relation, previousTarget, sourceId)
     bumpRelation(relation.key)
@@ -939,6 +1415,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (previousTarget !== undefined && previousTarget !== targetId) {
       removeRelatedSource(relation, previousTarget, sourceId)
     }
+    if (newestMark !== undefined) keepTarget(relation.key, sourceId)
     targets.set(sourceId, targetId)
     addRelatedSource(relation, targetId, sourceId)
     bumpRelation(relation.key)
@@ -981,6 +1458,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     }
 
     if (childIds.length > 0) {
+      if (newestMark !== undefined) keepSources(relation.key, parentId)
       relatedSources.get(relation.key)!.set(parentId, [...childIds])
       bumpRelation(relation.key)
     }
@@ -992,6 +1470,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     if (!record) {
       return
     }
+    if (newestMark !== undefined) keepRecord(id)
     if (hooks !== undefined) {
       hooks.despawned(id)
       hookDepth += 1
@@ -1093,23 +1572,28 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       })
 
   /**
-   * Relation edges grouped by target, preserving the stored source order.
+   * Relation edges grouped by target in target id order, preserving the
+   * stored source order. The order depends on the world alone, not on how
+   * it got there, so equal worlds export equal data.
    */
   const exportRelations = (): Record<string, Array<readonly [number, ReadonlyArray<number>]>> => {
     const exported: Record<string, Array<readonly [number, ReadonlyArray<number>]>> = {}
     for (const relation of relationDefinitions) {
       exported[relation.name] = [...(relatedSources.get(relation.key)?.entries() ?? [])]
+        .sort(([left], [right]) => left - right)
         .map(([target, sources]) => [target, [...sources]] as const)
     }
     return exported
   }
 
   /**
-   * Scope membership by scope storage key, members in id order. Every
-   * member is a live entity: despawns leave their scope.
+   * Scope membership by scope storage key, in key order, members in id
+   * order. Every member is a live entity: despawns leave their scope.
    */
   const exportScopes = (): Array<readonly [symbol, ReadonlyArray<number>]> =>
-    [...scopeMembers].map(([key, members]) => [key, [...members].sort((left, right) => left - right)] as const)
+    [...scopeMembers]
+      .sort(([left], [right]) => (left.description ?? "") < (right.description ?? "") ? -1 : (left.description ?? "") > (right.description ?? "") ? 1 : 0)
+      .map(([key, members]) => [key, [...members].sort((left, right) => left - right)] as const)
 
   /**
    * Despawns every live entity (recorded like normal despawns).
@@ -1182,6 +1666,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     beginPhase,
     commitPhase: clearPhase,
     rollbackPhase,
+    takeMark,
+    holdsMark,
+    rewindToMark,
+    releaseOldestMark,
+    dropMarks,
+    /** How many marks are held. */
+    markCount: (): number => marks.length,
     tryRelate,
     unrelate,
     reorderChildren,

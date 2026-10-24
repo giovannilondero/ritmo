@@ -9,6 +9,8 @@ tester.run("handle-tick-result", rule, {
     "if (!runtime.tick(setup).ok) throw new Error(\"setup failed\")",
     "const restored = runtime.restore(save); if (!restored.ok) showError(restored.error)",
     "void runtime.tick(render)",
+    "const rewound = runtime.rewind(checkpoint); if (!rewound.ok) resync(rewound.error)",
+    "replay.rewind(5)",
     "const step = () => runtime.tick(update)",
     // Game wrappers and other libraries with methods of the same name (inkline-town headless.ts, spirit-call tests).
     "town.restore(snapshot)",
@@ -31,6 +33,7 @@ tester.run("handle-tick-result", rule, {
       errors: [{ messageId: "tick", data: { call: "runtime.tick" } }]
     },
     { code: "t.runtime.restore(save)", errors: [{ messageId: "restore", data: { call: "t.runtime.restore" } }] },
+    { code: "runtime.rewind(history.get(wrong))", errors: [{ messageId: "rewind", data: { call: "runtime.rewind" } }] },
     { code: "this.runtime.tryTick(schedule)", errors: [{ messageId: "tick", data: { call: "this.runtime.tryTick" } }] },
     { code: "gameRuntime.tick(update)", errors: [{ messageId: "tick", data: { call: "gameRuntime.tick" } }] },
     {

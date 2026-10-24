@@ -335,11 +335,12 @@ describe("Runtime snapshots", () => {
   const Frame = Descriptor.TransientResource<number>()("SnapshotTypes/Frame")
   const Score = Descriptor.Resource<number>()("SnapshotTypes/Score")
 
-  it("exposes snapshot and restore only when every value can be validated on load", () => {
+  it("exposes snapshot, checksum, and restore only when every value can be validated on load", () => {
     const Valid = Schema.bind(Schema.fragment({ components: { Place, Sprite }, resources: { Frame } }), Root)
     const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } }).value
     expect(valid.snapshot()).type.toBe<Result.Result<import("@typeonce/ritmo/Snapshot").WorldSnapshot, import("@typeonce/ritmo/Snapshot").SnapshotError>>()
     expect(valid.restore(null)).type.toBe<Result.Result<void, import("@typeonce/ritmo/Snapshot").RestoreError>>()
+    expect(valid.checksum()).type.toBe<Result.Result<string, import("@typeonce/ritmo/Snapshot").SnapshotError>>()
 
     const Invalid = Schema.bind(Schema.fragment({ components: { Place, Label }, resources: { Score } }), Root)
     const invalid = Invalid.Runtime.make({ services: Invalid.Runtime.services(), resources: { Score: 0 } }).value
@@ -351,6 +352,8 @@ describe("Runtime snapshots", () => {
     invalid.snapshot()
     // @ts-expect-error Type '{ readonly "SnapshotTypes/Label needs a schema": "Use a Constructed* descriptor given a Standard Schema
     invalid.restore(null)
+    // @ts-expect-error Type '{ readonly "SnapshotTypes/Label needs a schema": "Use a Constructed* descriptor given a Standard Schema
+    invalid.checksum()
   })
 
   it("saves components with a schema and guards stored handles", () => {

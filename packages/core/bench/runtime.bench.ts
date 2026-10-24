@@ -652,6 +652,54 @@ const machineUpdates: BenchCase = {
   }
 }
 
+const moveAll = Game.System("Bench/MoveAll", { queries: { movers: Movers } }, ({ queries }) => {
+  for (const { data } of queries.movers.each()) {
+    const velocity = data.velocity.get()
+    data.position.update((position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
+  }
+})
+
+const checkpointTick: BenchCase = {
+  name: "checkpoint/take-tick-10k",
+  description: "Take a checkpoint, then integrate velocity into position on 10k entities (compare query/iterate-write-10k)",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, 0)
+    const schedule = Game.Schedule(moveAll)
+    return {
+      run: () => {
+        runtime.checkpoint(schedule)
+        runtime.tick(schedule)
+      }
+    }
+  }
+}
+
+const rollback: BenchCase = {
+  name: "checkpoint/rollback-8-of-5k",
+  description: "Tick 8 times with a checkpoint each, rewind to the first, and tick the 8 again: 5k movers among 5k statics",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N / 2, N / 2)
+    const schedule = Game.Schedule(moveAll)
+    const ahead = () => {
+      const first = runtime.checkpoint(schedule)
+      runtime.tick(schedule)
+      for (let tick = 1; tick < 8; tick++) {
+        runtime.checkpoint(schedule)
+        runtime.tick(schedule)
+      }
+      return first
+    }
+    return {
+      run: () => {
+        if (!runtime.rewind(ahead()).ok) throw new Error("the first checkpoint must still be held")
+        ahead()
+      }
+    }
+  }
+}
+
 export const cases: ReadonlyArray<BenchCase> = [
   clockAdvance,
   spawn,
@@ -671,5 +719,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   events,
   hierarchy,
   snapshotRoundTrip,
-  frame
+  frame,
+  checkpointTick,
+  rollback
 ]

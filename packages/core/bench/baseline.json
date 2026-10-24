@@ -173,6 +173,16 @@
         "minMs": 0.3482,
         "medianMs": 0.3521,
         "score": 0.1175
+      },
+      "checkpoint/take-tick-10k": {
+        "minMs": 0.3495,
+        "medianMs": 0.7052,
+        "score": 0.118
+      },
+      "checkpoint/rollback-8-of-5k": {
+        "minMs": 3.3081,
+        "medianMs": 3.5784,
+        "score": 1.117
       }
     }
   },

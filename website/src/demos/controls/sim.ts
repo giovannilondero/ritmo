@@ -45,7 +45,7 @@ export const padBindings = {
 } as const
 
 /** On a touch screen: a floating stick on the left half, and one dash button. No pause button. */
-export const touchNames = { buttons: ["dash"], vector: "move" } as const
+export const touchNames = { buttons: ["dash"], sticks: ["move"] } as const
 
 export type KeyboardDevice = Keyboard.Actions<typeof keyBindings>
 export type MouseDevice = Pointer.Actions<typeof mouseBindings>

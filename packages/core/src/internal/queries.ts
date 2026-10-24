@@ -29,6 +29,17 @@ import type { EntityRecord, World } from "./world.ts"
 type AnyQuery = Query.Query.Any<any>
 type AnyMatch = QueryMatch<any, any>
 
+/**
+ * What a rewind changed for one reader that did not rewind, per component
+ * ordinal: the entities whose component it should see as added, and as
+ * changed, on top of what their change ticks say. Only entities that hold
+ * the component when the reader runs count.
+ */
+export interface Reverts {
+  readonly added: Map<number, Set<number>>
+  readonly changed: Map<number, Set<number>>
+}
+
 type SlotPlan =
   | { readonly slot: string; readonly mode: "read" | "optional"; readonly ordinal: number }
   | {
@@ -281,13 +292,18 @@ export const makeQueryEngine = (world: World) => {
     return true
   }
 
-  const matchesFilters = (state: QueryState, record: EntityRecord, since: number): boolean => {
+  const reverted = (reverts: Reverts, member: LifecycleFilterPlan, record: EntityRecord): boolean =>
+    (member.kind === "added" ? reverts.added : reverts.changed).get(member.ordinal)?.has(record.id) === true
+      && world.has(record, member.ordinal)
+
+  const matchesFilters = (state: QueryState, record: EntityRecord, since: number, reverts: Reverts | undefined): boolean => {
     for (const filter of state.filters) {
       let matched = false
       for (const member of filter) {
         matched = member.kind === "added"
           ? world.addedSince(record, member.ordinal, since)
           : world.changedSince(record, member.ordinal, since)
+        if (!matched && reverts !== undefined) matched = reverted(reverts, member, record)
         if (matched) break
       }
       if (!matched) return false
@@ -484,10 +500,18 @@ export const makeQueryEngine = (world: World) => {
    * Current matches of a query. `since` is the tick of the reading system's
    * previous run; `added`/`changed` filters match changes made after it.
    */
-  const matchesOf = (state: QueryState, since: number): ReadonlyArray<AnyMatch> => {
+  const matchesOf = (state: QueryState, since: number, reverts: Reverts | undefined): ReadonlyArray<AnyMatch> => {
     refresh(state)
     if (state.filters.length === 0) {
       return state.matches!
+    }
+    // A reader with changes from a rewind scans: change logs do not hold them.
+    if (reverts !== undefined) {
+      const result: Array<AnyMatch> = []
+      for (const record of state.records) {
+        if (matchesFilters(state, record, since, reverts)) result.push(matchFor(state, record))
+      }
+      return result
     }
 
     // Every added component is also logged as changed, so the changed log
@@ -505,7 +529,7 @@ export const makeQueryEngine = (world: World) => {
     if (candidates === undefined || candidates.length * 4 >= state.records.length) {
       const result: Array<AnyMatch> = []
       for (const record of state.records) {
-        if (matchesFilters(state, record, since)) result.push(matchFor(state, record))
+        if (matchesFilters(state, record, since, undefined)) result.push(matchFor(state, record))
       }
       return result
     }
@@ -516,7 +540,7 @@ export const makeQueryEngine = (world: World) => {
       if (seen.has(id)) continue
       seen.add(id)
       const record = world.records.get(id)
-      if (record && matchesStructure(state, record) && matchesFilters(state, record, since)) {
+      if (record && matchesStructure(state, record) && matchesFilters(state, record, since, undefined)) {
         records.push(record)
       }
     }
@@ -527,13 +551,14 @@ export const makeQueryEngine = (world: World) => {
   const matchOf = (
     id: number,
     state: QueryState,
-    since: number
+    since: number,
+    reverts: Reverts | undefined
   ): Result.Result<AnyMatch, Query.Query.LookupError> => {
     const record = world.records.get(id)
     if (!record) {
       return Result.failure(Query.missingEntityError(id))
     }
-    if (!matchesStructure(state, record) || !matchesFilters(state, record, since)) {
+    if (!matchesStructure(state, record) || !matchesFilters(state, record, since, reverts)) {
       return Result.failure(Query.queryMismatchError(id))
     }
     return Result.success(matchFor(state, record))
@@ -543,16 +568,16 @@ export const makeQueryEngine = (world: World) => {
    * Hands matches out for the running run: the cells of the query's matches
    * refuse to read or write once it ends.
    */
-  const each = (query: AnyQuery, since: number): ReadonlyArray<AnyMatch> => {
+  const each = (query: AnyQuery, since: number, reverts: Reverts | undefined): ReadonlyArray<AnyMatch> => {
     const state = stateOf(query)
     world.handOut(state.handout)
-    return matchesOf(state, since)
+    return matchesOf(state, since, reverts)
   }
 
-  const get = (id: number, query: AnyQuery, since: number): Result.Result<AnyMatch, Query.Query.LookupError> => {
+  const get = (id: number, query: AnyQuery, since: number, reverts: Reverts | undefined): Result.Result<AnyMatch, Query.Query.LookupError> => {
     const state = stateOf(query)
     world.handOut(state.handout)
-    return matchOf(id, state, since)
+    return matchOf(id, state, since, reverts)
   }
 
   return { each, get }

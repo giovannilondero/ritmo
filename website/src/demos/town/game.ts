@@ -58,7 +58,7 @@ const touchLayout = ({ width, height }: Touch.Size): Touch.Layout<(typeof touchB
   const a = { x: width - 84, y: height - 104 }
   return {
     // No stick: the d-pad buttons are the directions.
-    stick: { region: { left: 0, top: 0, width: 0, height: 0 }, radius: 1 },
+    sticks: {},
     buttons: {
       up: { center: { x: pad.x, y: pad.y - 46 }, radius: 28 },
       down: { center: { x: pad.x, y: pad.y + 46 }, radius: 28 },
