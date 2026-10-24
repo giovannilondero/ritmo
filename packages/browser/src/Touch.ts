@@ -20,6 +20,12 @@
  * Fingers that land elsewhere are ignored, and a control keeps its finger
  * until it lifts, so two thumbs drive two sticks at once.
  *
+ * A control the game hides (a stick for walking while the player drives) is
+ * `null` in the layout. The layout is read again on every snapshot and every
+ * new touch, so a control turning `null` under a held finger releases at
+ * once, as a cancel, and that finger does nothing until it lifts: a thumb
+ * resting on the walking stick does not keep walking a car.
+ *
  * Games read one snapshot per update, like keyboard actions: each stick's
  * vector, and per button `held`/`pressed`/`released` edges that survive taps
  * shorter than a frame, plus the drag `aim`, which is still reported on the
@@ -88,13 +94,14 @@ export interface StickZone {
 }
 
 /**
- * The zone of the stick named `K` in a {@link Layout}: a {@link StickZone},
- * or an error naming the cause when a button has the same name (a name is
- * either a vector a stick drives or an action a button reports).
+ * The zone of the stick named `K` in a {@link Layout}: a {@link StickZone}
+ * (`null` while the stick is hidden), or an error naming the cause when a
+ * button has the same name (a name is either a vector a stick drives or an
+ * action a button reports).
  */
 export type StickNamed<K extends string, B extends string> = K extends B
   ? `${K} names both a stick and a button: give them different names`
-  : StickZone
+  : StickZone | null
 
 /** A round on-screen button of a {@link Layout}; it reports the action named like its key. */
 export interface ButtonZone {
@@ -116,18 +123,22 @@ export interface SwipeZone {
 /**
  * The touch controls, returned by the layout function {@link actions} calls
  * with the element's size. The stick and button names are fixed by the
- * first layout.
+ * first layout; a control the game hides keeps its name with a `null` zone.
  */
 export interface Layout<B extends string, V extends string = never> {
   /**
    * The floating sticks, each keyed by the vector it drives (`move`, `aim`);
    * `{}` for buttons only. A finger that is not on a button goes to the
    * first stick, in key order, that is free and whose region contains it,
-   * so where regions overlap the earlier key wins.
+   * so where regions overlap the earlier key wins. `null` hides a stick:
+   * it takes no finger and reports a resting vector.
    */
   readonly sticks: { readonly [K in V]: StickNamed<K, B> }
-  /** The buttons, each keyed by the action it reports. */
-  readonly buttons: { readonly [K in B]: ButtonZone }
+  /**
+   * The buttons, each keyed by the action it reports. `null` hides a
+   * button: it takes no finger and reports nothing held.
+   */
+  readonly buttons: { readonly [K in B]: ButtonZone | null }
   /** Optional: fingers here report their movement, for turning or looking around. */
   readonly swipe?: SwipeZone
 }
@@ -357,10 +368,13 @@ interface StickTrack {
 
 /**
  * Starts tracking touches over `target` with the controls `layout` returns
- * for the element's current size (it is read again on every new touch, so a
- * resize takes effect at the next touch). `blurHost` (usually `window`)
- * cancels held controls when the page loses focus. Use `Pointer.actions`
- * for mouse and pen input.
+ * for the element's current size. The layout is read again on every
+ * snapshot and every new touch, so a resize or a control the game hides
+ * (`null`) takes effect at once; keep it cheap, since it runs every update.
+ * A held control that turns `null` releases with `cancelled: true`, and its
+ * finger does nothing until it lifts. `blurHost` (usually `window`) cancels
+ * held controls when the page loses focus. Use `Pointer.actions` for mouse
+ * and pen input.
  */
 export const actions = <const B extends string, const V extends string = never>(
   target: TouchTarget,
@@ -375,7 +389,7 @@ export const actions = <const B extends string, const V extends string = never>(
   }
   let current = layout(sizeOf())
   /** The stick zones of the current layout; names that clash with a button do not compile. */
-  const zoneOf = (name: V): StickZone => current.sticks[name] as StickZone
+  const zoneOf = (name: V): StickZone | null => current.sticks[name] as StickZone | null
   const names = Object.keys(current.buttons) as Array<B>
   const stickNames = Object.keys(current.sticks) as Array<V>
   const buttons = makeButtonTracks(names)
@@ -399,17 +413,34 @@ export const actions = <const B extends string, const V extends string = never>(
     return undefined
   }
 
+  /**
+   * Reads the layout again and lets go of the controls it hides: a held
+   * button releases as a cancel, and its finger, like a hidden stick's or
+   * swipe's, is forgotten, so it does nothing until it lifts.
+   */
+  const relayout = (): void => {
+    current = layout(sizeOf())
+    for (const [pointerId, name] of fingers) {
+      if (current.buttons[name] !== null) continue
+      fingers.delete(pointerId)
+      lift(buttons.get(name)!, true)
+    }
+    for (const name of sticks.keys()) if (zoneOf(name) === null) sticks.delete(name)
+    if (current.swipe === undefined) swipe = undefined
+  }
+
   const onDown = (event: TouchEventLike): void => {
     if (!tracked(event)) return
     event.preventDefault()
     // A pointer id that comes down again without an up in between (the up
     // was lost) releases what it held first, as a cancel.
     end(event, true)
-    current = layout(sizeOf())
+    relayout()
     const at = locate(event)
     for (const name of names) {
       const zone = current.buttons[name]
       const button = buttons.get(name)!
+      if (zone === null) continue
       const dx = at.x - zone.center.x
       const dy = at.y - zone.center.y
       if (button.held || dx * dx + dy * dy > zone.radius * zone.radius) continue
@@ -419,7 +450,8 @@ export const actions = <const B extends string, const V extends string = never>(
       return
     }
     for (const name of stickNames) {
-      if (sticks.has(name) || !inside(zoneOf(name).region, at)) continue
+      const zone = zoneOf(name)
+      if (zone === null || sticks.has(name) || !inside(zone.region, at)) continue
       sticks.set(name, { pointerId: event.pointerId, origin: at, knob: at })
       target.setPointerCapture?.(event.pointerId)
       return
@@ -444,7 +476,8 @@ export const actions = <const B extends string, const V extends string = never>(
       return
     }
     const name = fingers.get(event.pointerId)
-    if (name !== undefined) buttons.get(name)!.aim = aimOf(current.buttons[name], at)
+    const zone = name === undefined ? null : current.buttons[name]
+    if (name !== undefined && zone !== null) buttons.get(name)!.aim = aimOf(zone, at)
   }
 
   const end = (event: TouchEventLike, cancelled: boolean): void => {
@@ -462,7 +495,8 @@ export const actions = <const B extends string, const V extends string = never>(
     if (name === undefined) return
     fingers.delete(event.pointerId)
     const button = buttons.get(name)!
-    if (!cancelled) button.aim = aimOf(current.buttons[name], locate(event))
+    const zone = current.buttons[name]
+    if (!cancelled && zone !== null) button.aim = aimOf(zone, locate(event))
     lift(button, cancelled)
   }
 
@@ -485,8 +519,8 @@ export const actions = <const B extends string, const V extends string = never>(
 
   const stickState = (name: V): StickState => {
     const stick = sticks.get(name)
-    if (stick === undefined) return resting
     const zone = zoneOf(name)
+    if (stick === undefined || zone === null) return resting
     const offset = { x: stick.knob.x - stick.origin.x, y: stick.knob.y - stick.origin.y }
     const vector = tilt(offset, zone.radius, zone.deadZone ?? 0.15)
     return { x: vector.x, y: vector.y, active: true }
@@ -494,8 +528,9 @@ export const actions = <const B extends string, const V extends string = never>(
 
   const stickView = (name: V): StickView | null => {
     const stick = sticks.get(name)
-    if (stick === undefined) return null
-    const radius = zoneOf(name).radius
+    const zone = zoneOf(name)
+    if (stick === undefined || zone === null) return null
+    const radius = zone.radius
     const offset = { x: stick.knob.x - stick.origin.x, y: stick.knob.y - stick.origin.y }
     const length = Math.sqrt(offset.x * offset.x + offset.y * offset.y)
     const scale = length > radius ? radius / length : 1
@@ -504,6 +539,7 @@ export const actions = <const B extends string, const V extends string = never>(
 
   return {
     snapshot() {
+      relayout()
       const snapshot = snapshotOf<B, V>(
         byName(stickNames, stickState),
         byName(names, (name) => buttonSnapshot(buttons.get(name)!)),

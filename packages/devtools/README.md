@@ -213,17 +213,35 @@ script. `<entry>` exports `lintTarget` (see the `Lint` module): it prints
 every lint of the schedules with its fix and exits with 1 on a warning.
 
 ```sh
-ritmo-devtools lint src/simulation.ts
+ritmo-devtools lint src/lint.ts
 ```
+
+Keep the entry beside the simulation, not inside it, when `describe` needs
+host schedules: it is the one module that imports both, so the simulation
+never imports render or audio code. Load the host schedules inside
+`lintTarget`:
+
+```ts
+// src/lint.ts
+import { makeRuntime, setup, update } from "./simulation/index.ts"
+
+export const lintTarget = async () => {
+  const { render } = await import("./render/index.ts")
+  return { runtime: makeRuntime({ debug: { hostClock: HostClock.test() } }), schedules: { setup, update }, describe: { render } }
+}
+```
+
+When nothing needs describing, the simulation's own entry module can export
+`lintTarget` instead.
 
 It also checks that the oxlint simulation rules from
 `@typeonce/oxlint-plugin-ritmo` cover the simulation. Every module that
 importing `<entry>` loads, inside the directory of the `.oxlintrc.json` in the
 working directory and outside `node_modules`, must have
 `ritmo/keep-simulation-headless` on there (overrides apply in order, the last
-match wins; `ignorePatterns` matches are uncovered). Modules imported inside
-`lintTarget` or later (render schedules passed to `describe`) are host code
-and are not checked, nor are type-only imports. A missing config, one with
+match wins; `ignorePatterns` matches are uncovered). The entry itself, and
+modules imported inside `lintTarget` or later (render schedules passed to
+`describe`), are host code and are not checked, nor are type-only imports. A missing config, one with
 `extends`, or one that never turns the rule on prints why the check was
 skipped and does not fail. The check needs Node 22.15 or later.
 

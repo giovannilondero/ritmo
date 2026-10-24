@@ -9,7 +9,9 @@
  * Retention: a batch is kept for at least the current and previous frame, and
  * beyond that until every registered reader of its key has read past it. So a
  * system in a schedule ticked less often than others (a fixed update driven
- * at a lower rate than rendering) still receives everything. A reader that
+ * at a lower rate than rendering) still receives everything. Readers register
+ * on their first run, so a host message (`surviveRestore`) of a key no reader
+ * has registered for yet is kept for the first one. A reader that
  * stops running would keep batches alive forever, so each key also has a
  * capacity; past it the oldest batches are dropped and the readers that had
  * not seen them report `lagged`.
@@ -174,7 +176,13 @@ export const make = <T>(capacity: number): Streams<T> => {
         if (cursors !== undefined) {
           for (const cursor of cursors) boundary = Math.min(boundary, cursor.streamLastRun)
         }
-        dropFront(log, firstAfter(log.ticks, boundary))
+        let count = firstAfter(log.ticks, boundary)
+        // No reader has run yet: a host message waits for the first one.
+        if (cursors === undefined || cursors.size === 0) {
+          const host = log.surviveRestore.indexOf(true)
+          if (host !== -1) count = Math.min(count, host)
+        }
+        dropFront(log, count)
         let overflow = 0
         let size = log.size
         while (size > capacity && overflow < log.batches.length) {

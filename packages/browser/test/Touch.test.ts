@@ -226,6 +226,72 @@ describe("Touch.actions swipe", () => {
 })
 
 describe("Touch.scripted", () => {
+  it("releases a held button as a cancel when the layout hides it, and ignores its finger until it lifts", () => {
+    const fake = makeTarget()
+    let driving = false
+    const touch = Touch.actions(fake.target, fake.blurHost, (size) => {
+      const base = layout(size)
+      return { sticks: base.sticks, buttons: { attack: driving ? null : base.buttons.attack, dash: base.buttons.dash } }
+    })
+    fake.down(1, 700, 300)
+    expect(touch.snapshot().actions.attack.pressed).toBe(true)
+    driving = true
+    expect(touch.snapshot().actions.attack).toEqual({ held: false, pressed: false, released: true, aim: null, cancelled: true })
+    // The finger stays down and moves, but is no control's any more.
+    fake.move(1, 710, 300)
+    expect(touch.snapshot().actions.attack).toEqual({ held: false, pressed: false, released: false, aim: null, cancelled: false })
+    expect(touch.snapshot().used).toBe(false)
+    // Shown again under the same finger, the button stays up until a new touch.
+    driving = false
+    expect(touch.snapshot().actions.attack.held).toBe(false)
+    fake.up(1, 710, 300)
+    fake.down(2, 700, 300)
+    expect(touch.snapshot().actions.attack.pressed).toBe(true)
+  })
+
+  it("lets go of a held stick the layout hides, and gives no finger to a hidden control", () => {
+    const fake = makeTarget()
+    let onFoot = true
+    const touch = Touch.actions(fake.target, fake.blurHost, (size) => {
+      const base = layout(size)
+      return { sticks: { move: onFoot ? base.sticks.move : null }, buttons: { attack: base.buttons.attack, dash: onFoot ? null : base.buttons.dash } }
+    })
+    // Dash is hidden on foot: a finger on it goes to the stick instead.
+    fake.down(1, 550, 340)
+    fake.down(2, 100, 200)
+    fake.move(2, 100, 300)
+    expect(touch.snapshot().vectors.move).toEqual({ x: 0, y: 1, active: true })
+    expect(touch.snapshot().actions.dash.held).toBe(false)
+    onFoot = false
+    expect(touch.snapshot().vectors.move).toEqual({ x: 0, y: 0, active: false })
+    expect(touch.view().sticks.move).toBeNull()
+    expect(touch.view().layout.sticks.move).toBeNull()
+    // The thumb that held the stick keeps moving: nothing walks.
+    fake.move(2, 100, 400)
+    expect(touch.snapshot().vectors.move.active).toBe(false)
+    // Dash is shown while driving and takes a new finger.
+    fake.down(3, 550, 340)
+    expect(touch.snapshot().actions.dash.pressed).toBe(true)
+  })
+
+  it("hides a control that turns null between snapshots when another finger comes down", () => {
+    const fake = makeTarget()
+    let shown = true
+    const touch = Touch.actions(fake.target, fake.blurHost, (size) => {
+      const base = layout(size)
+      return { sticks: base.sticks, buttons: { attack: shown ? base.buttons.attack : null, dash: base.buttons.dash } }
+    })
+    touch.snapshot()
+    fake.down(1, 700, 300)
+    shown = false
+    fake.down(2, 550, 340)
+    // The aim drag of a finger whose button is hidden is not read.
+    fake.move(1, 800, 300)
+    const { actions } = touch.snapshot()
+    expect(actions.attack).toEqual({ held: false, pressed: true, released: true, aim: null, cancelled: true })
+    expect(actions.dash.pressed).toBe(true)
+  })
+
   it("plays stick vectors, presses, aims, releases, and cancels by frame", () => {
     const touch = Touch.scripted({ buttons: ["attack", "skill"], sticks: ["move"] }, [
       { frame: 0, sticks: { move: { x: 3, y: 4 } } },
@@ -374,6 +440,6 @@ describe("Touch.idle and Touch.scripted with sticks", () => {
     expect(moved.used).toBe(true)
     expect(touch.snapshot().used).toBe(false)
     expect(touch.view().sticks).toEqual({ move: null, aim: null })
-    expect(touch.view().layout.sticks.aim.radius).toBe(1)
+    expect(touch.view().layout.sticks.aim?.radius).toBe(1)
   })
 })

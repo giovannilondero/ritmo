@@ -6,13 +6,16 @@
  * Run it from a game's `check` script with the CLI:
  *
  * ```sh
- * ritmo-devtools lint src/simulation.ts
+ * ritmo-devtools lint src/lint.ts
  * ```
  *
  * The entry module exports `lintTarget`, a function that builds the game's
  * headless runtime (made with `debug: { hostClock }`) and names its schedules: the
  * ones ticked headless in `schedules`, and the ones that need a renderer or
  * other host services in `describe` (described and linted, never run).
+ * Keep the entry beside the simulation, not inside it, and import the host
+ * schedules inside `lintTarget`: the entry is then the one module that loads
+ * both, and the simulation never imports render or audio code.
  *
  * Use `Session.make(...).describe()` instead to read the lints while
  * debugging; this module is for the pass/fail check.
@@ -22,8 +25,11 @@
  *
  * @example
  * ```ts
- * // src/simulation.ts
- * export const lintTarget = (): Lint.Target<typeof Game.schema, typeof Game.schema> => {
+ * // src/lint.ts
+ * import { createSimulation } from "./simulation.ts"
+ *
+ * export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, typeof Game.schema>> => {
+ *   const { render } = await import("./render.ts")
  *   const sim = createSimulation({ keyboard: Keyboard.scripted(bindings, []) })
  *   return { runtime: sim.runtime, schedules: { setup: sim.setup, update: sim.update }, describe: { render } }
  * }

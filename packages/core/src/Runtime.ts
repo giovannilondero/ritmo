@@ -309,6 +309,22 @@ type ServiceEntriesToRecord<
  * The brand ensures callers provide services through descriptors rather than
  * raw string keys, which prevents runtime mismatches between descriptor names
  * and manually repeated object properties.
+ *
+ * To pass services through your own function (one `makeRuntime` shared by
+ * the host, the tests, and the lint target), bound its parameter by
+ * `RuntimeServices`, never `RuntimeServices<any>`: every service set
+ * satisfies the bound, `const` keeps the exact one, and a system that needs
+ * a service the caller did not provide still fails to compile at `tick`.
+ *
+ * @example
+ * ```ts
+ * import type { RuntimeServices } from "@typeonce/ritmo/Runtime"
+ *
+ * export const makeRuntime = <const Services extends RuntimeServices>(services: Services) =>
+ *   Game.Runtime.make({ services, resources: { Score: 0 } })
+ *
+ * makeRuntime(Game.Runtime.services(Game.Runtime.service(Input, Keyboard.scripted(bindings, []))))
+ * ```
  */
 export type RuntimeServices<Services extends Record<string, unknown> = {}> = Readonly<Services> & {
   readonly [runtimeServicesTypeId]: {
@@ -734,6 +750,9 @@ export interface Runtime<
    * request, a network message, a test's scripted input). It is published at
    * once, stamped with a fresh tick, so every reader sees it on its next run
    * whichever schedule it belongs to, once, like an event a system emitted.
+   * A reader that has not run yet sees it on its first run, however many
+   * ticks of other schedules come first (up to `Runtime.streamCapacity`
+   * entries), so a request sent before the first fixed step is not lost.
    * The event must belong to the schema. Calling it while a schedule is
    * running is a defect and throws: inside a tick, emit from a system.
    */
@@ -825,7 +844,8 @@ const makeValidatedRuntime = <
    * with the change tick at which they were published; each reader sees the
    * entries published after its previous completed run. Entries are kept for
    * the current and previous frame, and beyond that until every system that
-   * reads them has run, up to `streamCapacity` entries per stream.
+   * reads them has run, up to `streamCapacity` entries per stream. Events the
+   * host sent wait for the first reader of their stream to run.
    */
   const events = Streams.make<unknown>(streamCapacity)
   const transitionEvents = Streams.make<Machine.TransitionSnapshot>(streamCapacity)

@@ -8,7 +8,7 @@
  */
 import type { BenchCase } from "../../core/bench/harness.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-import { Aabb, Box2, Collide2, FlowField, InputAxis, Ops, Random, Scalar, SpatialGrid, Vec2, Vector2 } from "@typeonce/ritmo-math"
+import { Aabb, Box2, Collide2, FlowField, InputAxis, Ops, Random, Scalar, Segment2, SpatialGrid, Vec2, Vector2 } from "@typeonce/ritmo-math"
 
 const N = 10_000
 
@@ -202,11 +202,36 @@ const moveCircle: BenchCase = {
   description: "Move 1,000 circles through 40 walls, sliding along them",
   setup: () => {
     const { bodies, walls } = world()
+    const boxes = { boxes: walls }
     const delta = { x: 7, y: -5 }
     return {
       run: () => {
         let total = 0
-        for (const body of bodies) total += Collide2.moveCircle(body, delta, body.r, walls).position.x
+        for (const body of bodies) total += Collide2.moveCircle(body, delta, body.r, boxes).position.x
+        check(total)
+      }
+    }
+  }
+}
+
+const moveCircleSegments: BenchCase = {
+  name: "math/collide-move-circle-segments-1k",
+  description: "Move 1,000 circles through 160 segment walls (the edges of 40 boxes), sliding along them",
+  setup: () => {
+    const { bodies, walls } = world()
+    const segments = {
+      segments: walls.flatMap((box) => [
+        Segment2.between({ x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY }),
+        Segment2.between({ x: box.maxX, y: box.minY }, { x: box.maxX, y: box.maxY }),
+        Segment2.between({ x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY }),
+        Segment2.between({ x: box.minX, y: box.maxY }, { x: box.minX, y: box.minY })
+      ])
+    }
+    const delta = { x: 7, y: -5 }
+    return {
+      run: () => {
+        let total = 0
+        for (const body of bodies) total += Collide2.moveCircle(body, delta, body.r, segments).position.x
         check(total)
       }
     }
@@ -279,6 +304,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   flowFieldSearch,
   flowFieldWay,
   moveCircle,
+  moveCircleSegments,
   randomNext,
   randomDraw,
   opsSteer

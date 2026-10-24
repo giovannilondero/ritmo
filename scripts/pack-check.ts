@@ -102,7 +102,7 @@ const program = `
 import { Clock, Descriptor, FixedLoop, HostClock, Schema } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
-import { Collide2, FlowField, Ops, Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
+import { Collide2, FlowField, Ops, Random, Scalar, Segment2, SpatialGrid } from "@typeonce/ritmo-math"
 import { BrowserHostClock, BrowserTickSource, Controls, Keyboard } from "@typeonce/ritmo-browser"
 import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"
@@ -140,7 +140,7 @@ const grid = cell.ok ? SpatialGrid.make(cell.value) : undefined
 grid?.insert(0, 1, 1, 1)
 const field = cell.ok ? FlowField.make(cell.value) : undefined
 field?.setWalls([{ minX: 0, minY: 0, maxX: 16, maxY: 4 }], 1)
-const moved = Collide2.moveCircle({ x: 0, y: 10 }, { x: 0, y: -20 }, 2, [{ minX: -8, minY: 0, maxX: 8, maxY: 4 }])
+const moved = Collide2.moveCircle({ x: 0, y: 10 }, { x: 0, y: -20 }, 2, { boxes: [{ minX: -8, minY: 0, maxX: 8, maxY: 4 }], segments: [Segment2.between({ x: 20, y: 0 }, { x: 30, y: 10 })] })
 if (BrowserHostClock.make({ performance: { now: () => 7 } }).now() !== 7) throw new Error("BrowserHostClock misbehaves when packed")
 const frames: Array<(timestamp: number) => void> = []
 let loopUpdates = 0
