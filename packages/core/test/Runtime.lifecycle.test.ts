@@ -106,6 +106,24 @@ describe("Runtime change detection", () => {
     expect(reader.runs[1]).toEqual({ added: [], changed: [] })
   })
 
+  it("does not show a system its own writes as changes, during that run or after it", () => {
+    const seen: Array<Array<number>> = []
+    const Mover = Game.System("Lifecycle/Mover", { queries: { positions: Positions, changed: Changed } }, ({ queries }) => {
+      for (const { data } of queries.positions.each()) {
+        data.position.set({ x: data.position.get().x + 1 })
+      }
+      seen.push(queries.changed.each().map((match) => match.data.position.get().x))
+    })
+    const reader = observer("Lifecycle/MoverReader")
+    const runtime = makeRuntime()
+    runtime.tick(Game.Schedule(spawner([1]), Game.Schedule.applyDeferred(), Mover))
+    runtime.tick(Game.Schedule(Mover, reader.system))
+
+    // The first run sees the spawn, the second only its own write: neither counts it.
+    expect(seen).toEqual([[2], []])
+    expect(reader.runs[0]).toEqual({ added: [3], changed: [3] })
+  })
+
   it("shows removed components and despawned entities to each reader once", () => {
     const ids: Array<Id> = []
     const seen: Array<{ removed: Array<number>; despawned: Array<number> }> = []
