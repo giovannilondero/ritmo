@@ -1,8 +1,20 @@
-import * as Brand from "@typeonce/ritmo/Brand"
+import type * as Brand from "@typeonce/ritmo/Brand"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Scalar from "../Scalar.ts"
 
-const finiteBrand = Brand.refine<Scalar.Finite, number, Scalar.Error>((value) =>
+// A branded number's constructor from its check.
+const refine = <Value, Raw, Error>(
+  validate: (raw: Raw) => Result.Result<Value, Error>
+): Brand.Constructor<Value, Raw, Error> => ({
+  result: validate,
+  option: (raw) => {
+    const result = validate(raw)
+    return result.ok ? result.value : null
+  },
+  is: (raw): raw is Raw & Value => validate(raw).ok
+})
+
+const finiteBrand = refine<Scalar.Finite, number, Scalar.Error>((value) =>
   Number.isFinite(value)
     ? Result.success(value as Scalar.Finite)
     : Result.failure({
@@ -11,7 +23,7 @@ const finiteBrand = Brand.refine<Scalar.Finite, number, Scalar.Error>((value) =>
       })
 )
 
-const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>((value) => {
+const nonNegativeBrand = refine<Scalar.NonNegative, number, Scalar.Error>((value) => {
   const finite = finiteBrand.result(value)
   if (!finite.ok) {
     return finite
@@ -25,7 +37,7 @@ const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>(
       })
 })
 
-const positiveBrand = Brand.refine<Scalar.Positive, number, Scalar.Error>((value) => {
+const positiveBrand = refine<Scalar.Positive, number, Scalar.Error>((value) => {
   const finite = finiteBrand.result(value)
   if (!finite.ok) {
     return finite

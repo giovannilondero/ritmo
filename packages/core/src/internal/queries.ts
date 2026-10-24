@@ -22,6 +22,8 @@ import type { QueryMatch } from "../Query.ts"
 import type * as Relation from "../Relation.ts"
 import * as Result from "../Result.ts"
 import * as Cells from "./cells.ts"
+import type { Construction } from "./schema.ts"
+import { constructionOf } from "./schema.ts"
 import type { EntityRecord, World } from "./world.ts"
 
 type AnyQuery = Query.Query.Any<any>
@@ -33,7 +35,7 @@ type SlotPlan =
       readonly slot: string
       readonly mode: "write"
       readonly ordinal: number
-      readonly constructor: DescriptorModule.ResultConstructor<unknown, unknown, unknown> | undefined
+      readonly constructor: Construction | undefined
       readonly entityState: Cells.EntityStatePlan | undefined
     }
   | {
@@ -171,7 +173,7 @@ export const makeQueryEngine = (world: World) => {
               slot,
               mode: "write",
               ordinal,
-              constructor: DescriptorModule.constructorOf(access.descriptor),
+              constructor: constructionOf(access.descriptor),
               entityState: DescriptorModule.isEntityState(access.descriptor) ? Cells.entityStatePlan(access.descriptor.name, access.descriptor.states) : undefined
             })
           } else {

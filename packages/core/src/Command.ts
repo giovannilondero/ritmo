@@ -70,6 +70,7 @@ import * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import type * as Relation from "./Relation.ts"
 import * as Result from "./Result.ts"
+import { constructionOf } from "./internal/schema.ts"
 import type { ReadonlyValue } from "./Query.ts"
 import type { RequirementPair, Schema } from "./Schema.ts"
 
@@ -300,11 +301,11 @@ export const entry = <D extends Descriptor<"component", string, any>>(
  * `commands.insert` takes valid entries only: check the result first.
  *
  * This is the one way to put unvalidated data on an entity: the descriptor
- * owns its validator (`Descriptor.ConstructedComponent(...)`, built with
- * `Decode` or `Descriptor.fromStandardSchema`). Values that are already
- * valid use a plain `[Descriptor, value]` entry instead. To validate authored
- * constants once at module load, call the constructor (`Vector2.result(...)`)
- * and keep the carried value.
+ * owns its schema (`Descriptor.ConstructedComponent(schema)`), and `raw` is
+ * the schema's saved form, decoded by it. Values that are already valid use
+ * a plain `[Descriptor, value]` entry instead. To validate authored
+ * constants once at module load, call the type's constructor
+ * (`Vector2.result(...)`) and keep the carried value.
  *
  * @example
  * ```ts
@@ -320,7 +321,7 @@ export const entryRaw = <D extends DescriptorModule.ConstructedDescriptor<"compo
   descriptor: D,
   raw: Descriptor.Raw<D>
 ): Result.Result<Entry<D>, Descriptor.ConstructionError<D>> => {
-  const validated = DescriptorModule.constructorOf(descriptor).result(raw) as Result.Result<Descriptor.Value<D>, Descriptor.ConstructionError<D>>
+  const validated = constructionOf(descriptor)!.decode(raw) as Result.Result<Descriptor.Value<D>, Descriptor.ConstructionError<D>>
   return validated.ok
     ? Result.success([descriptor, validated.value] as Entry<D>)
     : Result.failure(validated.error)

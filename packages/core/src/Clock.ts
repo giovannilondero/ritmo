@@ -31,6 +31,7 @@ import type { Descriptor } from "./Descriptor.ts"
 import * as DescriptorModule from "./Descriptor.ts"
 import type { Condition, ConditionNeeds, NotCondition, OrCondition } from "./Machine.ts"
 import * as Result from "./Result.ts"
+import { standard } from "./internal/schema.ts"
 import type * as Schedule from "./Schedule.ts"
 import type { Schema } from "./Schema.ts"
 import type * as System from "./System.ts"
@@ -82,34 +83,26 @@ export interface Time<Hz extends number = number> {
   readonly dt: number
 }
 
-/** A saved or provided clock value that does not fit this game's clock. */
-export interface InvalidTime {
-  readonly _tag: "InvalidTime"
-  readonly message: string
-}
-
 /** The first value of a clock: step 0, nothing elapsed yet. */
 export const start = <Hz extends number>(step: Step<Hz>): Time<Hz> => ({ step: 0, hz: step.hz, dt: 0 })
 
-const timeOf = <Hz extends number>(step: Step<Hz>, raw: unknown): Result.Result<Time<Hz>, InvalidTime> => {
-  if (typeof raw !== "object" || raw === null) return Result.failure({ _tag: "InvalidTime", message: "a clock value is an object { step, hz, dt }" })
+// A clock value of this game's rate, or the message naming what is wrong with it.
+const timeOf = <Hz extends number>(step: Step<Hz>, raw: unknown): Result.Result<Time<Hz>, string> => {
+  if (typeof raw !== "object" || raw === null) return Result.failure("a clock value is an object { step, hz, dt }")
   const value = raw as { readonly step?: unknown; readonly hz?: unknown; readonly dt?: unknown }
   if (value.hz !== step.hz) {
-    return Result.failure({
-      _tag: "InvalidTime",
-      message: typeof value.hz === "number" ? `saved at ${value.hz} Hz, this game runs at ${step.hz} Hz` : `hz must be ${step.hz}`
-    })
+    return Result.failure(typeof value.hz === "number" ? `saved at ${value.hz} Hz, this game runs at ${step.hz} Hz` : `hz must be ${step.hz}`)
   }
   if (typeof value.step !== "number" || !Number.isSafeInteger(value.step) || value.step < 0) {
-    return Result.failure({ _tag: "InvalidTime", message: "step must be a whole number of steps, 0 or more" })
+    return Result.failure("step must be a whole number of steps, 0 or more")
   }
-  if (value.dt !== 0 && value.dt !== step.dt) return Result.failure({ _tag: "InvalidTime", message: `dt must be 0 or 1/${step.hz}` })
+  if (value.dt !== 0 && value.dt !== step.dt) return Result.failure(`dt must be 0 or 1/${step.hz}`)
   return Result.success({ step: value.step, hz: step.hz, dt: value.dt })
 }
 
 /** The descriptor `Clock.resource` returns: a validated resource holding `Time<Hz>`. */
 export type ClockResource<Name extends string, Hz extends number> =
-  DescriptorModule.DecodableDescriptor<"resource", Name, Time<Hz>, Time<Hz>, InvalidTime> & { readonly [resourceBrand]: Hz }
+  DescriptorModule.ConstructedDescriptor<"resource", Name, Time<Hz>, Time<Hz>, DescriptorModule.SchemaIssues> & { readonly [resourceBrand]: Hz }
 
 /**
  * A resource holding a clock that runs at `step`. Its validator rejects a
@@ -122,10 +115,7 @@ export type ClockResource<Name extends string, Hz extends number> =
  * runtime given validated resources.
  */
 export const resource = <const Name extends string, Hz extends number>(name: Name, step: Step<Hz>): ClockResource<Name, Hz> =>
-  DescriptorModule.ConstructedResource({
-    result: (raw: Time<Hz>) => timeOf(step, raw),
-    decode: (raw: unknown) => timeOf(step, raw)
-  })(name) as unknown as ClockResource<Name, Hz>
+  DescriptorModule.ConstructedResource(standard<unknown>((raw) => timeOf(step, raw)))(name) as unknown as ClockResource<Name, Hz>
 
 /** Seconds of simulation time since the start: `step / hz`, exact (no accumulated floats). */
 export const elapsed = (time: Time): number => time.step / time.hz

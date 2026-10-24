@@ -1,40 +1,25 @@
 /**
- * Small branding helpers for constructor-first validated values.
+ * Brand types for validated values.
  *
  * Brands let the library distinguish validated carried values from raw user
- * input without changing their runtime representation. Constructors built with
- * this module are always explicit and non-throwing.
+ * input without changing their runtime representation. `@typeonce/ritmo-math`
+ * brands its types with them (`Vector2`, `Size2`, `Scalar`, `Aabb`), so
+ * validated values move through the ECS without losing the fact that they
+ * were checked once already.
  *
- * This module is for packages that author validated value types, like
- * `@typeonce/ritmo-math`: `Vector2`, `Size2`, `Scalar`, and `Aabb` all build
- * on it so validated values can move through the ECS without losing the fact
- * that they were checked once already.
- *
- * Game code does not brand values. It validates through descriptors: a
- * descriptor owns its validator (`Descriptor.ConstructedComponent(Vector2)`,
- * a `Decode` validator, or `Descriptor.fromStandardSchema(...)`), and raw
- * input goes through it with `Game.Command.entryRaw(...)` or `setRaw(...)`.
- *
- * @example
- * ```ts
- * // Create a domain-specific constructor that only accepts valid ports.
- * const Port = Brand.refine((raw: number) =>
- *   raw > 0
- *     ? Result.success(raw as Brand.Branded<number, "Port">)
- *     : Result.failure({ tag: "InvalidPort", value: raw })
- * )
- * ```
+ * This module holds types only. Game code does not brand values by hand: it
+ * brands through its schema library (`Schema.brand`, `z.brand`) and
+ * validates through descriptors, which own their schema
+ * (`Descriptor.ConstructedComponent(schema)`); raw input goes through it with
+ * `Game.Command.entryRaw(...)` or `setRaw(...)`.
  *
  * @module Brand
  * @docGroup helpers
  *
  * @categoryDescription Brand Types
  * The nominal markers and constructor contracts used by branded public values.
- *
- * @categoryDescription Constructors
- * Helpers that build explicit non-throwing validators from raw input checks.
  */
-import * as internal from "./internal/brand.ts"
+import type * as internal from "./internal/brand.ts"
 
 /**
  * Public marker used to distinguish one validated domain from another.
@@ -75,24 +60,3 @@ export interface Constructor<Value, Raw, Error> {
    */
   readonly is: (raw: Raw) => raw is Raw & Value
 }
-
-/**
- * Builds one explicit non-throwing constructor from a validation function.
- *
- * @category Constructors
- */
-export const refine: <Value, Raw, Error>(
-  validate: (raw: Raw) => import("./Result.ts").Result<Value, Error>
-) => Constructor<Value, Raw, Error> = internal.refine
-
-/**
- * Combines two constructors that validate the same carried value.
- *
- * The returned constructor succeeds only when both validations succeed.
- *
- * @category Constructors
- */
-export const all: <Value, Raw, ErrorA, ErrorB>(
-  left: Constructor<Value, Raw, ErrorA>,
-  right: Constructor<Value, Raw, ErrorB>
-) => Constructor<Value, Raw, readonly [ErrorA, ErrorB]> = internal.all

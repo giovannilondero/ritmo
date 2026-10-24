@@ -68,6 +68,8 @@ import type * as Entity from "./Entity.ts"
 import type * as Inspector from "./Inspector.ts"
 import * as Cells from "./internal/cells.ts"
 import { sameValue } from "./internal/equal.ts"
+import { construction, constructionOf } from "./internal/schema.ts"
+import type { Construction } from "./internal/schema.ts"
 import { emptyStates, stateCodec } from "./internal/states.ts"
 import * as DebugInternal from "./internal/debug.ts"
 import { makeQueryEngine } from "./internal/queries.ts"
@@ -559,13 +561,13 @@ const collectConstructedRegistryValues = <R extends Registry>(
       continue
     }
 
-    const constructor = DescriptorModule.constructorOf(descriptor)
+    const constructor = constructionOf(descriptor)
     if (!constructor) {
       validated[schemaKey] = next
       continue
     }
 
-    const result = constructor.result(next as never)
+    const result = constructor.decode(next)
     if (!result.ok) {
       errors[schemaKey] = result.error
       continue
@@ -652,18 +654,20 @@ export interface Runtime<
   ) => Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>>
   /**
    * Captures the world as plain data: entities with their ids, components,
-   * relation edges, resources, and committed machine values.
+   * relation edges, resources, and committed machine values, each in its
+   * schema's saved form (encoded by the schema's `encode` when it has one).
+   * Fails with the value an `encode` rejected.
    *
-   * Values are shared with the world, not copied; serialize the snapshot
-   * (for example with `JSON.stringify`) to detach it. Transient components and
-   * resources are skipped.
+   * Values without an `encode` are shared with the world, not copied;
+   * serialize the snapshot (for example with `JSON.stringify`) to detach it.
+   * Transient components and resources are skipped.
    *
    * Callable only when every component and resource is constructed or
    * transient; see the `Snapshot` module. Take it between ticks: calling it
    * while a schedule is running (from a system, a service, or a trace
    * callback) throws.
    */
-  readonly snapshot: Snapshot.Gate<S, () => Snapshot.WorldSnapshot>
+  readonly snapshot: Snapshot.Gate<S, () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>>
   /**
    * Replaces the world with a snapshot after validating it against the
    * schema. On failure nothing changes. See the `Snapshot` module. Restore
@@ -1477,7 +1481,7 @@ const makeValidatedRuntime = <
     descriptor: Descriptor<"resource", string, any>,
     store: Map<symbol, unknown>,
     write: (key: symbol, value: unknown) => void
-  ) => Cells.storeWrite(store, descriptor.key, write, DescriptorModule.constructorOf(descriptor))
+  ) => Cells.storeWrite(store, descriptor.key, write, constructionOf(descriptor))
 
   const makeResourceChangedView = (descriptor: Descriptor<"resource", string, any>, reader: ReaderState): ResourceChangedView<unknown> => {
     const key = descriptor.key
@@ -2498,51 +2502,67 @@ const makeValidatedRuntime = <
   const machinesByName = new Map<string, Machine.StateMachine.Any>()
   for (const machine of options.machineDefinitions) machinesByName.set(machine.name, machine)
   for (const provision of machineEntries) machinesByName.set(provision.machine.name, provision.machine)
-  /** Each machine's value codec, made on its first restore. */
-  const machineCodecs = new Map<symbol, ReturnType<typeof stateCodec>>()
-  const machineCodec = (machine: Machine.StateMachine.Any): ReturnType<typeof stateCodec> => {
-    let codec = machineCodecs.get(machine.key)
-    if (codec === undefined) {
-      codec = stateCodec(machine.states)
-      machineCodecs.set(machine.key, codec)
+  /** Each machine's value schema, made on its first snapshot or restore. */
+  const machineSchemas = new Map<symbol, Construction>()
+  const machineSchema = (machine: Machine.StateMachine.Any): Construction => {
+    let schema = machineSchemas.get(machine.key)
+    if (schema === undefined) {
+      schema = construction(stateCodec(machine.states))
+      machineSchemas.set(machine.key, schema)
     }
-    return codec
+    return schema
   }
+  // A value's saved form: its schema's `encode`, or the value as it is.
+  const encoded = (schema: Construction | undefined, value: unknown): Result.Result<unknown, DescriptorModule.SchemaIssues> =>
+    schema?.encode === undefined ? Result.success(value) : schema.encode(value)
 
-  const snapshot = (): Snapshot.WorldSnapshot => {
+  const snapshot = (): Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError> => {
     if (inTick) throw new Error("runtime.snapshot was called while a schedule is running: it would capture writes a failing system rolls back; take it between ticks")
+    const savedEntities = world.exportEntities(DescriptorModule.isTransient)
+    for (const entity of savedEntities) {
+      for (const [name, value] of Object.entries(entity.components)) {
+        const saved = encoded(constructionOf(componentsByName.get(name)!), value)
+        if (!saved.ok) return Result.failure({ _tag: "UnencodableComponent", entityId: entity.id, name, error: saved.error })
+        entity.components[name] = saved.value
+      }
+    }
     const savedResources: Record<string, unknown> = {}
     for (const [name, descriptor] of resourcesByName) {
       if (!DescriptorModule.isTransient(descriptor) && resources.has(descriptor.key)) {
-        savedResources[name] = resources.get(descriptor.key)
+        const saved = encoded(constructionOf(descriptor), resources.get(descriptor.key))
+        if (!saved.ok) return Result.failure({ _tag: "UnencodableResource", name, error: saved.error })
+        savedResources[name] = saved.value
       }
     }
-    const savedMachines: Record<string, Machine.AnyValue> = {}
+    const savedMachines: Record<string, unknown> = {}
     for (const [name, machine] of machinesByName) {
       const value = currentMachines.get(machine.key)
-      if (value !== undefined) savedMachines[name] = value as Machine.AnyValue
+      if (value === undefined) continue
+      const saved = encoded(machineSchema(machine), value)
+      if (!saved.ok) return Result.failure({ _tag: "UnencodableMachineState", name, error: saved.error })
+      savedMachines[name] = saved.value
     }
     const savedScopes: Record<string, ReadonlyArray<number>> = {}
     for (const [key, members] of world.exportScopes()) {
       const name = EntityScopeModule.nameOf(key)
       if (name !== undefined) savedScopes[name] = members
     }
-    return {
+    return Result.success({
       version: Snapshot.version,
       gameVersion: options.saves?.latest ?? 0,
       nextEntity: world.nextEntityValue(),
-      entities: world.exportEntities(DescriptorModule.isTransient),
+      entities: savedEntities,
       relations: world.exportRelations(),
       resources: savedResources,
       machines: savedMachines,
       scopes: savedScopes
-    }
+    })
   }
 
   // The public type only exposes `restore` when every saved descriptor has a
-  // constructor; a descriptor without one still fails closed here.
-  const validate = (value: unknown, descriptor: Descriptor.Any): Result.Result<unknown, unknown> | undefined =>
-    DescriptorModule.hasConstructor(descriptor) ? DescriptorModule.decoderOf(descriptor)(value) : undefined
+  // schema; a descriptor without one still fails closed here.
+  const validate = (value: unknown, descriptor: Descriptor.Any): Result.Result<unknown, DescriptorModule.SchemaIssues> | undefined =>
+    constructionOf(descriptor)?.decode(value)
 
   const restore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
     const parsed = Snapshot.parse(data)
@@ -2613,7 +2633,7 @@ const makeValidatedRuntime = <
     for (const [name, raw] of Object.entries(saved.machines)) {
       const machine = machinesByName.get(name)
       if (!machine) return Result.failure({ _tag: "UnknownMachine", name })
-      const value = machineCodec(machine).decode(raw)
+      const value = machineSchema(machine).decode(raw)
       if (!value.ok) return Result.failure({ _tag: "InvalidMachineState", name, error: value.error })
       restoredMachines.set(machine.key, sharedValue(machine, value.value))
     }
