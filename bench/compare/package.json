@@ -1,0 +1,11 @@
+{
+  "name": "@typeonce/ritmo-bench-compare",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typeonce/ritmo": "workspace:*",
+    "bitecs": "0.4.0",
+    "koota": "0.6.6",
+    "miniplex": "2.0.0"
+  }
+}

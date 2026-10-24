@@ -11,6 +11,7 @@
     "bench": "node --expose-gc --import tsx scripts/bench.ts",
     "bench:check": "node --expose-gc --import tsx scripts/bench.ts --check",
     "bench:update": "node --expose-gc --import tsx scripts/bench.ts --update",
+    "bench:compare": "node --import tsx bench/compare/src/run.ts",
     "bench:types:generate": "node --import tsx packages/core/bench/types/generate.ts",
     "coverage": "vitest --coverage",
     "build": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo && tsc -b tsconfig.packages.json --pretty false",
