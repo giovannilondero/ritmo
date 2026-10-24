@@ -1,5 +1,49 @@
 # @typeonce/ritmo
 
+## 0.14.0
+
+### Minor Changes
+
+- 0ab0470: **Number components are stored unboxed, in number columns.** A component whose value is a number (a plain or branded number such as `Scalar.Finite`, a number literal union, an entity id) keeps its values in a typed array. Reading one returns the number and writing one copies it in: nothing is allocated, and change detection and rollback compare plain numbers. On the community ECS benchmark cases, iteration with number writes is about 1.4× faster than before.
+
+  - **Breaking: a number component declares `{ columns: "number" }`.** The runtime cannot see a value's type, so the component says how it is stored. Without the option, the name argument does not compile, and the error names the fix (`… holds a number: add { columns: "number" } …`). The option is rejected on any other value, and the descriptor's type does not change. It works with `Component`, `ConstructedComponent` and `TransientComponent`, and next to `immutable: true`.
+
+    ```diff
+    -const Health = Descriptor.Component<number>()("Game/Health")
+    +const Health = Descriptor.Component<number>()("Game/Health", { columns: "number" })
+    -const Speed = Descriptor.ConstructedComponent(Scalar.Positive.codec)("Game/Speed")
+    +const Speed = Descriptor.ConstructedComponent(Scalar.Positive.codec)("Game/Speed", { columns: "number" })
+    ```
+
+    Queries, cells (`get`, `set`, `update`, `setRaw`, `updateRaw`, optional `value()`), commands and snapshots keep their API. A value that reaches a number column through erased types and is not a number throws, naming the component.
+
+- 8aa1e85: **Component values are stored per component, in pages of entity ids**, and a system's run keeps the old values of only the slots it writes. This is the storage layout typed number columns build on. Performance is about the same as before; queries, cells and snapshots keep their API.
+
+  - **Breaking: `changed` means the value differs.** A write counts as a change only when the new value differs from the one before the system's run: a different number or string (`NaN` equals `NaN`), or a different object. Writing back the value you read, or an equal number, no longer counts. Inserting a component still counts as added and changed. The devtools journal records only these writes.
+
+    ```diff
+    -// re-set every frame to mark it changed
+    -data.position.set(data.position.get())
+    +// write a new value when it moves; keep writing back the same one when it does not
+    +data.position.set({ x: position.x + velocity.x, y: position.y + velocity.y })
+    ```
+
+  - **Breaking: a query match is valid during the run that produced it.** Its cells throw when used later. This covers a match kept in `local` state, captured in a closure, or returned from an inspector: before, such a match kept reading the entity's current values, even after it left the query. Keep the id or a handle, and resolve it again.
+
+    ```diff
+    -local.target ??= queries.enemies.each()[0]
+    -const at = local.target?.data.position.get()
+    +local.target ??= queries.enemies.each()[0]?.entity.id
+    +const found = local.target === undefined ? undefined : queries.enemies.get(local.target)
+    +const at = found?.ok ? found.value.data.position.get() : undefined
+    ```
+
+  - **Breaking: `runtime.inspect(...)` throws while a schedule is running**, like `snapshot` and `restore`. Read the world from a system, or inspect between ticks.
+
+### Patch Changes
+
+- c3719a5: **Faster component writes and spawns, with the same semantics.** A write through a query cell now stamps its change tick as it happens, and committing a system run no longer replays its writes; a system still does not see its own writes in its `changed` filters, and a rolled-back run or transition phase still restores the values and their change ticks. An entity's storage is sized to the components it holds, not to every component in the schema. On the community ECS benchmark cases, iteration with writes is 1.3–1.8× faster and spawning and despawning 1.4× faster.
+
 ## 0.13.0
 
 ### Minor Changes
