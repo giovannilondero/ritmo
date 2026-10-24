@@ -9,10 +9,13 @@ const page = new Set([
   "innerWidth", "innerHeight", "addEventListener", "removeEventListener", "alert", "confirm", "prompt"
 ])
 
-/** Globals that do host I/O: storage, network, navigation. */
+/** Globals that do host I/O: storage, requests, navigation. */
 const io = new Set([
-  "localStorage", "sessionStorage", "indexedDB", "caches", "fetch", "XMLHttpRequest", "WebSocket", "EventSource", "location", "history"
+  "localStorage", "sessionStorage", "indexedDB", "caches", "fetch", "XMLHttpRequest", "EventSource", "location", "history"
 ])
+
+/** Globals that connect to other peers: what online play goes through a netcode session for. */
+const network = new Set(["WebSocket", "RTCPeerConnection", "RTCDataChannel"])
 
 /** Renderer and UI packages, by exact name. */
 const renderers = new Set([
@@ -45,6 +48,8 @@ export default defineRule({
         "`{{name}}` is the page, which tests, bots, and replays do not have. Capture input in the host with `Keyboard`, `Pointer`, or `Touch` from `@typeonce/ritmo-browser` and `InputCapture` into a resource, and read that resource in systems. Pass other page state (size, settings) in from host code with `runtime.send(...)` or a resource.",
       io:
         "`{{name}}` is host I/O, which tests, bots, and replays do not have and cannot reproduce. Do the I/O in host code and pass the result in with `runtime.send(...)` or a resource; save and load the world in host code with `runtime.snapshot()` and `runtime.restore(...)`.",
+      network:
+        "`{{name}}` is a connection to other peers, which tests, bots, and replays do not have. For other players' input, run the simulation under a session of `@typeonce/ritmo-netcode` (`Netcode.rollback` or `Netcode.lockstep`): host code opens the connection and wraps it in a link (`WebSocketNetworkLink`, `WebRtcNetworkLink`), and remote input reaches the simulation through `Netcode.seats`, never `runtime.send(...)`, which a rollback would read on the wrong tick.",
       renderer:
         "The simulation imports `{{source}}`, a renderer or UI package, so it no longer runs headless. Draw from a render schedule in render code: mirror entities into nodes with `RenderSync` and a `NodeRegistry` from `@typeonce/ritmo-render`, and declare its services (a node registry) there. Renderer nodes stay in the registry, never in components.",
       rendererType:
@@ -88,7 +93,7 @@ export default defineRule({
         checkSource(node, stringValue(node.source))
       },
       Identifier(node) {
-        const kind = page.has(node.name) ? "page" : io.has(node.name) ? "io" : undefined
+        const kind = page.has(node.name) ? "page" : io.has(node.name) ? "io" : network.has(node.name) ? "network" : undefined
         if (kind === undefined) return
         // `typeof window` in a type runs nothing.
         if (node.parent.type === "TSTypeQuery" || node.parent.type === "TSQualifiedName") return
