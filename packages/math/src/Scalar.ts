@@ -98,14 +98,14 @@ export interface Constructor<Value> {
   readonly option: (raw: number) => Value | null
   /** Whether any value is a number of this brand. */
   readonly is: (raw: unknown) => raw is Value
-  /** The Standard Schema for `Descriptor.ConstructedComponent(...)` (a number component also declares `{ columns: "number" }`): the saved form is the number itself. */
+  /** The Standard Schema for `Descriptor.ConstructedComponent(...)`: the saved form is the number itself. */
   readonly codec: StandardSchema<number, Value>
 }
 
 /**
  * Constructor for {@link Finite}: `result` (explicit failure), `option`
  * (`null` on failure), `is` (a type guard), and `codec`, for
- * `Descriptor.ConstructedComponent(Scalar.Finite.codec)(name, { columns: "number" })`.
+ * `Descriptor.ConstructedComponent(Scalar.Finite.codec)`.
  *
  * @category Constructors
  */
@@ -113,7 +113,7 @@ export const Finite: Constructor<Finite> = internal.Finite
 /**
  * Constructor for {@link NonNegative}: `result` (explicit failure), `option`
  * (`null` on failure), `is` (a type guard), and `codec`, for
- * `Descriptor.ConstructedComponent(Scalar.NonNegative.codec)(name, { columns: "number" })`.
+ * `Descriptor.ConstructedComponent(Scalar.NonNegative.codec)`.
  *
  * @category Constructors
  */
@@ -121,7 +121,7 @@ export const NonNegative: Constructor<NonNegative> = internal.NonNegative
 /**
  * Constructor for {@link Positive}: `result` (explicit failure), `option`
  * (`null` on failure), `is` (a type guard), and `codec`, for
- * `Descriptor.ConstructedComponent(Scalar.Positive.codec)(name, { columns: "number" })`.
+ * `Descriptor.ConstructedComponent(Scalar.Positive.codec)`.
  *
  * @category Constructors
  */

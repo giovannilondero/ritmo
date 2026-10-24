@@ -157,7 +157,7 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
 const Guard = Descriptor.Tag("Arena/Guard")
 // The frames left, stored as a plain number
-const Stunned = Descriptor.Component<number>()("Arena/Stunned", { columns: "number" })
+const Stunned = Descriptor.Component<number>()("Arena/Stunned")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
 
 const Game = Schema.bind(Schema.fragment({
@@ -240,7 +240,7 @@ permission goes:
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
 const Guard = Descriptor.Tag("Arena/Guard")
-const Stunned = Descriptor.Component<number>()("Arena/Stunned", { columns: "number" })
+const Stunned = Descriptor.Component<number>()("Arena/Stunned")
 const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned } }))
 // ---cut---
 // @errors: 2345
@@ -359,7 +359,7 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
   const json = S.toCodecJson(schema)
   return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
 }
-const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health", { columns: "number" })
+const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const made = Game.Runtime.make({ services: Game.Runtime.services() })
 if (!made.ok) throw new Error()

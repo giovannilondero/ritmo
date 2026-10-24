@@ -6,7 +6,7 @@ import { worldOf } from "./saved.ts"
 const Position = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("Requires/Position")
 const Velocity = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("Requires/Velocity")
 const Player = Descriptor.Tag("Requires/Player")
-const Trail = Descriptor.TransientComponent<number>()("Requires/Trail", { columns: "number" })
+const Trail = Descriptor.TransientComponent<number>()("Requires/Trail")
 // A transient requirer may require a transient component: a restore drops both.
 const Ghost = Descriptor.TransientComponent<{}>()("Requires/Ghost")
 

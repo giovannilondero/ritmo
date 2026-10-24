@@ -3,7 +3,7 @@ import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Identity/Position")
 const Label = Descriptor.Component<string>()("Identity/Position")
-const Health = Descriptor.Component<number>()("Identity/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("Identity/Health")
 const Score = Descriptor.Resource<number>()("Identity/Position")
 
 describe("descriptor identity", () => {
@@ -31,7 +31,7 @@ describe("descriptor identity", () => {
 
   it("rejects a look-alike descriptor whose value type differs from the registered one", () => {
     const Game = Schema.bind(Schema.fragment({ components: { Health } }))
-    const Narrowed = Descriptor.Component<1>()("Identity/Health", { columns: "number" })
+    const Narrowed = Descriptor.Component<1>()("Identity/Health")
     const Widened = Descriptor.Component<number | string>()("Identity/Health")
     // @ts-expect-error Type 'number' is not assignable to type '1'.
     Game.Query.read(Narrowed)

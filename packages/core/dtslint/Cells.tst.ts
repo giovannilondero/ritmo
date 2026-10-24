@@ -8,7 +8,7 @@ import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Cells/Position")
 const Tags = Descriptor.Component<{ readonly names: Array<string> }>()("Cells/Tags")
-const Health = Descriptor.Component<number>()("Cells/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("Cells/Health")
 const Safe = Descriptor.ConstructedComponent(Vector2.codec)("Cells/Safe")
 const Label = Descriptor.ConstructedComponent(Codecs.string)("Cells/Label")
 const Frozen = Descriptor.Tag("Cells/Frozen")

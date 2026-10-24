@@ -4,7 +4,7 @@ import { describe, expect, it } from "tstyche"
 
 const Freeze = Descriptor.Resource<{ readonly remaining: number }>()("CheckTypes/Freeze")
 const Enemy = Descriptor.Tag("CheckTypes/Enemy")
-const Health = Descriptor.Component<number>()("CheckTypes/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("CheckTypes/Health")
 const Ping = Descriptor.Event<number>()("CheckTypes/Ping")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CheckTypes/Clock")
 
