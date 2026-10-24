@@ -5,7 +5,7 @@ import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ readonly x: number }>()("Perms/Position")
 const Enemy = Descriptor.Component<{}>()("Perms/Enemy")
-const Noise = Descriptor.Component<number>()("Perms/Noise")
+const Noise = Descriptor.Component<number>()("Perms/Noise", { columns: "number" })
 const Turned = Descriptor.Component<{ readonly seconds: number }>()("Perms/Turned")
 const { relation: ChildOf } = Descriptor.Hierarchy("Perms/ChildOf", "Perms/Children")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy, Noise, Turned }, relations: { ChildOf } }))
@@ -202,7 +202,7 @@ describe("declared commands", () => {
   })
 
   it("accepts only the game's own components in permissions", () => {
-    const Foreign = Descriptor.Component<number>()("Perms/Foreign")
+    const Foreign = Descriptor.Component<number>()("Perms/Foreign", { columns: "number" })
     expect(Game.System.spawns).type.not.toBeCallableWith(Foreign)
     expect(Game.System.spawns).type.toBeCallableWith(Position)
   })

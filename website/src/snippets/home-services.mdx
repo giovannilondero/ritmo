@@ -1,6 +1,6 @@
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const Logger = Descriptor.Service<{ log(message: string): void }>()("Arena/Logger")
 // ---cut---

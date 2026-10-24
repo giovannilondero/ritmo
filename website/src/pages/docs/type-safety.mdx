@@ -11,9 +11,9 @@ error your editor shows, cut to the fix Ritmo writes into it.
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Noise = Descriptor.Component<number>()("Arena/Noise")
+const Noise = Descriptor.Component<number>()("Arena/Noise", { columns: "number" })
 
 const Game = Schema.bind(
   Schema.fragment({
@@ -56,9 +56,9 @@ selection: { position: Game.Query.write(Position) } // [!code ++]
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Noise = Descriptor.Component<number>()("Arena/Noise")
+const Noise = Descriptor.Component<number>()("Arena/Noise", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise }, requires: [Schema.requires(Enemy, Position, Health)] }))
 // ---cut---
 // @errors: 2379
@@ -81,7 +81,7 @@ Game.System(
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, requires: [Schema.requires(Enemy, Position, Health)] }))
 // ---cut---
@@ -102,7 +102,7 @@ Game.System(
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
 // ---cut---
@@ -129,7 +129,7 @@ commands.despawn(match.entity) // a handle from a query with Enemy // [!code ++]
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
 const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, () => {})
@@ -162,7 +162,7 @@ runtime.tick(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), Aim)) // [!
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
 // @errors: 2345
@@ -190,7 +190,7 @@ services: Game.Runtime.services(Game.Runtime.service(Logger, console)) // [!code
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Keyboard } from "@typeonce/ritmo-browser"
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const keys = { jump: [" "] } as const
 // ---cut---
@@ -219,7 +219,7 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 // ---cut---
 // Copied from Position, and the name was never changed
-const Speed = Descriptor.Component<number>()("Arena/Position") // [!code error]
+const Speed = Descriptor.Component<number>()("Arena/Position", { columns: "number" }) // [!code error]
 
 // @errors: 2345
 const Game = Schema.bind(Schema.fragment({ components: { Position, Speed } }))
@@ -234,7 +234,7 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
   const json = S.toCodecJson(schema)
   return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
 }
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
 // @errors: 2345
@@ -255,7 +255,7 @@ Game.System(
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Health = Descriptor.Component<number>()("Arena/Health")
+const Health = Descriptor.Component<number>()("Arena/Health", { columns: "number" })
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
 // Making a runtime can fail, so it returns a Result instead of throwing

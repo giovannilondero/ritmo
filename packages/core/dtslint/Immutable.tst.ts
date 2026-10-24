@@ -7,7 +7,7 @@ import { describe, expect, it } from "tstyche"
 const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("ImmutableTypes/Position")
 const Kind = Descriptor.Component<"wall" | "pickup">()("ImmutableTypes/Kind", { immutable: true })
 const Team = Descriptor.ConstructedComponent(Codecs.literal("red", "blue"))("ImmutableTypes/Team", { immutable: true })
-const Cache = Descriptor.TransientComponent<number>()("ImmutableTypes/Cache", { immutable: true })
+const Cache = Descriptor.TransientComponent<number>()("ImmutableTypes/Cache", { columns: "number", immutable: true })
 
 const Game = Schema.bind(Schema.fragment({ components: { Position, Kind, Team, Cache } }))
 
@@ -20,7 +20,7 @@ describe("immutable components", () => {
 
   it("accepts only immutable: true", () => {
     // @ts-expect-error Type 'false' is not assignable to type 'true'
-    Descriptor.Component<number>()("ImmutableTypes/Bad", { immutable: false })
+    Descriptor.Component<string>()("ImmutableTypes/Bad", { immutable: false })
   })
 
   it("reads an immutable component", () => {

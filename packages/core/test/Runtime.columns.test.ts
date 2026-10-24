@@ -1,0 +1,148 @@
+import { describe, expect, it } from "vitest"
+import { Debug, Descriptor, HostClock, Result, Schema, Snapshot } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
+
+const Health = Descriptor.Component<number>()("Columns/Health", { columns: "number" })
+const Speed = Descriptor.ConstructedComponent(Codecs.number)("Columns/Speed", { columns: "number" })
+const Shield = Descriptor.Component<number>()("Columns/Shield", { columns: "number" })
+const Label = Descriptor.ConstructedComponent(Codecs.string)("Columns/Label")
+const Game = Schema.bind(Schema.fragment({ components: { Health, Speed, Shield, Label } }))
+const Flow = Game.StateMachine("Columns/Flow", { Playing: {}, Menu: {} })
+
+const makeRuntime = (debug = false) => Game.Runtime.make({
+  services: Game.Runtime.services(),
+  machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" })),
+  ...(debug ? { debug: { hostClock: HostClock.test() } } : {})
+}).value
+
+const Speeds = Game.Query({ selection: { speed: Game.Query.write(Speed) } })
+
+const spawner = (count: number) =>
+  Game.System("Columns/Spawn", { commands: Game.System.commands(Game.System.spawns(Speed, Label)) }, ({ commands }) => {
+    for (let index = 0; index < count; index++) {
+      commands.spawn(Game.Command.spawn([Speed, index], [Label, `n${index}`]))
+    }
+  })
+
+const AllSpeeds = Game.Inspector("Columns/AllSpeeds", {
+  queries: { all: Game.Query({ selection: { speed: Game.Query.read(Speed) } }) }
+}, ({ queries }) => queries.all.each().map((match) => match.data.speed.get()))
+
+describe("number columns", () => {
+  it("validate raw input through the component's codec", () => {
+    const runtime = makeRuntime()
+    runtime.tick(Game.Schedule(spawner(1), Game.Schedule.applyDeferred()))
+    const results: Array<boolean> = []
+    const Raw = Game.System("Columns/Raw", { queries: { all: Speeds } }, ({ queries }) => {
+      for (const { data } of queries.all.each()) {
+        results.push(data.speed.setRaw(4).ok, data.speed.setRaw(Number.POSITIVE_INFINITY).ok)
+        results.push(data.speed.updateRaw((speed) => speed + 1).ok)
+      }
+    })
+    runtime.tick(Game.Schedule(Raw))
+    expect(results).toEqual([true, false, true])
+    expect(runtime.inspect(AllSpeeds)).toEqual([5])
+  })
+
+  it("read an optional number as the number or undefined", () => {
+    const runtime = makeRuntime()
+    const seen: Array<number | undefined> = []
+    const Spawn = Game.System("Columns/SpawnShield", { commands: Game.System.commands(Game.System.spawns(Speed, Shield)) }, ({ commands }) => {
+      commands.spawn(Game.Command.spawn([Speed, 1], [Shield, 3]))
+      commands.spawn(Game.Command.spawn([Speed, 2]))
+    })
+    const Read = Game.System("Columns/ReadShield", {
+      queries: { all: Game.Query({ selection: { speed: Game.Query.read(Speed), shield: Game.Query.optional(Shield) } }) }
+    }, ({ queries }) => {
+      for (const { data } of queries.all.each()) seen.push(data.shield.value())
+    })
+    runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Read))
+    expect(seen).toEqual([3, undefined])
+  })
+
+  it("roll a transition phase back with its change ticks", () => {
+    const runtime = makeRuntime()
+    const seen: Array<Array<number>> = []
+    const Slow = Game.System("Columns/Slow", { queries: { all: Speeds } }, ({ queries }) => {
+      for (const { data } of queries.all.each()) data.speed.set(data.speed.get() + 100)
+    })
+    const Fail = Game.System("Columns/Fail", {}, () => Result.failure("busy"))
+    const Watch = Game.System("Columns/Watch", {
+      queries: { changed: Game.Query({ selection: { speed: Game.Query.read(Speed) }, filters: [Game.Query.changed(Speed)] }) }
+    }, ({ queries }) => {
+      seen.push(queries.changed.each().map((match) => match.data.speed.get()))
+    })
+    const transitions = Game.Schedule.transitions(
+      Game.Schedule.onExit(Flow, "Playing", [Slow]),
+      Game.Schedule.onTransition(Flow, ["Playing", "Menu"], [Fail])
+    )
+    const ToMenu = Game.System("Columns/ToMenu", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
+      nextMachines.flow.set({ _tag: "Menu" })
+    })
+    runtime.tick(Game.Schedule(spawner(2), Game.Schedule.applyDeferred(), Watch))
+    const failed = runtime.tick(Game.Schedule(ToMenu, Game.Schedule.applyStateTransitions(transitions)))
+    runtime.tick(Game.Schedule(Watch))
+    expect(failed.ok).toBe(false)
+    expect(seen).toEqual([[0, 1], []])
+    expect(runtime.inspect(AllSpeeds)).toEqual([0, 1])
+  })
+
+  it("round-trip through a snapshot", () => {
+    // Every component validated on load, so the world can be saved.
+    const Saved = Schema.bind(Schema.fragment({ components: { Speed, Label } }))
+    const make = () => Saved.Runtime.make({ services: Saved.Runtime.services() }).value
+    const Spawn = Saved.System("Columns/SpawnSaved", { commands: Saved.System.commands(Saved.System.spawns(Speed, Label)) }, ({ commands }) => {
+      for (let index = 0; index < 300; index++) commands.spawn(Saved.Command.spawn([Speed, index], [Label, `n${index}`]))
+    })
+    const Read = Saved.Inspector("Columns/ReadSaved", {
+      queries: { all: Saved.Query({ selection: { speed: Saved.Query.read(Speed) } }) }
+    }, ({ queries }) => queries.all.each().map((match) => match.data.speed.get()))
+    const source = make()
+    source.tick(Saved.Schedule(Spawn, Saved.Schedule.applyDeferred()))
+    const taken = source.snapshot()
+    if (!taken.ok) throw new Error(taken.error._tag)
+    const saved: unknown = JSON.parse(JSON.stringify(taken.value))
+    const parsed = Snapshot.parse(saved)
+    expect(parsed.ok ? parsed.value.entities[299] : parsed.error).toEqual({ id: 300, components: { "Columns/Speed": 299, "Columns/Label": "n299" } })
+    const target = make()
+    expect(target.restore(saved).ok).toBe(true)
+    expect(target.inspect(Read)).toEqual(Array.from({ length: 300 }, (_, index) => index))
+  })
+
+  it("trace a changed number with its value before and after", () => {
+    const runtime = makeRuntime(true)
+    runtime.tick(Game.Schedule(spawner(2), Game.Schedule.applyDeferred()))
+    const events: Array<Debug.TraceEvent> = []
+    runtime.debug.observe((event) => events.push(event))
+    // Entity 1 keeps its speed (an equal write is not a change); entity 2 doubles.
+    const Double = Game.System("Columns/Double", { queries: { all: Speeds } }, ({ queries }) => {
+      for (const { data } of queries.all.each()) data.speed.set(data.speed.get() * 2)
+    })
+    runtime.tick(Game.Schedule(Double))
+    const run = events.find((event): event is Debug.SystemEvent => event.type === "system")!
+    expect(run.writes).toEqual([{ entity: 2, component: "Columns/Speed", before: 1, after: 2 }])
+  })
+
+  it("throw when a value that is not a number reaches them through erased types", () => {
+    const runtime = makeRuntime()
+    const Spawn = Game.System("Columns/SpawnBad", { commands: Game.System.commands(Game.System.spawns(Health)) }, ({ commands }) => {
+      commands.spawn(Game.Command.spawn([Health, "full" as unknown as number]))
+    })
+    expect(() => runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))).toThrow(
+      "Columns/Health is stored in a number column (columns: \"number\"), so its value must be a number, got string"
+    )
+  })
+
+  it("reject a look-alike descriptor that is not a number column", () => {
+    const LookAlike = Descriptor.Component<string>()("Columns/Health")
+    expect(() => {
+      const runtime = makeRuntime()
+      const Read = Game.System("Columns/LookAlike", {
+        queries: { all: Game.Query({ selection: { health: Game.Query.read(LookAlike as never as typeof Health) } }) }
+      }, ({ queries }) => {
+        queries.all.each()
+      })
+      runtime.tick(Game.Schedule(Read))
+    }).toThrow("Columns/Health is stored in a number column in this schema, but this query names a descriptor that is plain: use the descriptor the schema registers")
+  })
+})

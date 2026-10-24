@@ -6,7 +6,7 @@ import { Format, Invariant, Session } from "@typeonce/ritmo-devtools"
 const hostClock = HostClock.test()
 
 const Position = Descriptor.Component<{ readonly x: number }>()("Dev/Position")
-const Health = Descriptor.Component<number>()("Dev/Health")
+const Health = Descriptor.Component<number>()("Dev/Health", { columns: "number" })
 const Score = Descriptor.Resource<number>()("Dev/Score")
 const Hit = Descriptor.Event<number>()("Dev/Hit")
 const Game = Schema.bind(Schema.fragment({

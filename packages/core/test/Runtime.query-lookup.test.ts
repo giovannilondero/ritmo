@@ -824,7 +824,7 @@ describe("Runtime query and lookup", () => {
 
 describe("optional slots", () => {
   it("read their value, or undefined when the entity does not hold the component", () => {
-    const Hp = Descriptor.Component<number>()("Optional/Hp")
+    const Hp = Descriptor.Component<number>()("Optional/Hp", { columns: "number" })
     const Name = Descriptor.Component<string>()("Optional/Name")
     const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
     const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Hp, Name)) }, ({ commands }) => {
