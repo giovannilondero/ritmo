@@ -1,0 +1,78 @@
+import { describe, expect, it } from "vitest"
+
+import { Random } from "@typeonce/ritmo-math"
+
+import type { GameRuntime, PlayerInput, Screen } from "../game.ts"
+import { match, truth, type Peer } from "../match.ts"
+
+/** A player who holds a direction for a while, then picks another, and fires now and then. */
+const player = (seed: number, frames: number): ReadonlyArray<PlayerInput> => {
+  const random = Random.make(seed)
+  const inputs: Array<PlayerInput> = []
+  let held: PlayerInput = { dx: 0, dy: 0, fire: false }
+  for (let frame = 0; frame < frames; frame++) {
+    if (random.next() < 0.1) {
+      const pick = (): -1 | 0 | 1 => random.pick([-1, 0, 1] as const)!
+      held = { dx: pick(), dy: pick(), fire: false }
+    }
+    inputs.push({ ...held, fire: random.next() < 0.3 })
+  }
+  return inputs
+}
+
+const script = [player(1, 600), player(2, 600)] as const
+
+/** The whole world's checksum: equal checksums are equal worlds. */
+const world = (runtime: GameRuntime) => {
+  const sum = runtime.checksum()
+  if (!sum.ok) throw new Error("checksum failed")
+  return sum.value
+}
+
+/** What the screen shows: every sprite and where. */
+const shown = (screen: Screen) => [...screen.sprites.entries()].sort(([a], [b]) => a - b)
+
+/** Each peer is on the reference's world at its own tick (in lockstep, a peer waits on its own messages). */
+const agree = (peers: readonly [Peer, Peer]) =>
+  peers.map((peer) => {
+    const expected = truth(peers, peer.session.status().tick)
+    expect(world(peer.runtime)).toBe(world(expected.runtime))
+    expect(shown(peer.screen)).toEqual(shown(expected.screen))
+    return expected
+  })[0]!
+
+describe("two peers play the shooter over a slow, reordering network", () => {
+  it("agrees with one runtime that knew every input, in lockstep", () => {
+    const peers = match({ mode: "lockstep", script, latencyMS: 50, jitterMS: 80 })
+    const expected = agree(peers)
+    // Something to compare: shots were fired and drawn.
+    expect(expected.screen.draws.flatMap((drawn) => drawn.created).length).toBeGreaterThan(20)
+    expect(peers[0].session.status().rollbacks).toBe(0)
+  })
+
+  it("agrees with it when rolling back, after running more than 100 ticks again", () => {
+    const peers = match({ mode: "rollback", script, latencyMS: 50, jitterMS: 80, loss: 0.1 })
+    for (const peer of peers) expect(peer.session.status().again).toBeGreaterThan(100)
+    agree(peers)
+  })
+
+  // A rewind that takes a shot away, and ticks that bring it back under the
+  // same id, reach the screen as one change: never as a sprite taken down
+  // and made again in the same draw.
+  it("never takes down and remakes a sprite in one draw", () => {
+    const peers = match({ mode: "rollback", script, latencyMS: 50, jitterMS: 80 })
+    for (const peer of peers) {
+      for (const drawn of peer.screen.draws) expect(drawn.destroyed.filter((entity) => drawn.created.includes(entity))).toEqual([])
+    }
+  })
+
+  it("keeps agreeing through resyncs in the middle of the match", () => {
+    const peers = match({ mode: "rollback", script, latencyMS: 50, jitterMS: 80, resyncAt: [200, 400] })
+    for (const peer of peers) {
+      const status = peer.session.status()
+      expect(status.epoch).toBe(3)
+      expect(status.verified).toBeGreaterThan(400)
+    }
+    expect(world(peers[0].runtime)).toBe(world(peers[1].runtime))
+  })
+})

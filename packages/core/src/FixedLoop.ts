@@ -1,13 +1,14 @@
 /**
  * Deterministic fixed-step timing for any host: browsers, native shells,
- * desktop runtimes, and headless tests.
+ * desktop runtimes, servers, and headless tests.
  *
  * The loop owns the timing policy that is easy to get subtly wrong in every
  * game: frame clamping, catch-up limits, interpolation, cancellation, and
  * typed update failures. It does not know about an ECS runtime, a renderer,
  * or a platform: frames arrive through a `TickSource` that the host supplies.
  * Use a platform adapter such as `BrowserTickSource.make(window)` from
- * `@typeonce/ritmo-browser`, or wrap a renderer's own ticker with `source`.
+ * `@typeonce/ritmo-browser`, or wrap a renderer's own ticker or a server timer
+ * with `source`.
  *
  * @example
  * ```ts
@@ -18,6 +19,30 @@
  *   maxStepsPerFrame: 5,
  *   update: () => runtime.tick(update),
  *   render: (frame) => draw(frame.alpha),
+ *   onFailure: (failure) => console.error(failure)
+ * })
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Server host (Node, a Cloudflare Durable Object): a timer, no renderer
+ * const interval = FixedLoop.source((onTick) => {
+ *   let last = performance.now()
+ *   const id = setInterval(() => {
+ *     const now = performance.now()
+ *     onTick({ deltaMS: now - last })
+ *     last = now
+ *   }, 1000 / 60)
+ *   return { stop: () => clearInterval(id) }
+ * })
+ *
+ * const loop = FixedLoop.start({
+ *   source: interval,
+ *   step: Clock.hz(60),
+ *   maxFrameSeconds: 0.25,
+ *   maxStepsPerFrame: 5,
+ *   update: () => runtime.tick(update),
+ *   render: () => {},
  *   onFailure: (failure) => console.error(failure)
  * })
  * ```
@@ -90,6 +115,13 @@ export type Failure<UpdateError> =
       readonly kind: "UpdateFailure"
       readonly error: UpdateError
     }
+  | {
+      readonly kind: "InvalidRate"
+      readonly rate: number
+    }
+
+/** The range `rate()` must return: a nudge to keep peers in step, not a time scale. */
+export const rateRange = { min: 0.9, max: 1.1 } as const
 
 /** A running fixed-step driver. */
 export interface Driver extends Subscription {
@@ -103,6 +135,15 @@ export interface StartOptions<TTick extends Tick, UpdateError> extends Options {
   readonly update: (stepSeconds: number) => Result.Result<void, UpdateError>
   readonly render: (frame: Frame) => void
   readonly onFailure: (failure: Failure<UpdateError>) => void
+  /**
+   * Read once per host frame: how fast host time runs into the accumulator,
+   * within {@link rateRange} (1 when omitted). A networked session slows the
+   * peer that runs ahead with it (`session.rate` from
+   * `@typeonce/ritmo-netcode`). It is not a time scale: slow motion and
+   * pausing belong to the simulation (`Clock`). A value outside the range
+   * stops the loop with an `InvalidRate` failure.
+   */
+  readonly rate?: () => number
 }
 
 /** Wraps a host-specific subscription function in the canonical source type. */
@@ -174,10 +215,16 @@ export const start = <TTick extends Tick, UpdateError>(
       return
     }
 
+    const rate = options.rate === undefined ? 1 : options.rate()
+    if (!(rate >= rateRange.min && rate <= rateRange.max)) {
+      fail({ kind: "InvalidRate", rate })
+      return
+    }
+
     const rawSeconds = tick.deltaMS / 1000
     const elapsedSeconds = Math.min(rawSeconds, options.maxFrameSeconds)
     let droppedSeconds = rawSeconds - elapsedSeconds
-    accumulator += elapsedSeconds
+    accumulator += elapsedSeconds * rate
 
     let fixedSteps = 0
     while (accumulator >= options.step.dt && fixedSteps < options.maxStepsPerFrame) {

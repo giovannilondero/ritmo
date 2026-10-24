@@ -61,7 +61,7 @@ measure("FlowField: way for one body", bodies.length, () => {
 
 measure("Collide2: moveCircle through 40 walls", bodies.length, () => {
   let sum = 0
-  for (const body of bodies) sum += Collide2.moveCircle(body, { x: 7, y: -5 }, body.r, walls).position.x
+  for (const body of bodies) sum += Collide2.moveCircle(body, { x: 7, y: -5 }, body.r, { boxes: walls }).position.x
   return sum
 })
 

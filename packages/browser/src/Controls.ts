@@ -418,7 +418,8 @@ export const actions = <const Buttons extends readonly [string, ...Array<string>
               const vector = (snapshots[name]!.vectors as Readonly<Record<string, Vector | undefined>>)[action]
               if (vector !== undefined) longest = longer(longest, vector)
             }
-            vectors[action] = longest
+            // A plain vector, even from a device whose vectors carry more (a touch stick's `active`).
+            vectors[action] = longest === zero ? zero : { x: longest.x, y: longest.y }
             available[action] = current === undefined || !current.lacking.has(action)
           }
           return { actions: merged, vectors, available, devices: snapshots, lastUsed }
@@ -725,7 +726,11 @@ export const players = <
               const actionsNow = unit.snapshot.actions as Readonly<Record<string, ActionState | undefined>>
               const vectorsNow = unit.snapshot.vectors as Readonly<Record<string, Vector | undefined>>
               for (const name of buttons) (input.actions as Record<string, ActionState>)[name] = actionsNow[name] ?? idleState
-              for (const name of vectors) (input.vectors as Record<string, Vector>)[name] = vectorsNow[name] ?? zero
+              const vectorsInto = input.vectors as Record<string, Vector>
+              for (const name of vectors) {
+                const vector = vectorsNow[name]
+                vectorsInto[name] = vector === undefined ? zero : { x: vector.x, y: vector.y }
+              }
             }
             for (const name of [...buttons, ...vectors]) (input.available as Record<string, boolean>)[name] = !lacking.has(name)
             result[slot] = {

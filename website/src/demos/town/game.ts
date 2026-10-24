@@ -58,7 +58,7 @@ const touchLayout = ({ width, height }: Touch.Size): Touch.Layout<(typeof touchB
   const a = { x: width - 84, y: height - 104 }
   return {
     // No stick: the d-pad buttons are the directions.
-    stick: { region: { left: 0, top: 0, width: 0, height: 0 }, radius: 1 },
+    sticks: {},
     buttons: {
       up: { center: { x: pad.x, y: pad.y - 46 }, radius: 28 },
       down: { center: { x: pad.x, y: pad.y + 46 }, radius: 28 },
@@ -74,12 +74,13 @@ const drawTouch = (graphics: Graphics, view: Touch.View<(typeof touchButtons)[nu
   graphics.clear()
   for (const name of touchButtons) {
     const zone = view.layout.buttons[name]
+    if (zone === null) continue
     const held = view.buttons[name].held
     graphics.circle(zone.center.x, zone.center.y, zone.radius).fill({ color: 0x0e1013, alpha: held ? 0.55 : 0.3 })
       .stroke({ color: 0xf3f1ec, alpha: held ? 0.9 : 0.45, width: 2 })
   }
-  const a = view.layout.buttons.action.center
-  graphics.circle(a.x, a.y, 9).fill({ color: 0xf3f1ec, alpha: 0.6 })
+  const action = view.layout.buttons.action
+  if (action !== null) graphics.circle(action.center.x, action.center.y, 9).fill({ color: 0xf3f1ec, alpha: 0.6 })
 }
 
 /**

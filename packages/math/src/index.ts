@@ -7,7 +7,8 @@
  * `ConstructedResource(Random.codec)` and are validated once at the boundary. `InputAxis` normalizes directional input.
  *
  * Hot-path helpers work on plain numbers every frame: `Vec2` arithmetic,
- * `Box2` edges, `Collide2` swept circle collision, a `SpatialGrid` broad
+ * `Box2` edges, `Segment2` walls at any angle, `Collide2` swept circle
+ * collision against both, a `SpatialGrid` broad
  * phase, a `FlowField` for finding the way around walls, and a deterministic
  * `Random` whose state is one integer.
  *
@@ -23,6 +24,7 @@ export * as InputAxis from "./InputAxis.ts"
 export * as Ops from "./Ops.ts"
 export * as Random from "./Random.ts"
 export * as Scalar from "./Scalar.ts"
+export * as Segment2 from "./Segment2.ts"
 export * as Size2 from "./Size2.ts"
 export * as SpatialGrid from "./SpatialGrid.ts"
 export * as Vec2 from "./Vec2.ts"

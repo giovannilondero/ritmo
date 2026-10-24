@@ -100,6 +100,44 @@ describe("host events and pause gates", () => {
     expect(renderLog).toEqual([[], [5], [], [], []])
   })
 
+  it("keeps a host event for a reader that first runs after other schedules ticked", () => {
+    const runtime = make()
+    const seen: Array<{ values: ReadonlyArray<number>; lagged: boolean }> = []
+    const reader = Game.System("Host/FirstRunLate", { events: { ping: Game.System.readEvent(Ping) } }, ({ events }) => {
+      seen.push({ values: events.ping.all(), lagged: events.ping.lagged() })
+    })
+    runtime.send(Ping, 6)
+    for (let index = 0; index < 4; index++) runtime.tick(Game.Schedule())
+    runtime.tick(Game.Schedule(reader))
+    runtime.tick(Game.Schedule(reader))
+    expect(seen).toEqual([{ values: [6], lagged: false }, { values: [], lagged: false }])
+  })
+
+  it("drops a host event, once its first reader has read it, for a reader that runs later", () => {
+    const runtime = make()
+    const firstLog: Array<ReadonlyArray<number>> = []
+    const laterLog: Array<ReadonlyArray<number>> = []
+    runtime.send(Ping, 7)
+    runtime.tick(Game.Schedule(read("Host/First", firstLog)))
+    for (let index = 0; index < 3; index++) runtime.tick(Game.Schedule())
+    runtime.tick(Game.Schedule(read("Host/Later", laterLog)))
+    expect(firstLog).toEqual([[7]])
+    expect(laterLog).toEqual([[]])
+  })
+
+  it("caps host events waiting for a first reader at the stream capacity", () => {
+    const runtime = make()
+    const seen: Array<{ count: number; first: number | undefined }> = []
+    const reader = Game.System("Host/FirstRunCapped", { events: { ping: Game.System.readEvent(Ping) } }, ({ events }) => {
+      const values = events.ping.all()
+      seen.push({ count: values.length, first: values[0] })
+    })
+    for (let value = 0; value <= Runtime.streamCapacity; value++) runtime.send(Ping, value)
+    runtime.tick(Game.Schedule())
+    runtime.tick(Game.Schedule(reader))
+    expect(seen).toEqual([{ count: Runtime.streamCapacity, first: 1 }])
+  })
+
   it("rejects unknown descriptors and sends from inside a tick, including trace callbacks", () => {
     const runtime = make()
     const Unknown = Descriptor.Event<number>()("Host/Unknown")

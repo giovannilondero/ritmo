@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type * as Entity from "@typeonce/ritmo/Entity"
 
-const Health = Descriptor.Component<number>()("Pages/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("Pages/Health")
 const Position = Descriptor.Component<{ readonly x: number }>()("Pages/Position")
 const Game = Schema.bind(Schema.fragment({ components: { Health, Position } }))
 

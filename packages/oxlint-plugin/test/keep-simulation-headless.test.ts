@@ -18,6 +18,8 @@ tester.run("keep-simulation-headless", rule, {
   invalid: [
     { code: "const muted = localStorage.getItem(\"muted\") === \"1\"", errors: [{ messageId: "io", data: { name: "localStorage" } }] },
     { code: "const data = await fetch(url)", errors: [{ messageId: "io", data: { name: "fetch" } }] },
+    { code: "const socket = new WebSocket(url)", errors: [{ messageId: "network", data: { name: "WebSocket" } }] },
+    { code: "const peer = new RTCPeerConnection()", errors: [{ messageId: "network", data: { name: "RTCPeerConnection" } }] },
     { code: "const wide = window.innerWidth > 800", errors: [{ messageId: "page", data: { name: "window" } }] },
     { code: "document.title = score.toString()", errors: [{ messageId: "page", data: { name: "document" } }] },
     { code: "if (matchMedia(\"(prefers-reduced-motion)\").matches) skip()", errors: [{ messageId: "page", data: { name: "matchMedia" } }] },

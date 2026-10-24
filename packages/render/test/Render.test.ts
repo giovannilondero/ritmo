@@ -167,7 +167,7 @@ describe("@typeonce/ritmo-render", () => {
   })
 
   it("re-applies nodes when a redrawOn component changes, once per entity", () => {
-    const Frame = Descriptor.Component<number>()("RenderTest/Frame", { columns: "number" })
+    const Frame = Descriptor.Component<number>()("RenderTest/Frame")
     const Animated = Schema.bind(Schema.fragment({ components: { Position, Sprite, Frame } }))
     const layer = new FakeLayer()
     const applied: Array<string> = []

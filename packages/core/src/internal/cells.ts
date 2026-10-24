@@ -10,7 +10,7 @@ import * as Result from "../Result.ts"
 import type { Construction } from "./schema.ts"
 import { emptyStates } from "./states.ts"
 import type { EntityRecord, Page, World } from "./world.ts"
-import { ABSENT, checkNumber, PAGE_MASK } from "./world.ts"
+import { ABSENT, beforeNumbersOf, holdsNumber, numbersOf, PAGE_MASK, PRESENT } from "./world.ts"
 
 /**
  * Validation behavior shared by every writable cell.
@@ -109,7 +109,11 @@ const invalid = (record: EntityRecord, ordinal: number, value: unknown): never =
  * write to a slot keeps its old value, and commit stamps what changed. A slot without a
  * value means the match outlived its entity's component, and a stamp from
  * another run means it outlived its run: the first is the more specific cause.
+ * A number goes unboxed into the page's `numbers`, so writing one allocates nothing.
  */
+// `typeof` first: an object or string value skips the comparison with the imported marker.
+const isPresent = (value: unknown): boolean => typeof value === "symbol" && value === PRESENT
+
 const write = (world: World, page: Page, slot: number, value: unknown, record: EntityRecord, ordinal: number, stamp: Stamp): void => {
   const values = page.values
   const current = values[slot]
@@ -123,19 +127,36 @@ const write = (world: World, page: Page, slot: number, value: unknown, record: E
   const bit = 1 << (slot & 31)
   if ((saved[word]! & bit) === 0) {
     saved[word] = saved[word]! | bit
-    page.before![slot] = current
+    if (isPresent(current)) {
+      beforeNumbersOf(page)[slot] = page.numbers[slot]!
+    } else {
+      page.before![slot] = current
+      page.savedObjects = true
+    }
   }
-  values[slot] = value
+  if (typeof value === "number") {
+    if (isPresent(current)) {
+      page.numbers[slot] = value
+    } else {
+      numbersOf(page)[slot] = value
+      values[slot] = PRESENT
+    }
+  } else {
+    // A saved number replaced by another value moves to `before`: a slot saved as a number still holds one.
+    if (isPresent(current) && isPresent(page.before![slot])) {
+      page.before![slot] = page.beforeNumbers![slot]
+      page.savedObjects = true
+    }
+    values[slot] = value
+  }
 }
 
 /**
- * Writes a number column through a cell: the same checks and transaction path
- * as {@link write}, on the page's `numbers`.
+ * {@link write} for a cell made over a number: a number written over a
+ * number stays in `numbers`, and every other write takes the general path.
  */
-const writeNumber = (world: World, page: Page, slot: number, value: number, record: EntityRecord, ordinal: number, stamp: Stamp): void => {
-  const present = page.values[slot]
-  if (present === ABSENT || !stamp.live) invalid(record, ordinal, present)
-  if (typeof value !== "number") checkNumber(record.nameAt(ordinal), value)
+const writeNumber = (world: World, page: Page, slot: number, value: unknown, record: EntityRecord, ordinal: number, stamp: Stamp): void => {
+  if (page.values[slot] !== PRESENT || typeof value !== "number" || !stamp.live) return write(world, page, slot, value, record, ordinal, stamp)
   const transaction = world.transactionState
   if (!transaction.active) return world.writeOutsideTransaction(page, slot, value)
   if (page.savedIn !== transaction.id) world.touchPage(page)
@@ -149,6 +170,24 @@ const writeNumber = (world: World, page: Page, slot: number, value: number, reco
   }
   numbers[slot] = value
 }
+
+/**
+ * A cell read off the hot path: the slot holds a marker (`PRESENT` for a
+ * number in `numbers`, `ABSENT`) or a symbol value, or the match is from
+ * another run. The hot path is one `typeof` check: both markers are symbols.
+ */
+const readMarked = (page: Page, slot: number, record: EntityRecord, ordinal: number, stamp: Stamp): unknown => {
+  const value = page.values[slot]
+  if (value === ABSENT || !stamp.live) return invalid(record, ordinal, value)
+  return value === PRESENT ? page.numbers[slot] : value
+}
+
+/*
+ * Cells come in two classes per access, picked by the slot's value when the
+ * cell is made: one over a number, one over any other value. Both read and
+ * write every value, so a slot that changes kind stays correct; the split
+ * keeps each class's hot path seeing one kind, so V8 reads numbers unboxed.
+ */
 
 /** The entity's page of a component and its slot there: where its cells read. */
 const pageOf = (world: World, record: EntityRecord, ordinal: number): Page => world.pageFor(ordinal, record.id)
@@ -170,9 +209,16 @@ class ComponentReadCell {
 
   get(): unknown {
     const value = this.page.values[this.slot]
-    // One branch on the hot path; `invalid` names the misuse.
-    if (value === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, value)
-    return value
+    // One check on the hot path; `readMarked` reads numbers and names misuse.
+    if (typeof value !== "symbol" && this.stamp.live) return value
+    return readMarked(this.page, this.slot, this.record, this.ordinal, this.stamp)
+  }
+}
+
+class NumberReadCell extends ComponentReadCell {
+  override get(): unknown {
+    if (this.page.values[this.slot] === PRESENT && this.stamp.live) return this.page.numbers[this.slot]
+    return readMarked(this.page, this.slot, this.record, this.ordinal, this.stamp)
   }
 }
 
@@ -196,13 +242,24 @@ class ComponentWriteCell extends WriteCellBase<unknown> {
 
   get(): unknown {
     const value = this.page.values[this.slot]
-    // One branch on the hot path; `invalid` names the misuse.
-    if (value === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, value)
-    return value
+    // One check on the hot path; `readMarked` reads numbers and names misuse.
+    if (typeof value !== "symbol" && this.stamp.live) return value
+    return readMarked(this.page, this.slot, this.record, this.ordinal, this.stamp)
   }
 
   set(value: unknown): void {
     write(this.world, this.page, this.slot, value, this.record, this.ordinal, this.stamp)
+  }
+}
+
+class NumberWriteCell extends ComponentWriteCell {
+  override get(): unknown {
+    if (this.page.values[this.slot] === PRESENT && this.stamp.live) return this.page.numbers[this.slot]
+    return readMarked(this.page, this.slot, this.record, this.ordinal, this.stamp)
+  }
+
+  override set(value: unknown): void {
+    writeNumber(this.world, this.page, this.slot, value, this.record, this.ordinal, this.stamp)
   }
 }
 
@@ -271,89 +328,6 @@ class EntityStateWriteCell {
   }
 }
 
-/** The read cell of a number column: `get()` returns the number, nothing is allocated. */
-class NumberReadCell {
-  readonly page: Page
-  readonly slot: number
-  readonly ordinal: number
-  readonly record: EntityRecord
-  readonly stamp: Stamp
-
-  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
-    this.page = pageOf(world, record, ordinal)
-    this.slot = record.id & PAGE_MASK
-    this.ordinal = ordinal
-    this.record = record
-    this.stamp = stamp
-  }
-
-  get(): number {
-    const page = this.page
-    const present = page.values[this.slot]
-    if (present === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, present)
-    return page.numbers[this.slot]!
-  }
-}
-
-class NumberWriteCell extends WriteCellBase<number> {
-  readonly page: Page
-  readonly slot: number
-  readonly ordinal: number
-  readonly record: EntityRecord
-  readonly world: World
-  readonly stamp: Stamp
-
-  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
-    super()
-    this.page = pageOf(world, record, ordinal)
-    this.slot = record.id & PAGE_MASK
-    this.ordinal = ordinal
-    this.record = record
-    this.world = world
-    this.stamp = stamp
-  }
-
-  get(): number {
-    const page = this.page
-    const present = page.values[this.slot]
-    if (present === ABSENT || !this.stamp.live) return invalid(this.record, this.ordinal, present)
-    return page.numbers[this.slot]!
-  }
-
-  set(value: number): void {
-    writeNumber(this.world, this.page, this.slot, value, this.record, this.ordinal, this.stamp)
-  }
-}
-
-class OptionalNumberCell {
-  readonly page: Page
-  readonly slot: number
-  readonly name: string
-  readonly stamp: Stamp
-
-  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
-    this.page = pageOf(world, record, ordinal)
-    this.slot = record.id & PAGE_MASK
-    this.name = record.nameAt(ordinal)
-    this.stamp = stamp
-  }
-
-  get present(): boolean {
-    if (!this.stamp.live) staleRun(this.name)
-    return this.page.values[this.slot] !== ABSENT
-  }
-
-  get(): number | typeof ABSENT {
-    if (!this.stamp.live) staleRun(this.name)
-    return this.page.values[this.slot] === ABSENT ? ABSENT : this.page.numbers[this.slot]!
-  }
-
-  value(): number | undefined {
-    if (!this.stamp.live) staleRun(this.name)
-    return this.page.values[this.slot] === ABSENT ? undefined : this.page.numbers[this.slot]!
-  }
-}
-
 class OptionalComponentCell {
   readonly page: Page
   readonly slot: number
@@ -374,13 +348,29 @@ class OptionalComponentCell {
 
   get(): unknown {
     if (!this.stamp.live) staleRun(this.name)
-    return this.page.values[this.slot]
+    const value = this.page.values[this.slot]
+    return value === PRESENT ? this.page.numbers[this.slot] : value
   }
 
   value(): unknown {
     if (!this.stamp.live) staleRun(this.name)
     const value = this.page.values[this.slot]
-    return value === ABSENT ? undefined : value
+    return value === ABSENT ? undefined : value === PRESENT ? this.page.numbers[this.slot] : value
+  }
+}
+
+/** {@link OptionalComponentCell} over a number: the same reads, with their own type feedback. */
+class OptionalNumberCell extends OptionalComponentCell {
+  override get(): unknown {
+    if (!this.stamp.live) staleRun(this.name)
+    const value = this.page.values[this.slot]
+    return value === PRESENT ? this.page.numbers[this.slot] : value
+  }
+
+  override value(): unknown {
+    if (!this.stamp.live) staleRun(this.name)
+    const value = this.page.values[this.slot]
+    return value === PRESENT ? this.page.numbers[this.slot] : value === ABSENT ? undefined : value
   }
 }
 
@@ -420,7 +410,9 @@ class StoreWriteCell extends WriteCellBase<unknown> {
 }
 
 export const componentRead = (world: World, record: EntityRecord, ordinal: number, stamp: Stamp): { get(): unknown } =>
-  world.storeOf(ordinal).numeric ? new NumberReadCell(world, record, ordinal, stamp) : new ComponentReadCell(world, record, ordinal, stamp)
+  holdsNumber(pageOf(world, record, ordinal), record.id & PAGE_MASK)
+    ? new NumberReadCell(world, record, ordinal, stamp)
+    : new ComponentReadCell(world, record, ordinal, stamp)
 
 export const componentWrite = (
   world: World,
@@ -431,14 +423,16 @@ export const componentWrite = (
   entityState: EntityStatePlan | undefined
 ): object => {
   if (entityState !== undefined && constructor !== undefined) return new EntityStateWriteCell(world, record, ordinal, stamp, constructor, entityState)
-  const cell: WriteCellBase<any> = world.storeOf(ordinal).numeric
+  const cell = holdsNumber(pageOf(world, record, ordinal), record.id & PAGE_MASK)
     ? new NumberWriteCell(world, record, ordinal, stamp)
     : new ComponentWriteCell(world, record, ordinal, stamp)
   return constructor === undefined ? cell : withConstructor(cell, constructor)
 }
 
 export const componentOptional = (world: World, record: EntityRecord, ordinal: number, stamp: Stamp): { readonly present: boolean; get(): unknown; value(): unknown } =>
-  world.storeOf(ordinal).numeric ? new OptionalNumberCell(world, record, ordinal, stamp) : new OptionalComponentCell(world, record, ordinal, stamp)
+  holdsNumber(pageOf(world, record, ordinal), record.id & PAGE_MASK)
+    ? new OptionalNumberCell(world, record, ordinal, stamp)
+    : new OptionalComponentCell(world, record, ordinal, stamp)
 
 export const storeRead = (store: Map<symbol, unknown>, key: symbol): { get(): unknown } =>
   new StoreReadCell(store, key)

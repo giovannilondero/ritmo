@@ -34,7 +34,7 @@ const layer = () => {
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("RenderBench/Position")
 const Previous = Descriptor.Component<{ x: number; y: number }>()("RenderBench/Previous")
-const Frame = Descriptor.Component<number>()("RenderBench/Frame", { columns: "number" })
+const Frame = Descriptor.Component<number>()("RenderBench/Frame")
 const Sprite = Descriptor.Component<{ texture: string }>()("RenderBench/Sprite")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<Node>>()("RenderBench/Nodes")
 const Clock = Descriptor.Service<{ alpha: number }>()("RenderBench/Clock")

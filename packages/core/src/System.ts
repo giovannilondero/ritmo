@@ -316,9 +316,11 @@ export type EventWrite<D extends Descriptor<"event", string, any>> = {
  *
  * Events are kept until every system that reads them has run, so a reader in
  * a schedule ticked less often than the emitter's (a fixed update below the
- * render rate) still receives all of them. Events nobody has read yet are
- * kept for the current and previous `runtime.tick(...)` call; a reader's
- * first run sees whatever is still kept. A system skipped by its run
+ * render rate) still receives all of them. Events a system emitted that no
+ * reader has read yet are kept for the current and previous
+ * `runtime.tick(...)` call; events the host sent with `runtime.send` wait for
+ * the first reader to run. A reader's first run sees whatever is still kept.
+ * A system skipped by its run
  * conditions discards the events published meanwhile, but keeps its
  * change-detection position: `added`/`changed` filters and
  * `removed`/`despawned` reads still show everything since its previous
@@ -807,7 +809,8 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
   /**
    * Returns every current match, in spawn order (ascending entity id), so
    * iteration is the same on every run and platform. The matches are valid
-   * during this run only (see {@link QueryMatch}).
+   * during this run only (see {@link QueryMatch}, which also types a helper
+   * that takes them).
    */
   each(): ReadonlyArray<QueryMatch<S, Q>>
   /**

@@ -5,7 +5,7 @@ import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ readonly x: number }>()("Tick/Position")
 const Enemy = Descriptor.Component<{}>()("Tick/Enemy")
-const Health = Descriptor.Component<number>()("Tick/Health", { columns: "number" })
+const Health = Descriptor.Component<number>()("Tick/Health")
 const Stunned = Descriptor.Component<{ readonly seconds: number }>()("Tick/Stunned")
 const Frozen = Descriptor.Component<{}>()("Tick/Frozen")
 const Hit = Descriptor.Event<{ readonly amount: number }>()("Tick/Hit")

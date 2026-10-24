@@ -26,11 +26,20 @@
  *
  * Restoring despawns every current entity and spawns the saved ones with their
  * original ids, so change detection and renderer sync see a restore as normal
- * despawns and spawns. Pending commands and events emitted by systems are
+ * despawns and spawns. The next id is the save's too: the same save restored
+ * in two runtimes allocates the same ids from then on, whatever each held
+ * before (peers of a networked game rely on it). Pending commands and events emitted by systems are
  * dropped; events the host sent with `runtime.send` and no system has read
  * yet are kept, since they are input that has not been handled. Transient
  * components are absent from restored entities; transient resources keep their
  * current value.
+ *
+ * A save is not a rewind: to go back a few ticks in memory and run them
+ * again (rollback netcode, prediction), use `runtime.checkpoint` and
+ * `runtime.rewind` (see the `Checkpoint` module), which keep ids, queued
+ * work, and every reader's position. To compare worlds, use
+ * `runtime.checksum()`: a snapshot's JSON lists an entity's components in
+ * the order they were added, so equal worlds can serialize differently.
  *
  * When the game's save format changes, give the runtime its migrations
  * (`Game.Runtime.make({ saves: Snapshot.migrations(...) })`): saves carry a

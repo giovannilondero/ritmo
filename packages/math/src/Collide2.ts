@@ -1,10 +1,12 @@
 /**
- * Continuous collision for moving circles against static boxes and circles.
+ * Continuous collision for moving circles against static walls (axis-aligned
+ * boxes and line segments) and circles.
  *
- * Movement is swept, not sampled: `sweepCircleBox` finds the first time of
+ * Movement is swept, not sampled: `sweepCircle` finds the first time of
  * contact along the whole displacement, so fast movers (dashes, projectiles)
  * cannot skip over a wall between two steps. `moveCircle` stops at walls and
- * slides along them.
+ * slides along them. Walls are passed as {@link Walls}: `Box2` boxes for a
+ * grid of rooms, `Segment2` segments for walls at any angle, or both.
  *
  * Every query returns `undefined` for "no contact", never throws, and
  * allocates only its result. Inputs are expected to be finite.
@@ -12,7 +14,7 @@
  * @example
  * ```ts
  * // Move a body by its velocity this step, sliding along the walls.
- * const moved = Collide2.moveCircle(position, Vec2.scale(velocity, dt), radius, walls)
+ * const moved = Collide2.moveCircle(position, Vec2.scale(velocity, dt), radius, { boxes: walls })
  * if (moved.blocked) bumpedWall()
  * ```
  *
@@ -30,6 +32,7 @@
  */
 import type { Box2 } from "./Box2.ts"
 import * as Ops from "./Ops.ts"
+import type { Segment2 } from "./Segment2.ts"
 import type { Vec2 } from "./Vec2.ts"
 
 /**
@@ -40,10 +43,26 @@ import type { Vec2 } from "./Vec2.ts"
 export interface Hit {
   /** Fraction of the displacement travelled before contact, in [0, 1]. */
   readonly time: number
-  /** Unit contact normal, pointing away from the box. */
+  /** Unit contact normal, pointing away from the wall. */
   readonly nx: number
   readonly ny: number
 }
+
+/**
+ * The static walls a circle collides with: axis-aligned `boxes`, line
+ * `segments`, or both. A missing list is no walls of that kind.
+ *
+ * @category Collision Types
+ */
+export interface Walls {
+  readonly boxes?: ReadonlyArray<Box2>
+  readonly segments?: ReadonlyArray<Segment2>
+  /** Not a setting: an array of walls is passed by kind. */
+  readonly length?: "pass walls by kind: { boxes: walls } or { segments: walls }"
+}
+
+const noBoxes: ReadonlyArray<Box2> = []
+const noSegments: ReadonlyArray<Segment2> = []
 
 /**
  * Where a moved circle ended up.
@@ -170,7 +189,61 @@ export const sweepCircleBox = (origin: Vec2, delta: Vec2, radius: number, box: B
 }
 
 /**
- * First contact of a moving circle with any of `boxes`, or `undefined`.
+ * First contact of a circle of `radius` at `origin` moving by `delta` with
+ * `segment`, or `undefined`. Contact is computed against the segment
+ * thickened by the radius with round ends (the exact Minkowski sum), so the
+ * circle slides along it and around its ends. A circle that starts exactly
+ * touching it and moves into it hits at time 0. A circle that starts
+ * overlapping the segment is not reported; resolve it with `pushOut` first.
+ *
+ * @category Queries
+ */
+export const sweepCircleSegment = (origin: Vec2, delta: Vec2, radius: number, segment: Segment2): Hit | undefined => {
+  const ex = segment.bx - segment.ax
+  const ey = segment.by - segment.ay
+  const lengthSquared = ex * ex + ey * ey
+  if (lengthSquared > 1e-12) {
+    // The flat side facing the circle, `radius` away from the segment's line.
+    const length = Math.sqrt(lengthSquared)
+    let nx = -ey / length
+    let ny = ex / length
+    let side = (origin.x - segment.ax) * nx + (origin.y - segment.ay) * ny
+    if (side < 0) {
+      nx = -nx
+      ny = -ny
+      side = -side
+    }
+    if (side < radius) {
+      // Beside the line: overlapping when level with the segment, otherwise
+      // only its ends are in the way.
+      const along = ((origin.x - segment.ax) * ex + (origin.y - segment.ay) * ey) / lengthSquared
+      if (along >= 0 && along <= 1) return undefined
+    } else {
+      const into = delta.x * nx + delta.y * ny
+      if (into < 0) {
+        // `0 +` turns a -0 (touching at the start) into 0.
+        const time = 0 + (radius - side) / into
+        if (time <= 1) {
+          const along = ((origin.x + delta.x * time - segment.ax) * ex + (origin.y + delta.y * time - segment.ay) * ey) / lengthSquared
+          // The thickened segment is convex, so entering through its flat side is the first contact.
+          if (along >= 0 && along <= 1) return { time, nx, ny }
+        }
+      }
+    }
+  }
+  const atA = rayCircle(origin.x, origin.y, delta.x, delta.y, segment.ax, segment.ay, radius)
+  const atB = lengthSquared > 1e-12 ? rayCircle(origin.x, origin.y, delta.x, delta.y, segment.bx, segment.by, radius) : undefined
+  if (atA === undefined && atB === undefined) return undefined
+  const fromA = atB === undefined || (atA !== undefined && atA <= atB)
+  const time = fromA ? atA! : atB
+  const cx = origin.x + delta.x * time - (fromA ? segment.ax : segment.bx)
+  const cy = origin.y + delta.y * time - (fromA ? segment.ay : segment.by)
+  const length = Ops.hypot(cx, cy) || 1
+  return { time, nx: cx / length, ny: cy / length }
+}
+
+/**
+ * First contact of a moving circle with any of `walls`, or `undefined`.
  *
  * With a `radius` of 0 the circle is a point and the sweep is a segment, so
  * this is also line of sight: `undefined` means nothing blocks the line from
@@ -179,15 +252,19 @@ export const sweepCircleBox = (origin: Vec2, delta: Vec2, radius: number, box: B
  *
  * @example
  * ```ts
- * const sees = Collide2.sweepCircleBoxes(eye, Vec2.subtract(target, eye), 0, walls) === undefined
+ * const sees = Collide2.sweepCircle(eye, Vec2.subtract(target, eye), 0, { boxes: walls }) === undefined
  * ```
  *
  * @category Queries
  */
-export const sweepCircleBoxes = (origin: Vec2, delta: Vec2, radius: number, boxes: ReadonlyArray<Box2>): Hit | undefined => {
+export const sweepCircle = (origin: Vec2, delta: Vec2, radius: number, walls: Walls): Hit | undefined => {
   let first: Hit | undefined
-  for (const box of boxes) {
+  for (const box of walls.boxes ?? noBoxes) {
     const hit = sweepCircleBox(origin, delta, radius, box)
+    if (hit !== undefined && (first === undefined || hit.time < first.time)) first = hit
+  }
+  for (const segment of walls.segments ?? noSegments) {
+    const hit = sweepCircleSegment(origin, delta, radius, segment)
     if (hit !== undefined && (first === undefined || hit.time < first.time)) first = hit
   }
   return first
@@ -215,15 +292,17 @@ export const sweepCircleCircle = (
 }
 
 /**
- * Pushes a circle out of every box it overlaps, in order, leaving `skin`
- * between it and each wall. Returns the corrected center.
+ * Pushes a circle out of every wall it overlaps, boxes first and then
+ * segments, each in order, leaving `skin` between it and each wall. Returns
+ * the corrected center. A center inside a box leaves through the nearest
+ * side; a center exactly on a segment leaves along the segment's left normal.
  *
  * @category Movement
  */
-export const pushOut = (center: Vec2, radius: number, boxes: ReadonlyArray<Box2>, skin: number = defaultSkin): Vec2 => {
+export const pushOut = (center: Vec2, radius: number, walls: Walls, skin: number = defaultSkin): Vec2 => {
   let x = center.x
   let y = center.y
-  for (const box of boxes) {
+  for (const box of walls.boxes ?? noBoxes) {
     const closestX = Math.max(box.minX, Math.min(x, box.maxX))
     const closestY = Math.max(box.minY, Math.min(y, box.maxY))
     const dx = x - closestX
@@ -247,6 +326,31 @@ export const pushOut = (center: Vec2, radius: number, boxes: ReadonlyArray<Box2>
       else y = box.maxY + radius + skin
     }
   }
+  for (const segment of walls.segments ?? noSegments) {
+    const ex = segment.bx - segment.ax
+    const ey = segment.by - segment.ay
+    const lengthSquared = ex * ex + ey * ey
+    const along = lengthSquared > 1e-12 ? Math.max(0, Math.min(1, ((x - segment.ax) * ex + (y - segment.ay) * ey) / lengthSquared)) : 0
+    const closestX = segment.ax + ex * along
+    const closestY = segment.ay + ey * along
+    const dx = x - closestX
+    const dy = y - closestY
+    const distanceSquared = dx * dx + dy * dy
+    if (distanceSquared >= radius * radius) continue
+    if (distanceSquared > 1e-12) {
+      const distance = Math.sqrt(distanceSquared)
+      x = closestX + (dx / distance) * (radius + skin)
+      y = closestY + (dy / distance) * (radius + skin)
+    } else if (lengthSquared > 1e-12) {
+      // Center on the segment: leave along its left normal.
+      const length = Math.sqrt(lengthSquared)
+      x = closestX - (ey / length) * (radius + skin)
+      y = closestY + (ex / length) * (radius + skin)
+    } else {
+      // Center on a round post: leave along +x.
+      x = closestX + radius + skin
+    }
+  }
   return { x, y }
 }
 
@@ -254,19 +358,46 @@ export const pushOut = (center: Vec2, radius: number, boxes: ReadonlyArray<Box2>
  * Moves a circle by `delta`, stopping at walls and sliding along them (up to
  * four contacts per call). The whole path is swept, so no displacement can
  * tunnel through a wall. A circle that starts inside a wall is pushed out
- * first. A circle meeting a box's corner dead-on goes around it rather than
- * stopping against it.
+ * first. A circle meeting a box's corner or a segment's end dead-on goes
+ * around it rather than stopping against it.
+ *
+ * @example
+ * ```ts
+ * // A map traced from survey data: every wall is a segment.
+ * const moved = Collide2.moveCircle(position, delta, radius, { segments: nearbyWalls })
+ * ```
  *
  * @category Movement
  */
-export const moveCircle = (start: Vec2, delta: Vec2, radius: number, boxes: ReadonlyArray<Box2>, skin: number = defaultSkin): MoveResult => {
-  let position = pushOut(start, radius, boxes, skin)
+export const moveCircle = (start: Vec2, delta: Vec2, radius: number, walls: Walls, skin: number = defaultSkin): MoveResult => {
+  let position = pushOut(start, radius, walls, skin)
   let rx = delta.x
   let ry = delta.y
   let blocked = false
   for (let iteration = 0; iteration < 4; iteration++) {
     if (rx * rx + ry * ry < 1e-12) break
-    const hit = sweepCircleBoxes(position, { x: rx, y: ry }, radius, boxes)
+    const step = { x: rx, y: ry }
+    // The first contact, and whether it is round (a box's corner or a
+    // segment's end) rather than a flat side.
+    let hit: Hit | undefined
+    let round = false
+    for (const box of walls.boxes ?? noBoxes) {
+      const found = sweepCircleBox(position, step, radius, box)
+      if (found === undefined || (hit !== undefined && found.time >= hit.time)) continue
+      hit = found
+      round = found.nx !== 0 && found.ny !== 0
+    }
+    for (const segment of walls.segments ?? noSegments) {
+      const found = sweepCircleSegment(position, step, radius, segment)
+      if (found === undefined || (hit !== undefined && found.time >= hit.time)) continue
+      hit = found
+      const ex = segment.bx - segment.ax
+      const ey = segment.by - segment.ay
+      const lengthSquared = ex * ex + ey * ey
+      const along = found.nx * ex + found.ny * ey
+      // A flat side's normal is perpendicular to the segment.
+      round = lengthSquared < 1e-12 || along * along > 1e-18 * lengthSquared
+    }
     if (hit === undefined) {
       position = { x: position.x + rx, y: position.y + ry }
       break
@@ -284,10 +415,10 @@ export const moveCircle = (start: Vec2, delta: Vec2, radius: number, boxes: Read
     if (into < 0) {
       rx -= into * hit.nx
       ry -= into * hit.ny
-      // Dead-on into a rounded corner (as an exact diagonal meets an
-      // axis-aligned box) nothing is left to slide along: go around the
-      // corner instead of stopping against it.
-      if (hit.nx !== 0 && hit.ny !== 0 && rx * rx + ry * ry < 1e-12 * into * into) {
+      // Dead-on into a rounded corner or end (as an exact diagonal meets an
+      // axis-aligned box) nothing is left to slide along: go around it
+      // instead of stopping against it.
+      if (round && rx * rx + ry * ry < 1e-12 * into * into) {
         const side = rx * -hit.ny + ry * hit.nx < 0 ? -1 : 1
         rx = -hit.ny * -into * side
         ry = hit.nx * -into * side

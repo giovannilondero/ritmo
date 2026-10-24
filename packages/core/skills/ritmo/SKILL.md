@@ -26,6 +26,7 @@ Read the playbook for the change before writing code. A change that spans severa
 | Something behaves wrong | [`playbooks/bug-fix.md`](playbooks/bug-fix.md) |
 | Moving or splitting code without changing behaviour | [`playbooks/refactor.md`](playbooks/refactor.md) |
 | New state, saves, or a Ritmo upgrade | [`playbooks/state-and-upgrades.md`](playbooks/state-and-upgrades.md) |
+| Online multiplayer, rollback, or prediction | [`playbooks/netcode.md`](playbooks/netcode.md) |
 | Schemas in a game that uses Effect | [`playbooks/effect.md`](playbooks/effect.md) |
 
 ## Validating and saving values
@@ -59,6 +60,6 @@ Ritmo has no validators of its own. Every value it checks or saves is described 
 - Does any UI or render code change saved world state?
 - Did adding this id produce a type error everywhere it is needed?
 - What happens to this value on restore?
-- Can a value I store describe something that cannot happen?
+- Can a value I store describe something that cannot happen? A nullable or kind-only field next to a `kind` or `phase` field, or a system that returns early on a mode field, says it can.
 - Did I extend an existing piece, or copy it?
 - What check fails if someone breaks this tomorrow?

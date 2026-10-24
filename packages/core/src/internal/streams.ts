@@ -9,7 +9,9 @@
  * Retention: a batch is kept for at least the current and previous frame, and
  * beyond that until every registered reader of its key has read past it. So a
  * system in a schedule ticked less often than others (a fixed update driven
- * at a lower rate than rendering) still receives everything. A reader that
+ * at a lower rate than rendering) still receives everything. Readers register
+ * on their first run, so a host message (`surviveRestore`) of a key no reader
+ * has registered for yet is kept for the first one. A reader that
  * stops running would keep batches alive forever, so each key also has a
  * capacity; past it the oldest batches are dropped and the readers that had
  * not seen them report `lagged`.
@@ -22,6 +24,18 @@ interface Log<T> {
   size: number
   /** Newest tick of any dropped batch. */
   droppedThrough: number
+  /** How many batches were ever dropped from the front: the position of `batches[0]` among all batches. */
+  base: number
+  /**
+   * While a checkpoint is held: the batches dropped since the oldest one was
+   * taken, from position `grave.base`, so a rewind can put them back.
+   */
+  grave: { readonly ticks: Array<number>; readonly batches: Array<ReadonlyArray<T>>; readonly surviveRestore: Array<boolean>; base: number } | undefined
+}
+
+/** Where each stream's log stood when a checkpoint was taken. */
+export interface StreamMark {
+  readonly logs: ReadonlyMap<symbol, { readonly base: number; readonly end: number; readonly droppedThrough: number }>
 }
 
 /**
@@ -63,6 +77,16 @@ export interface Streams<T> {
   retract(tick: number): void
   /** Clears simulation messages; unread host messages survive world restore. */
   clear(): void
+  /** Marks where every log stands; until the mark is released, dropped batches are kept for {@link rewind}. */
+  mark(): StreamMark
+  /**
+   * Puts every log back to what it held at `mark`. Host messages published
+   * after `tick` (the mark's tick) are kept: the host sent them, and nothing
+   * re-sends them.
+   */
+  rewind(mark: StreamMark, tick: number): void
+  /** Forgets the dropped batches no mark in `held` (the marks still held) can bring back. */
+  release(held: ReadonlyArray<StreamMark>): void
   /** Every key with retained entries or registered readers. */
   inspect(): ReadonlyArray<StreamInspection>
   readonly capacity: number
@@ -86,7 +110,7 @@ export const make = <T>(capacity: number): Streams<T> => {
   const logFor = (key: symbol): Log<T> => {
     let log = logs.get(key)
     if (log === undefined) {
-      log = { ticks: [], batches: [], surviveRestore: [], size: 0, droppedThrough: 0 }
+      log = { ticks: [], batches: [], surviveRestore: [], size: 0, droppedThrough: 0, base: 0, grave: undefined }
       logs.set(key, log)
     }
     return log
@@ -96,9 +120,18 @@ export const make = <T>(capacity: number): Streams<T> => {
     if (count === 0) return
     for (let index = 0; index < count; index++) log.size -= log.batches[index]!.length
     log.droppedThrough = Math.max(log.droppedThrough, log.ticks[count - 1]!)
+    const grave = log.grave
+    if (grave !== undefined) {
+      for (let index = 0; index < count; index++) {
+        grave.ticks.push(log.ticks[index]!)
+        grave.batches.push(log.batches[index]!)
+        grave.surviveRestore.push(log.surviveRestore[index]!)
+      }
+    }
     log.ticks.splice(0, count)
     log.batches.splice(0, count)
     log.surviveRestore.splice(0, count)
+    log.base += count
   }
 
   return {
@@ -143,7 +176,13 @@ export const make = <T>(capacity: number): Streams<T> => {
         if (cursors !== undefined) {
           for (const cursor of cursors) boundary = Math.min(boundary, cursor.streamLastRun)
         }
-        dropFront(log, firstAfter(log.ticks, boundary))
+        let count = firstAfter(log.ticks, boundary)
+        // No reader has run yet: a host message waits for the first one.
+        if (cursors === undefined || cursors.size === 0) {
+          const host = log.surviveRestore.indexOf(true)
+          if (host !== -1) count = Math.min(count, host)
+        }
+        dropFront(log, count)
         let overflow = 0
         let size = log.size
         while (size > capacity && overflow < log.batches.length) {
@@ -177,8 +216,102 @@ export const make = <T>(capacity: number): Streams<T> => {
           batches,
           surviveRestore: ticks.map(() => true),
           size: batches.reduce((size, batch) => size + batch.length, 0),
-          droppedThrough: log.droppedThrough
+          droppedThrough: log.droppedThrough,
+          base: 0,
+          grave: undefined
         })
+      }
+    },
+    mark() {
+      const marked = new Map<symbol, { readonly base: number; readonly end: number; readonly droppedThrough: number }>()
+      for (const [key, log] of logs) {
+        log.grave ??= { ticks: [], batches: [], surviveRestore: [], base: log.base }
+        marked.set(key, { base: log.base, end: log.base + log.batches.length, droppedThrough: log.droppedThrough })
+      }
+      return { logs: marked }
+    },
+    rewind(mark, tick) {
+      for (const [key, log] of logs) {
+        const kept = mark.logs.get(key)
+        const ticks: Array<number> = []
+        const batches: Array<ReadonlyArray<T>> = []
+        const surviveRestore: Array<boolean> = []
+        if (kept !== undefined) {
+          const grave = log.grave
+          // Batches dropped since the mark come back from the grave, the rest from the log.
+          if (grave !== undefined && kept.base < log.base) {
+            const to = Math.min(kept.end, log.base) - grave.base
+            for (let index = kept.base - grave.base; index < to; index++) {
+              ticks.push(grave.ticks[index]!)
+              batches.push(grave.batches[index]!)
+              surviveRestore.push(grave.surviveRestore[index]!)
+            }
+          }
+          for (let index = Math.max(kept.base, log.base) - log.base; index < kept.end - log.base; index++) {
+            ticks.push(log.ticks[index]!)
+            batches.push(log.batches[index]!)
+            surviveRestore.push(log.surviveRestore[index]!)
+          }
+        }
+        const from = firstAfter(log.ticks, tick)
+        for (let index = from; index < log.ticks.length; index++) {
+          if (!log.surviveRestore[index]) continue
+          ticks.push(log.ticks[index]!)
+          batches.push(log.batches[index]!)
+          surviveRestore.push(true)
+        }
+        if (log.grave !== undefined && kept !== undefined) {
+          // What came back is in the log again.
+          const keep = Math.max(0, kept.base - log.grave.base)
+          log.grave.ticks.length = keep
+          log.grave.batches.length = keep
+          log.grave.surviveRestore.length = keep
+        }
+        log.ticks.length = 0
+        log.batches.length = 0
+        log.surviveRestore.length = 0
+        for (let index = 0; index < ticks.length; index++) {
+          log.ticks.push(ticks[index]!)
+          log.batches.push(batches[index]!)
+          log.surviveRestore.push(surviveRestore[index]!)
+        }
+        log.size = batches.reduce((size, batch) => size + batch.length, 0)
+        if (kept !== undefined) {
+          log.base = kept.base
+          log.droppedThrough = kept.droppedThrough
+        } else {
+          // Every batch of a log made after the mark was published after it.
+          log.base += log.batches.length
+          if (log.grave !== undefined) {
+            log.grave.ticks.length = 0
+            log.grave.batches.length = 0
+            log.grave.surviveRestore.length = 0
+            log.grave.base = log.base
+          }
+        }
+      }
+    },
+    release(held) {
+      for (const [key, log] of logs) {
+        const grave = log.grave
+        if (grave === undefined) continue
+        let from = log.base
+        let marked = false
+        for (const mark of held) {
+          const kept = mark.logs.get(key)
+          if (kept === undefined) continue
+          marked = true
+          from = Math.min(from, kept.base)
+        }
+        if (!marked) {
+          log.grave = held.length === 0 ? undefined : { ticks: [], batches: [], surviveRestore: [], base: log.base }
+          continue
+        }
+        const drop = Math.min(grave.ticks.length, Math.max(0, from - grave.base))
+        grave.ticks.splice(0, drop)
+        grave.batches.splice(0, drop)
+        grave.surviveRestore.splice(0, drop)
+        grave.base += drop
       }
     },
     inspect() {

@@ -213,17 +213,35 @@ script. `<entry>` exports `lintTarget` (see the `Lint` module): it prints
 every lint of the schedules with its fix and exits with 1 on a warning.
 
 ```sh
-ritmo-devtools lint src/simulation.ts
+ritmo-devtools lint src/lint.ts
 ```
+
+Keep the entry beside the simulation, not inside it, when `describe` needs
+host schedules: it is the one module that imports both, so the simulation
+never imports render or audio code. Load the host schedules inside
+`lintTarget`:
+
+```ts
+// src/lint.ts
+import { makeRuntime, setup, update } from "./simulation/index.ts"
+
+export const lintTarget = async () => {
+  const { render } = await import("./render/index.ts")
+  return { runtime: makeRuntime({ debug: { hostClock: HostClock.test() } }), schedules: { setup, update }, describe: { render } }
+}
+```
+
+When nothing needs describing, the simulation's own entry module can export
+`lintTarget` instead.
 
 It also checks that the oxlint simulation rules from
 `@typeonce/oxlint-plugin-ritmo` cover the simulation. Every module that
 importing `<entry>` loads, inside the directory of the `.oxlintrc.json` in the
 working directory and outside `node_modules`, must have
 `ritmo/keep-simulation-headless` on there (overrides apply in order, the last
-match wins; `ignorePatterns` matches are uncovered). Modules imported inside
-`lintTarget` or later (render schedules passed to `describe`) are host code
-and are not checked, nor are type-only imports. A missing config, one with
+match wins; `ignorePatterns` matches are uncovered). The entry itself, and
+modules imported inside `lintTarget` or later (render schedules passed to
+`describe`), are host code and are not checked, nor are type-only imports. A missing config, one with
 `extends`, or one that never turns the rule on prints why the check was
 skipped and does not fail. The check needs Node 22.15 or later.
 
@@ -234,6 +252,24 @@ skipped and does not fail. The check needs Node 22.15 or later.
 The trace shows what systems wrote, not what they read. When a system writes
 a wrong value from correct inputs, the journal narrows the bug to that
 system (it runs, in order, and writes this value) and the rest is its code.
+
+## Desyncs
+
+Peers of a networked game (`@typeonce/ritmo-netcode`) compare checksums of
+confirmed ticks. When they differ, a session made with `keepSnapshots: true`
+fails with `Desynced` carrying its save of that tick, and the other peer's
+carries its own. `Desync.compare` lists what differs, entities by id and
+values by path, in a stable order:
+
+```ts
+console.log(Desync.compare(mine.snapshot, theirs.snapshot))
+// 2 differences (mine -> theirs):
+//   entity 12 Game/Position.x: 40 -> 41
+//   resource Game/Rng: 1730 -> 2210
+```
+
+The first difference is where to look: rerun the match headless and ask a
+`Session` `why` that value changed.
 
 ## Replays
 

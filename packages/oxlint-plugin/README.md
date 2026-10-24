@@ -62,7 +62,7 @@ const started = performance.now()
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, renderer imports | input and data from the host, drawing in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
-| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result | check `.ok` |
+| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` / `rewind(...)` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
 | [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
@@ -124,7 +124,8 @@ The simulation runs in tests, bots, replays, and on servers, where there is no p
 | Reported | Setup instead |
 |---|---|
 | Page globals: `window`, `document`, `navigator`, `matchMedia`, ... | Capture input in the host with `Keyboard`, `Gamepad`, `Pointer`, or `Touch` (merged with `Controls`) from `@typeonce/ritmo-browser` and `InputCapture` into a resource that systems read. Pass page state (size, settings) in with `runtime.send(...)` or a resource. |
-| Host I/O: `localStorage`, `fetch`, `WebSocket`, `location`, ... | Do the I/O in host code and pass the result in with `runtime.send(...)` or a resource. Save and load the world in the host with `runtime.snapshot()` and `runtime.restore(...)`. |
+| Host I/O: `localStorage`, `fetch`, `location`, ... | Do the I/O in host code and pass the result in with `runtime.send(...)` or a resource. Save and load the world in the host with `runtime.snapshot()` and `runtime.restore(...)`. |
+| Connections to other peers: `WebSocket`, `RTCPeerConnection`, `RTCDataChannel` | For online play, run the simulation under a [`@typeonce/ritmo-netcode`](https://github.com/typeonce-dev/ritmo/blob/main/packages/netcode/README.md) session: host code opens the connection and wraps it in a link, and remote input reaches the simulation through `Netcode.seats`, never `runtime.send(...)`. |
 | Renderer and UI imports, types included: `pixi.js`, `three`, `@typeonce/ritmo-render`, `react`, `preact`, ... | Draw from a render schedule in render code: mirror entities into nodes with `RenderSync` and a `NodeRegistry` from `@typeonce/ritmo-render`, and declare renderer services (a node registry) and their types there; renderer nodes stay in the registry, never in components. The schema and simulation systems name no renderer type, so another renderer can replace this one. |
 
 Locals and fields with these names (`term.window`, a `location` parameter) are not globals and are not reported.
@@ -150,21 +151,24 @@ Catches `Infinity`, `-Infinity`, `NaN`, and `Number.POSITIVE_INFINITY` / `NEGATI
 
 ### `ritmo/handle-tick-result`
 
-`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. Dropping either hides the failure.
+`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. So does `runtime.rewind(...)`: a checkpoint the runtime let go of changes nothing, and the ticks meant to run again run on top of the present. Dropping any of them hides the failure.
 
 ```ts
 runtime.tick(update)                                             // reported
 runtime.restore(save)                                            // reported
+runtime.rewind(checkpoint)                                       // reported
 
 // instead
 const ran = runtime.tick(update)
 if (!ran.ok) console.error(ran.error)                            // names the system and why
 const restored = runtime.restore(save)
 if (!restored.ok) showLoadError(restored.error)
+const rewound = runtime.rewind(checkpoint)
+if (!rewound.ok) resync(rewound.error)                           // Released or OtherRuntime
 void runtime.tick(render)                                        // ignored on purpose
 ```
 
-Catches `tick(...)`, `tryTick(...)`, and `restore(...)` used as a statement on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`). Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
+Catches `tick(...)`, `tryTick(...)`, `restore(...)`, and `rewind(...)` used as a statement on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`). Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
 
 ### `ritmo/prefix-descriptor-and-system-names`
 

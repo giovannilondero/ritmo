@@ -7,7 +7,7 @@ import { Lint } from "@typeonce/ritmo-devtools"
 const hostClock = HostClock.test()
 
 const Ping = Descriptor.Event<number>()("LintTest/Ping")
-const Score = Descriptor.Component<number>()("LintTest/Score", { columns: "number" })
+const Score = Descriptor.Component<number>()("LintTest/Score")
 const Game = Schema.bind(Schema.fragment({ components: { Score }, events: { Ping } }))
 const Emit = Game.System("LintTest/Emit", { events: { ping: Game.System.writeEvent(Ping) } }, ({ events }) => {
   events.ping.emit(1)

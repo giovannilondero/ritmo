@@ -144,6 +144,11 @@
         "medianMs": 0.5775,
         "score": 0.193
       },
+      "math/collide-move-circle-segments-1k": {
+        "minMs": 5.5744,
+        "medianMs": 5.78,
+        "score": 1.836
+      },
       "math/random-next-100k": {
         "minMs": 0.7917,
         "medianMs": 0.8074,
@@ -173,6 +178,26 @@
         "minMs": 0.3482,
         "medianMs": 0.3521,
         "score": 0.1175
+      },
+      "checkpoint/take-tick-10k": {
+        "minMs": 0.3495,
+        "medianMs": 0.7052,
+        "score": 0.118
+      },
+      "checkpoint/rollback-8-of-5k": {
+        "minMs": 3.3081,
+        "medianMs": 3.5784,
+        "score": 1.117
+      },
+      "netcode/rollback-frame-2-peers": {
+        "minMs": 0.0549,
+        "medianMs": 0.0656,
+        "score": 0.0186
+      },
+      "netcode/lockstep-frame-2-peers": {
+        "minMs": 0.0076,
+        "medianMs": 0.0085,
+        "score": 0.0026
       }
     }
   },

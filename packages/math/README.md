@@ -2,8 +2,8 @@
 
 Math for ritmo games, in two kinds:
 
-- **Validated values**: `Scalar` (`Finite`, `NonNegative`, `Positive`), `Vector2`, `Size2`, and `Aabb`. Each has constructors that validate input (`result`, `option`), a guard `is`, and one `codec`, a Standard Schema: `Descriptor.ConstructedComponent(Vector2.codec)` saves the value and checks it on restore. A `Scalar` component also declares its number column: `Descriptor.ConstructedComponent(Scalar.Finite.codec)("Game/Speed", { columns: "number" })`. Inside a game's own schema, build the field from the guard (`Schema.declare(Vector2.is)` in Effect, `z.custom(Vector2.is)` in Zod). `Random.codec` does the same for a generator kept in a resource.
-- **Hot-path helpers** on plain numbers, for code that runs every step: `Vec2` vector arithmetic (validated `Vector2` values pass straight in), `Box2` edge boxes, `Collide2` swept circle collision that slides along walls and never tunnels through them, a `SpatialGrid` broad phase that allocates nothing per step, a `FlowField` that leads bodies around walls, a deterministic `Random` whose whole state is one integer (keep it in a resource, so runs replay), and `Ops`, math functions that return the same bits on every engine.
+- **Validated values**: `Scalar` (`Finite`, `NonNegative`, `Positive`), `Vector2`, `Size2`, and `Aabb`. Each has constructors that validate input (`result`, `option`), a guard `is`, and one `codec`, a Standard Schema: `Descriptor.ConstructedComponent(Vector2.codec)` saves the value and checks it on restore. Inside a game's own schema, build the field from the guard (`Schema.declare(Vector2.is)` in Effect, `z.custom(Vector2.is)` in Zod). `Random.codec` does the same for a generator kept in a resource.
+- **Hot-path helpers** on plain numbers, for code that runs every step: `Vec2` vector arithmetic (validated `Vector2` values pass straight in), `Box2` edge boxes, `Segment2` walls at any angle, `Collide2` swept circle collision against both that slides along walls and never tunnels through them, a `SpatialGrid` broad phase that allocates nothing per step, a `FlowField` that leads bodies around walls, a deterministic `Random` whose whole state is one integer (keep it in a resource, so runs replay), and `Ops`, math functions that return the same bits on every engine.
 
 ```ts
 import { Collide2, FlowField, Random, SpatialGrid, Vec2 } from "@typeonce/ritmo-math"
@@ -12,7 +12,7 @@ import { Collide2, FlowField, Random, SpatialGrid, Vec2 } from "@typeonce/ritmo-
 paths.setWalls(walls, radius)
 paths.setGoal(player)
 const way = paths.way(enemy) ?? Vec2.normalizeOr(Vec2.subtract(player, enemy), Vec2.zero)
-const moved = Collide2.moveCircle(enemy, Vec2.scale(way, speed * dt), radius, walls)
+const moved = Collide2.moveCircle(enemy, Vec2.scale(way, speed * dt), radius, { boxes: walls })
 ```
 
 ```sh

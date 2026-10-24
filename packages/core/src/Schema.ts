@@ -1048,6 +1048,8 @@ export namespace Schema {
         readonly debug?: Enabled
         /** The game's save migrations (`Snapshot.migrations`): `restore` upgrades older saves with them. */
         readonly saves?: Snapshot.Migrations
+        /** How many checkpoints `runtime.checkpoint` keeps, a positive whole number (`Checkpoint.defaultWindow` by default); see the `Checkpoint` module. */
+        readonly checkpoints?: number
       }) => Runtime.MakeRuntimeResult<S, RuntimeServicesOf<ProvidedServices>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled>
       service: typeof Runtime.service
       services: typeof Runtime.services

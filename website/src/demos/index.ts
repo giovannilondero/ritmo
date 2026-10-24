@@ -31,6 +31,13 @@ export const demos = {
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
     load: () => import("./controls/rebind.ts")
   },
+  rollback: {
+    title: "Rollback",
+    description: "Two peers of one match in one page, joined by a fake network: watch them roll back and agree.",
+    controls: "WASD or arrows to move, Space to fire. A bot plays the other seat; pick the latency in the corner.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/rollback",
+    load: () => import("./rollback/game.ts")
+  },
   replay: {
     title: "Controls, recorded",
     description: "The same ball, recording the last ten seconds as a replay you can open on the spot.",
